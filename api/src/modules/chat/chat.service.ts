@@ -1,157 +1,328 @@
 import type { FastifyInstance } from 'fastify'
 import { randomUUID } from 'node:crypto'
+import { zodResponseFormat } from 'openai/helpers/zod.js'
+import type OpenAI from 'openai'
 import { env } from '../../shared/env.js'
 import { AppError } from '../../shared/errors.js'
+import {
+  aiDietPlanSchema,
+  collectedUserDataSchema,
+  type CollectedUserData,
+} from '../../shared/diet-ai-schema.js'
+import { saveDietToDb } from '../diets/diets.service.js'
 import type { ChatMessageBody, ChatResponse } from './chat.schemas.js'
 
-// ─── System prompt para coleta de dados e geração de dieta ───────────────────
+// ─── System prompt ─────────────────────────────────────────────────────────
 
-const DIET_SYSTEM_PROMPT = `Você é o CalorIA, um nutricionista virtual especializado em criar dietas personalizadas.
+const CHAT_SYSTEM_PROMPT = `Você é o CalorIA, um nutricionista virtual simpático e motivador.
+Seu objetivo é coletar informações do usuário em forma de conversa natural e, ao final, gerar um plano alimentar personalizado.
 
-Seu objetivo é coletar informações do usuário de forma natural e amigável através de uma conversa,
-e ao final gerar uma dieta personalizada e detalhada.
+## DADOS QUE VOCÊ DEVE COLETAR (obrigatórios):
+1. Peso atual em kg
+2. Altura em cm
+3. Idade (ou data de nascimento)
+4. Sexo (masculino / feminino / outro)
+5. Objetivo: perder peso / manter peso / ganhar massa / ganhar peso
+6. Nível de atividade física: sedentário / levemente ativo / moderadamente ativo / ativo / muito ativo
+7. Quantas refeições por dia prefere (3 a 6)
 
-## Informações que você DEVE coletar:
-1. **Dados físicos**: peso atual (kg), altura (cm), idade ou data de nascimento
-2. **Objetivo**: perder peso / manter peso / ganhar massa muscular / ganhar peso
-3. **Nível de atividade física**: sedentário / levemente ativo / moderado / ativo / muito ativo
-4. **Restrições alimentares**: vegetariano, vegano, sem glúten, sem lactose, halal, kosher, etc.
-5. **Alergias alimentares**: amendoim, frutos do mar, ovos, etc.
-6. **Preferências**: alimentos que gosta/não gosta
-7. **Quantas refeições por dia prefere**: 3, 4, 5 ou 6 refeições
+## DADOS OPCIONAIS (pergunte se não mencionados):
+- Restrições alimentares (vegetariano, vegano, sem glúten, sem lactose, etc.)
+- Alergias alimentares
+- Alimentos que não gosta ou não come
 
-## Regras importantes:
-- Faça **uma pergunta por vez** para não sobrecarregar o usuário
-- Seja **amigável, encorajador e motivador**
-- Quando tiver todas as informações necessárias, diga que vai gerar a dieta
-- Responda em **português brasileiro**
-- Respostas devem ser **concisas** (máx 3 parágrafos)
+## REGRAS:
+- Faça UMA pergunta por vez — nunca uma lista de perguntas
+- Seja breve e amigável (máx 2 parágrafos por resposta)
+- Responda sempre em português brasileiro
+- Quando tiver TODOS os dados obrigatórios, chame a função collect_diet_data
+- Não mencione que vai "chamar uma função" — apenas diga que vai gerar a dieta
+- Você NÃO é médico: oriente o usuário a consultar profissionais para questões de saúde
 
-## Quando tiver todos os dados:
-Calcule o **TDEE** (Total Daily Energy Expenditure) usando a fórmula de Mifflin-St Jeor
-e defina as calorias e macros baseado no objetivo do usuário.
-Retorne a dieta em formato estruturado quando solicitado pelo sistema.
+## CÁLCULO (para referência interna):
+Use Mifflin-St Jeor para BMR, multiplique pelo fator de atividade (TDEE) e ajuste pelo objetivo:
+- Perder peso: TDEE − 500 kcal | Manter: TDEE | Ganhar massa: TDEE + 300 | Ganhar peso: TDEE + 500`
 
-Lembre-se: você é um assistente, não um médico. Sempre oriente o usuário a consultar um
-profissional de saúde para questões médicas.`
+// ─── Tool definition para coleta de dados ─────────────────────────────────
 
-// ─── Tipos internos ───────────────────────────────────────────────────────────
+const COLLECT_DIET_DATA_TOOL: OpenAI.Chat.ChatCompletionTool = {
+  type: 'function',
+  function: {
+    name: 'collect_diet_data',
+    description:
+      'Chame esta função APENAS quando tiver coletado TODOS os dados obrigatórios do usuário (peso, altura, idade, sexo, objetivo, nível de atividade e número de refeições por dia). Não chame antes de ter todas essas informações.',
+    parameters: {
+      type: 'object',
+      required: [
+        'weight_kg', 'height_cm', 'age', 'gender', 'goal',
+        'activity_level', 'meals_per_day', 'message_to_user',
+        'dietary_restrictions', 'allergies', 'food_preferences',
+      ],
+      properties: {
+        weight_kg:            { type: 'number', description: 'Peso em kg' },
+        height_cm:            { type: 'number', description: 'Altura em cm' },
+        age:                  { type: 'integer', description: 'Idade em anos' },
+        gender:               { type: 'string', enum: ['male', 'female', 'other'] },
+        goal:                 { type: 'string', enum: ['lose_weight', 'maintain', 'gain_muscle', 'gain_weight'] },
+        activity_level:       { type: 'string', enum: ['sedentary', 'light', 'moderate', 'active', 'very_active'] },
+        meals_per_day:        { type: 'integer', minimum: 3, maximum: 6 },
+        dietary_restrictions: { type: 'array', items: { type: 'string' } },
+        allergies:            { type: 'array', items: { type: 'string' } },
+        food_preferences:     { type: ['string', 'null'], description: 'Preferências e aversões alimentares' },
+        message_to_user:      { type: 'string', description: 'Mensagem encorajadora enquanto a dieta é gerada' },
+      },
+      additionalProperties: false,
+    },
+  },
+}
 
-interface ChatHistory {
-  role: 'user' | 'assistant' | 'system'
+// ─── Prompt de geração de dieta ────────────────────────────────────────────
+
+function buildDietGenerationPrompt(userData: CollectedUserData): string {
+  const goalLabels: Record<string, string> = {
+    lose_weight: 'perda de peso',
+    maintain: 'manutenção de peso',
+    gain_muscle: 'ganho de massa muscular',
+    gain_weight: 'ganho de peso',
+  }
+  const activityLabels: Record<string, string> = {
+    sedentary: 'sedentário',
+    light: 'levemente ativo',
+    moderate: 'moderadamente ativo',
+    active: 'ativo',
+    very_active: 'muito ativo',
+  }
+
+  return `Crie um plano alimentar COMPLETO de 7 dias para o seguinte perfil:
+
+**Dados do usuário:**
+- Peso: ${userData.weight_kg}kg
+- Altura: ${userData.height_cm}cm
+- Idade: ${userData.age} anos
+- Sexo: ${userData.gender === 'male' ? 'Masculino' : userData.gender === 'female' ? 'Feminino' : 'Outro'}
+- Objetivo: ${goalLabels[userData.goal]}
+- Nível de atividade: ${activityLabels[userData.activity_level]}
+- Refeições por dia: ${userData.meals_per_day}
+${userData.dietary_restrictions.length > 0 ? `- Restrições: ${userData.dietary_restrictions.join(', ')}` : ''}
+${userData.allergies.length > 0 ? `- Alergias: ${userData.allergies.join(', ')}` : ''}
+${userData.food_preferences ? `- Preferências: ${userData.food_preferences}` : ''}
+
+**Instruções:**
+1. Calcule o TDEE usando Mifflin-St Jeor e ajuste pelo objetivo
+2. Distribua as ${userData.meals_per_day} refeições diárias coerentemente
+3. Use alimentos brasileiros comuns e acessíveis (base TACO)
+4. Varie os alimentos entre os 7 dias — evite repetição excessiva
+5. Especifique SEMPRE a quantidade em gramas e o preparo
+6. Calcule calorias e macros com precisão para cada item
+7. O plano deve ser prático e realista para o dia a dia`
+}
+
+// ─── Tipos internos ─────────────────────────────────────────────────────────
+
+interface ChatHistoryMessage {
+  role: 'user' | 'assistant'
   content: string
 }
 
-interface StoredConversation {
-  id: string
-  user_id: string
-  messages: ChatHistory[]
-  created_at: string
-  updated_at: string
-}
+// ─── Serviço principal ───────────────────────────────────────────────────────
 
-// ─── Serviço ──────────────────────────────────────────────────────────────────
-
-/**
- * Processa uma mensagem do usuário e retorna a resposta da IA.
- *
- * Fase 1: armazena histórico em memória (temporário).
- * Fase 2: persistirá no banco via tabela chat_history.
- */
 export async function sendChatMessage(
   fastify: FastifyInstance,
   userId: string,
   data: ChatMessageBody,
 ): Promise<ChatResponse> {
-  // Carrega ou inicia a conversa
   const conversationId = data.conversation_id ?? randomUUID()
-  const history = await getOrCreateConversation(fastify, userId, conversationId)
+  const history = await loadHistory(fastify, userId, conversationId)
 
-  // Adiciona a mensagem do usuário ao histórico
   history.push({ role: 'user', content: data.message })
 
-  // Chama a API da OpenAI com o histórico completo
-  let assistantMessage: string
+  // ── Chamada à OpenAI com suporte a function calling ──────────────────────
+  let completion: Awaited<ReturnType<typeof fastify.openai.chat.completions.create>>
   try {
-    const completion = await fastify.openai.chat.completions.create({
+    completion = await fastify.openai.chat.completions.create({
       model: env.OPENAI_MODEL,
       messages: [
-        { role: 'system', content: DIET_SYSTEM_PROMPT },
+        { role: 'system', content: CHAT_SYSTEM_PROMPT },
         ...history,
       ],
-      max_tokens: 800,
+      tools: [COLLECT_DIET_DATA_TOOL],
+      tool_choice: 'auto',
+      max_tokens: 600,
       temperature: 0.7,
     })
-
-    assistantMessage = completion.choices[0]?.message?.content ?? 'Desculpe, não consegui processar sua mensagem.'
   } catch (err) {
-    fastify.log.error({ err }, 'Erro ao chamar OpenAI')
+    fastify.log.error({ err }, 'Erro ao chamar OpenAI chat')
     throw new AppError(502, 'AI_ERROR', 'Serviço de IA temporariamente indisponível')
   }
 
-  // Adiciona resposta da IA ao histórico
+  const choice = completion.choices[0]
+
+  // ── Detecta chamada de função: IA coletou todos os dados ─────────────────
+  if (choice.finish_reason === 'tool_calls' && choice.message.tool_calls?.length) {
+    const toolCall = choice.message.tool_calls[0]
+
+    if (toolCall.function.name === 'collect_diet_data') {
+      return handleDietGeneration(fastify, userId, conversationId, history, toolCall)
+    }
+  }
+
+  // ── Resposta de conversa normal ──────────────────────────────────────────
+  const assistantMessage = choice.message.content ?? 'Desculpe, não consegui processar sua mensagem.'
   history.push({ role: 'assistant', content: assistantMessage })
+  await persistHistory(fastify, userId, conversationId, history, 'collecting')
 
-  // Persiste o histórico no banco
-  await saveConversation(fastify, userId, conversationId, history)
-
-  const now = new Date().toISOString()
   return {
     conversation_id: conversationId,
-    message: {
-      role: 'assistant',
-      content: assistantMessage,
-      created_at: now,
-    },
-    diet_generated: false, // Será true na Fase 2 quando a IA gerar a dieta
+    message: { role: 'assistant', content: assistantMessage, created_at: new Date().toISOString() },
+    diet_generated: false,
     diet_id: null,
   }
 }
 
-// ─── Helpers (persistência será expandida na Fase 2) ─────────────────────────
+// ─── Geração da dieta (chamado quando IA usa a function) ─────────────────────
 
-async function getOrCreateConversation(
+async function handleDietGeneration(
   fastify: FastifyInstance,
   userId: string,
   conversationId: string,
-): Promise<ChatHistory[]> {
-  // Fase 1: busca histórico no banco se a conversa já existe
-  try {
-    const [row] = await fastify.db<{ messages: ChatHistory[] }[]>`
-      SELECT messages
-      FROM chat_history
-      WHERE id = ${conversationId}
-        AND user_id = ${userId}
-    `
-    if (row) {
-      return row.messages
+  history: ChatHistoryMessage[],
+  toolCall: OpenAI.Chat.ChatCompletionMessageToolCall,
+): Promise<ChatResponse> {
+  // Valida os dados coletados pela IA
+  const rawArgs = JSON.parse(toolCall.function.arguments) as unknown
+  const parseResult = collectedUserDataSchema.safeParse(rawArgs)
+
+  if (!parseResult.success) {
+    fastify.log.warn({ errors: parseResult.error.flatten() }, 'Dados coletados pela IA são inválidos')
+    const fallbackMsg = 'Preciso de mais algumas informações antes de gerar sua dieta. Poderia confirmar seu peso e altura?'
+    history.push({ role: 'assistant', content: fallbackMsg })
+    await persistHistory(fastify, userId, conversationId, history, 'collecting')
+    return {
+      conversation_id: conversationId,
+      message: { role: 'assistant', content: fallbackMsg, created_at: new Date().toISOString() },
+      diet_generated: false,
+      diet_id: null,
     }
-  } catch {
-    // Tabela ainda não existe na Fase 1 — silencia o erro
-    fastify.log.debug('Tabela chat_history não encontrada (será criada na Fase 2)')
   }
 
-  return []
+  const userData = parseResult.data
+  const userMessage = userData.message_to_user
+
+  // Sinaliza que está gerando
+  await persistHistory(fastify, userId, conversationId, history, 'generating')
+
+  // ── Gera o plano alimentar estruturado ───────────────────────────────────
+  let dietPlan: import('../../shared/diet-ai-schema.js').AiDietPlan
+  try {
+    const dietCompletion = await fastify.openai.beta.chat.completions.parse({
+      model: env.OPENAI_MODEL,
+      messages: [
+        {
+          role: 'system',
+          content:
+            'Você é um nutricionista especializado. Crie planos alimentares detalhados, precisos e com alimentos brasileiros. Retorne SOMENTE o JSON do plano, sem texto adicional.',
+        },
+        { role: 'user', content: buildDietGenerationPrompt(userData) },
+      ],
+      response_format: zodResponseFormat(aiDietPlanSchema, 'diet_plan'),
+      max_tokens: 8000,
+      temperature: 0.3, // baixa temperatura para saída mais precisa
+    })
+
+    const parsed = dietCompletion.choices[0].message.parsed
+    if (!parsed) throw new Error('OpenAI retornou dieta vazia')
+    dietPlan = parsed
+  } catch (err) {
+    fastify.log.error({ err }, 'Erro ao gerar dieta estruturada')
+    await persistHistory(fastify, userId, conversationId, history, 'collecting')
+    throw new AppError(502, 'DIET_GENERATION_ERROR', 'Erro ao gerar o plano alimentar. Tente novamente.')
+  }
+
+  // ── Persiste a dieta no banco ────────────────────────────────────────────
+  const dietId = await saveDietToDb(fastify, userId, conversationId, userData, dietPlan)
+
+  // Atualiza perfil do usuário com os dados coletados
+  await fastify.db`
+    UPDATE profiles
+    SET
+      weight_kg      = ${userData.weight_kg},
+      height_cm      = ${userData.height_cm},
+      gender         = ${userData.gender},
+      goal           = ${userData.goal},
+      activity_level = ${userData.activity_level},
+      dietary_restrictions = ${userData.dietary_restrictions},
+      allergies      = ${userData.allergies},
+      updated_at     = NOW()
+    WHERE id = ${userId}
+  `
+
+  // Mensagem final no histórico
+  history.push({ role: 'assistant', content: userMessage })
+  await persistHistory(fastify, userId, conversationId, history, 'completed')
+
+  fastify.log.info({ userId, dietId }, 'Dieta gerada com sucesso')
+
+  return {
+    conversation_id: conversationId,
+    message: { role: 'assistant', content: userMessage, created_at: new Date().toISOString() },
+    diet_generated: true,
+    diet_id: dietId,
+  }
 }
 
-async function saveConversation(
+// ─── Histórico de chat ────────────────────────────────────────────────────────
+
+export async function getChatHistory(
   fastify: FastifyInstance,
   userId: string,
   conversationId: string,
-  messages: ChatHistory[],
+): Promise<{ messages: ChatHistoryMessage[]; status: string }> {
+  const [row] = await fastify.db<{ messages: ChatHistoryMessage[]; status: string }[]>`
+    SELECT messages, status
+    FROM chat_history
+    WHERE id = ${conversationId} AND user_id = ${userId}
+  `
+
+  if (!row) throw new AppError(404, 'CONVERSATION_NOT_FOUND', 'Conversa não encontrada')
+  return row
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+async function loadHistory(
+  fastify: FastifyInstance,
+  userId: string,
+  conversationId: string,
+): Promise<ChatHistoryMessage[]> {
+  try {
+    const [row] = await fastify.db<{ messages: ChatHistoryMessage[] }[]>`
+      SELECT messages FROM chat_history
+      WHERE id = ${conversationId} AND user_id = ${userId}
+    `
+    return row?.messages ?? []
+  } catch {
+    return []
+  }
+}
+
+async function persistHistory(
+  fastify: FastifyInstance,
+  userId: string,
+  conversationId: string,
+  messages: ChatHistoryMessage[],
+  status: string,
 ): Promise<void> {
-  // Fase 1: persistência será implementada na Fase 2 (após criar a tabela)
   try {
     const messagesStr = JSON.stringify(messages)
     await fastify.db`
-      INSERT INTO chat_history (id, user_id, messages)
-      VALUES (${conversationId}, ${userId}, ${messagesStr}::jsonb)
+      INSERT INTO chat_history (id, user_id, messages, status)
+      VALUES (${conversationId}, ${userId}, ${messagesStr}::jsonb, ${status})
       ON CONFLICT (id) DO UPDATE
-        SET messages    = ${messagesStr}::jsonb,
-            updated_at  = NOW()
+        SET messages   = ${messagesStr}::jsonb,
+            status     = ${status},
+            updated_at = NOW()
     `
-  } catch {
-    // Silencia erro enquanto a tabela não existe (Fase 1)
-    fastify.log.debug('Não foi possível persistir histórico (tabela será criada na Fase 2)')
+  } catch (err) {
+    fastify.log.warn({ err }, 'Falha ao persistir histórico de chat')
   }
 }

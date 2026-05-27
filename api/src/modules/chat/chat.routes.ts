@@ -1,11 +1,13 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
+import { z } from 'zod'
 import type { JwtPayload } from '../../shared/types.js'
 import {
   chatMessageBodySchema,
   chatResponseSchema,
+  chatMessageSchema,
   errorSchema,
 } from './chat.schemas.js'
-import { sendChatMessage } from './chat.service.js'
+import { sendChatMessage, getChatHistory } from './chat.service.js'
 
 const chatRoutes: FastifyPluginAsyncZod = async (fastify) => {
   // Todas as rotas de chat exigem autenticação
@@ -63,6 +65,30 @@ Envia uma mensagem para o assistente de dietas com IA.
     const { sub: userId } = request.user as JwtPayload
     const result = await sendChatMessage(fastify, userId, request.body)
     return reply.send(result)
+  })
+
+  /**
+   * GET /chat/history/:conversationId
+   * Retorna o histórico completo de uma conversa.
+   */
+  fastify.get('/history/:conversationId', {
+    schema: {
+      tags: ['Chat'],
+      summary: 'Histórico de conversa',
+      security: [{ bearerAuth: [] }],
+      params: z.object({ conversationId: z.string().uuid() }),
+      response: {
+        200: z.object({
+          messages: z.array(z.object({ role: z.enum(['user', 'assistant']), content: z.string() })),
+          status: z.string(),
+        }),
+        401: errorSchema,
+        404: errorSchema,
+      },
+    },
+  }, async (request, reply) => {
+    const { sub: userId } = request.user as JwtPayload
+    return reply.send(await getChatHistory(fastify, userId, request.params.conversationId))
   })
 }
 
