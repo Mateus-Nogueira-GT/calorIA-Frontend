@@ -1,0 +1,15 @@
+{
+  "extends": "@react-native/typescript-config/tsconfig.json",
+  "compilerOptions": {
+    "strict": true,
+    "baseUrl": ".",
+    "paths": {
+      "@features/*": ["src/features/*"],
+      "@shared/*": ["src/shared/*"],
+      "@navigation/*": ["src/navigation/*"],
+      "@theme/*": ["src/theme/*"]
+    }
+  },
+  "include": ["src/**/*", "index.js", "App.tsx", "__tests__/**/*"],
+  "exclude": ["node_modules", "agentmemory-main"]
+}
