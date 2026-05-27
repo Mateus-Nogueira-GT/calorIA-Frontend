@@ -87,6 +87,12 @@
     "testPathIgnorePatterns": [
       "/node_modules/",
       "/agentmemory-main/"
-    ]
+    ],
+    "transformIgnorePatterns": [
+      "node_modules/(?!(react-native|@react-native|@react-navigation|react-native-safe-area-context|react-native-screens)/)"
+    ],
+    "moduleNameMapper": {
+      "\\.(png|jpg|jpeg|gif|svg|webp)$": "<rootDir>/__mocks__/fileMock.js"
+    }
   }
 }
