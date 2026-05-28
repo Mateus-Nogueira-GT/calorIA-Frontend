@@ -1,8 +1,10 @@
 export const typography = {
   fontFamily: {
-    regular: undefined, // uses system font
-    medium: undefined,
-    bold: undefined,
+    regular: 'Inter-Regular',
+    medium: 'Inter-Medium',
+    semiBold: 'Inter-SemiBold',
+    bold: 'Inter-Bold',
+    extraBold: 'Inter-ExtraBold',
   },
   fontSize: {
     xs: 11,
