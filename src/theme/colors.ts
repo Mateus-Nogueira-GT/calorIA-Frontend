@@ -1,0 +1,25 @@
+export const colors = {
+  primary: '#3DDC84',
+  primaryDark: '#2DB36A',
+  secondary: '#FF8C42',
+  background: '#FFFFFF',
+  surface: '#F8F9FA',
+  textPrimary: '#1A1A2E',
+  textSecondary: '#6C757D',
+  textDisabled: '#ADB5BD',
+  border: '#E9ECEF',
+  success: '#28A745',
+  warning: '#FFC107',
+  error: '#DC3545',
+  info: '#17A2B8',
+  tabBarBackground: '#FFFFFF',
+  tabBarActive: '#3DDC84',
+  tabBarInactive: '#6C757D',
+  card: '#FFFFFF',
+  cardBorder: '#E9ECEF',
+  overlay: 'rgba(0, 0, 0, 0.5)',
+  white: '#FFFFFF',
+  black: '#000000',
+} as const;
+
+export type Colors = typeof colors;
