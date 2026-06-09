@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useCallback, useEffect } from 'react';
 import { foodLogService, AddMealPayload } from '@shared/services/food-log.service';
 import { useFoodLogStore } from '../store';
 
@@ -12,18 +12,19 @@ export function useFoodLog() {
     foodLogService
       .getMeals(store.selectedDate)
       .then((data) => store.setMeals(store.selectedDate, data))
+      .catch(() => {})
       .finally(() => store.setLoading(false));
   }, [store.selectedDate]);
 
-  async function handleAddMeal(data: AddMealPayload): Promise<void> {
+  const handleAddMeal = useCallback(async (data: AddMealPayload): Promise<void> => {
     const meal = await foodLogService.addMeal(data);
     store.addMeal(store.selectedDate, meal);
-  }
+  }, [store.selectedDate]);
 
-  async function handleDeleteMeal(id: string): Promise<void> {
+  const handleDeleteMeal = useCallback(async (id: string): Promise<void> => {
     await foodLogService.deleteMeal(id);
     store.removeMeal(store.selectedDate, id);
-  }
+  }, [store.selectedDate]);
 
   return {
     meals,
