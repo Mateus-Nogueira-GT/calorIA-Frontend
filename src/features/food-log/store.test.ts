@@ -31,4 +31,11 @@ describe('useFoodLogStore', () => {
     useFoodLogStore.getState().setSelectedDate('2026-06-08');
     expect(useFoodLogStore.getState().selectedDate).toBe('2026-06-08');
   });
+
+  it('setLoading atualiza isLoading', () => {
+    useFoodLogStore.getState().setLoading(true);
+    expect(useFoodLogStore.getState().isLoading).toBe(true);
+    useFoodLogStore.getState().setLoading(false);
+    expect(useFoodLogStore.getState().isLoading).toBe(false);
+  });
 });
