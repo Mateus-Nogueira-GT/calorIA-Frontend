@@ -6,6 +6,7 @@ interface StoreMessage {
   role: 'coach' | 'user';
   content: string;
   timestamp: Date;
+  canGenerateDiet?: boolean;
 }
 
 interface CoachState {
@@ -16,7 +17,13 @@ interface CoachState {
 }
 
 function toStoreMessage(m: CoachMessage): StoreMessage {
-  return { ...m, timestamp: new Date(m.timestamp) };
+  return {
+    id: m.id,
+    role: m.role,
+    content: m.content,
+    timestamp: new Date(m.timestamp),
+    ...(m.canGenerateDiet ? { canGenerateDiet: true } : {}),
+  };
 }
 
 export const useCoachStore = create<CoachState>((set, get) => ({

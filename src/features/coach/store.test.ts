@@ -35,4 +35,27 @@ describe('useCoachStore', () => {
     await act(() => result.current.sendMessage('Teste'));
     expect(result.current.isLoading).toBe(false);
   });
+
+  it('preserva canGenerateDiet em mensagens do histórico', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { coachService } = require('@shared/services/coach.service');
+    coachService.getHistory.mockResolvedValueOnce([
+      { id: 'h1', role: 'coach', content: 'Pronto!', timestamp: '2026-01-01T00:00:00Z', canGenerateDiet: true },
+    ]);
+    const { result } = renderHook(() => useCoachStore());
+    await act(() => result.current.loadHistory());
+    expect(result.current.messages[0].canGenerateDiet).toBe(true);
+  });
+
+  it('preserva canGenerateDiet na resposta a sendMessage', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { coachService } = require('@shared/services/coach.service');
+    coachService.sendMessage.mockResolvedValueOnce({
+      id: 'r1', role: 'coach', content: 'Pode gerar!', timestamp: '2026-01-01T00:00:01Z', canGenerateDiet: true,
+    });
+    const { result } = renderHook(() => useCoachStore());
+    await act(() => result.current.sendMessage('Tudo certo'));
+    const last = result.current.messages[result.current.messages.length - 1];
+    expect(last.canGenerateDiet).toBe(true);
+  });
 });
