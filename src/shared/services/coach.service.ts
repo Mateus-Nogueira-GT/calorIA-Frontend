@@ -5,6 +5,7 @@ export interface CoachMessage {
   role: 'coach' | 'user';
   content: string;
   timestamp: string;
+  canGenerateDiet?: boolean;
 }
 
 export const coachService = {
