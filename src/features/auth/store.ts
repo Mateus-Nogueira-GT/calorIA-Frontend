@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { useDietStore } from '@features/diet/store';
 
 interface User {
   id: string;
@@ -25,6 +26,8 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({ token, user, isAuthenticated: true, pendingAuth: null }),
   setPendingAuth: (token, user) =>
     set({ pendingAuth: { token, user } }),
-  clearToken: () =>
-    set({ token: null, user: null, isAuthenticated: false, pendingAuth: null }),
+  clearToken: () => {
+    useDietStore.getState().clear();
+    set({ token: null, user: null, isAuthenticated: false, pendingAuth: null });
+  },
 }));
