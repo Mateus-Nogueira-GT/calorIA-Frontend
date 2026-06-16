@@ -48,6 +48,10 @@ module.exports = {
   resolve: {
     alias: {
       'react-native$': 'react-native-web',
+      '@features': path.resolve(appDirectory, 'src/features'),
+      '@shared': path.resolve(appDirectory, 'src/shared'),
+      '@navigation': path.resolve(appDirectory, 'src/navigation'),
+      '@theme': path.resolve(appDirectory, 'src/theme'),
     },
     extensions: [
       '.web.tsx',
