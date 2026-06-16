@@ -1,0 +1,33 @@
+import React from 'react';
+import { render, waitFor } from '@testing-library/react-native';
+import { FoodLogScreen } from './FoodLogScreen';
+import { useFoodLogStore } from '../store';
+
+jest.mock('@shared/services/food-log.service', () => ({
+  foodLogService: {
+    getMeals: jest.fn().mockResolvedValue([
+      { id: 'm1', name: 'Frango', calories: 450, protein: 38, carbs: 52, fat: 8, loggedAt: new Date().toISOString() },
+    ]),
+    addMeal: jest.fn().mockResolvedValue({ id: 'm2', name: 'Novo', calories: 300, protein: 20, carbs: 30, fat: 5, loggedAt: new Date().toISOString() }),
+    deleteMeal: jest.fn().mockResolvedValue({ deleted: true }),
+  },
+}));
+
+beforeEach(() => useFoodLogStore.setState({ mealsByDate: {}, selectedDate: '2026-06-09', isLoading: false }));
+
+describe('FoodLogScreen', () => {
+  it('renderiza o título', () => {
+    const { getByText } = render(<FoodLogScreen />);
+    expect(getByText('Diário alimentar')).toBeTruthy();
+  });
+
+  it('exibe "Hoje" como chip selecionado', () => {
+    const { getAllByText } = render(<FoodLogScreen />);
+    expect(getAllByText('Hoje').length).toBeGreaterThan(0);
+  });
+
+  it('exibe refeições após carregamento', async () => {
+    const { findByText } = render(<FoodLogScreen />);
+    expect(await findByText('Frango')).toBeTruthy();
+  });
+});

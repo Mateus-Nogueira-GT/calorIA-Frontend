@@ -1,0 +1,67 @@
+import React, { useState } from 'react';
+import { Modal, View, TextInput, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { Text, Button } from '@shared/components';
+import { colors, typography } from '@theme';
+import { AddMealPayload } from '@shared/services/food-log.service';
+
+interface Props {
+  visible: boolean;
+  onClose: () => void;
+  onSubmit: (data: AddMealPayload) => Promise<void>;
+}
+
+export function AddMealModal({ visible, onClose, onSubmit }: Props): React.JSX.Element {
+  const [name, setName] = useState('');
+  const [calories, setCalories] = useState('');
+  const [protein, setProtein] = useState('');
+  const [carbs, setCarbs] = useState('');
+  const [fat, setFat] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  async function handleSubmit() {
+    if (!name.trim() || !calories) return;
+    setLoading(true);
+    try {
+      await onSubmit({ name: name.trim(), calories: Number(calories), protein: Number(protein) || 0, carbs: Number(carbs) || 0, fat: Number(fat) || 0 });
+      setName(''); setCalories(''); setProtein(''); setCarbs(''); setFat('');
+      onClose();
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <View style={styles.overlay}>
+        <View style={styles.sheet}>
+          <View style={styles.header}>
+            <Text style={styles.headerTitle}>Registrar refeição</Text>
+            <TouchableOpacity onPress={onClose}><Text style={styles.closeBtn}>✕</Text></TouchableOpacity>
+          </View>
+          <ScrollView showsVerticalScrollIndicator={false}>
+            <TextInput style={styles.input} placeholder="Nome da refeição" placeholderTextColor={colors.textDisabled} value={name} onChangeText={setName} testID="meal-name-input" />
+            <TextInput style={styles.input} placeholder="Calorias (kcal)" placeholderTextColor={colors.textDisabled} keyboardType="numeric" value={calories} onChangeText={setCalories} testID="meal-calories-input" />
+            <View style={styles.row}>
+              <TextInput style={[styles.input, styles.inputHalf]} placeholder="Proteína (g)" placeholderTextColor={colors.textDisabled} keyboardType="numeric" value={protein} onChangeText={setProtein} />
+              <TextInput style={[styles.input, styles.inputHalf]} placeholder="Carbs (g)" placeholderTextColor={colors.textDisabled} keyboardType="numeric" value={carbs} onChangeText={setCarbs} />
+            </View>
+            <TextInput style={styles.input} placeholder="Gordura (g)" placeholderTextColor={colors.textDisabled} keyboardType="numeric" value={fat} onChangeText={setFat} />
+            <Button onPress={handleSubmit} loading={loading} style={styles.submitBtn}>Salvar refeição</Button>
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+const styles = StyleSheet.create({
+  overlay: { flex: 1, backgroundColor: colors.overlay, justifyContent: 'flex-end' },
+  sheet: { backgroundColor: colors.background, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 40, maxHeight: '80%' as any },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  headerTitle: { fontSize: typography.fontSize.md, fontFamily: typography.fontFamily.bold, color: colors.textPrimary },
+  closeBtn: { fontSize: 18, color: colors.textSecondary, padding: 4 },
+  input: { borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 12, fontSize: typography.fontSize.base, color: colors.textPrimary, marginBottom: 12, fontFamily: typography.fontFamily.regular, backgroundColor: colors.surface },
+  row: { flexDirection: 'row', gap: 10 },
+  inputHalf: { flex: 1 },
+  submitBtn: { marginTop: 8 },
+});
