@@ -2,19 +2,16 @@ import api from './api';
 
 export interface CoachMessage {
   id: string;
-  role: 'user' | 'assistant';
+  role: 'coach' | 'user';
   content: string;
-  createdAt: string;
-}
-
-export interface SendMessagePayload {
-  message: string;
-  conversationId?: string;
+  timestamp: string;
+  canGenerateDiet?: boolean;
 }
 
 export const coachService = {
-  getHistory: (conversationId: string) =>
-    api.get<CoachMessage[]>(`/coach/history/${conversationId}`).then((r) => r.data),
-  sendMessage: (data: SendMessagePayload) =>
-    api.post<CoachMessage>('/coach/message', data).then((r) => r.data),
+  getHistory: () =>
+    api.get<CoachMessage[]>('/coach/history').then((r) => r.data),
+
+  sendMessage: (content: string) =>
+    api.post<CoachMessage>('/coach/message', { content }).then((r) => r.data),
 };

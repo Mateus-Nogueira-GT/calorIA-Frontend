@@ -6,6 +6,8 @@ import type { CompositeScreenProps } from '@react-navigation/native';
 export type AuthStackParamList = {
   Welcome: undefined;
   Register: undefined;
+  Login: undefined;
+  ForgotPassword: undefined;
   ProfileSetup: undefined;
 };
 

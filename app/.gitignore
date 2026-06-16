@@ -52,3 +52,6 @@ build/
 .env
 .superpowers/
 web/dist/
+
+# Third-party tools dropped into workspace (not part of the app)
+agentmemory-main/

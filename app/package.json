@@ -94,7 +94,8 @@
       "node_modules/(?!(react-native|@react-native|@react-navigation|react-native-safe-area-context|react-native-screens|@testing-library)/)"
     ],
     "moduleNameMapper": {
-      "\\.(png|jpg|jpeg|gif|svg|webp)$": "<rootDir>/__mocks__/fileMock.js"
+      "\\.(png|jpg|jpeg|gif|svg|webp)$": "<rootDir>/__mocks__/fileMock.js",
+      "AndroidHorizontalScrollContentViewNativeComponent": "<rootDir>/__mocks__/nativeComponentMock.js"
     }
   }
 }

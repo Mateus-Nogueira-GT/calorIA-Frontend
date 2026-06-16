@@ -13,6 +13,8 @@ const babelLoaderConfig = {
     path.resolve(appDirectory, 'node_modules/react-native-web'),
     path.resolve(appDirectory, 'node_modules/@react-navigation'),
     path.resolve(appDirectory, 'node_modules/@react-native'),
+    path.resolve(appDirectory, 'node_modules/react-native-safe-area-context'),
+    path.resolve(appDirectory, 'node_modules/react-native-screens'),
   ],
   use: {
     loader: 'babel-loader',
@@ -30,6 +32,15 @@ const babelLoaderConfig = {
               '@theme': path.resolve(appDirectory, 'src/theme'),
               'react-native': 'react-native-web',
             },
+          },
+        ],
+        [
+          'module:react-native-dotenv',
+          {
+            moduleName: '@env',
+            path: path.resolve(appDirectory, '.env'),
+            safe: false,
+            allowUndefined: true,
           },
         ],
       ],
