@@ -63,6 +63,7 @@ module.exports = {
       '@shared': path.resolve(appDirectory, 'src/shared'),
       '@navigation': path.resolve(appDirectory, 'src/navigation'),
       '@theme': path.resolve(appDirectory, 'src/theme'),
+      '@react-native-google-signin/google-signin': path.resolve(appDirectory, 'web/stubs/google-signin.js'),
     },
     extensions: [
       '.web.tsx',
