@@ -7,6 +7,8 @@ import { RegisterScreen } from '@features/auth/screens/RegisterScreen';
 import { LoginScreen } from '@features/auth/screens/LoginScreen';
 import { ForgotPasswordScreen } from '@features/auth/screens/ForgotPasswordScreen';
 import { ProfileSetupScreen } from '@features/auth/screens/ProfileSetupScreen';
+import { ProfileGoalsScreen } from '@features/profile/screens/ProfileGoalsScreen';
+import { ProfileCoachPersonalityScreen } from '@features/profile/screens/ProfileCoachPersonalityScreen';
 import { BrandTabNavigator } from './BrandTabNavigator';
 import { useAuthStore } from '@features/auth/store';
 import type { AuthStackParamList, RootStackParamList } from './types';
@@ -43,6 +45,16 @@ export function RootNavigator(): React.JSX.Element {
       {showAuthenticatedApp ? (
         <RootStack.Navigator screenOptions={{ headerShown: false }}>
           <RootStack.Screen name='App' component={BrandTabNavigator} />
+          <RootStack.Screen
+            name='ProfileGoals'
+            component={ProfileGoalsScreen}
+            options={{ headerShown: true, title: 'Metas e objetivos' }}
+          />
+          <RootStack.Screen
+            name='ProfileCoachPersonality'
+            component={ProfileCoachPersonalityScreen}
+            options={{ headerShown: true, title: 'Personalidade do Coach' }}
+          />
         </RootStack.Navigator>
       ) : (
         <AuthNavigator />

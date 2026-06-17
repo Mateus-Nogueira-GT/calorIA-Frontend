@@ -7,18 +7,37 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import { authService } from '@shared/services/auth.service';
+import { getAppleSignInPayload, isAppleSignInAvailable } from '@shared/services/apple-signin.service';
+import { getGoogleIdToken, isGoogleSignInAvailable } from '@shared/services/google-signin.service';
 import { useAuthStore } from '@features/auth/store';
 import { Button, Input, Text } from '@shared/components';
-import { colors } from '@theme';
+import { colors, typography } from '@theme';
 import type { AuthStackScreenProps } from '@navigation/types';
 
 function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
+const loginButtonLabel = 'Entrar';
+const googleButtonLabel = 'Continuar com Google';
+const appleButtonLabel = 'Continuar com Apple';
+const registerFooterLabel = 'Não tem conta? Criar conta';
+const titleLabel = 'Entrar';
+const subtitleLabel = 'Continue seu plano com o coach de nutrição inteligente.';
+
+const interfaceFont = Platform.select({
+  web: '"DM Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+  default: typography.fontFamily.regular,
+});
+
+const interfaceSemiBoldFont = Platform.select({
+  web: '"DM Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+  default: typography.fontFamily.semiBold,
+});
+
 export function LoginScreen({ navigation }: AuthStackScreenProps<'Login'>): React.JSX.Element {
+  const hasSocialAuth = isGoogleSignInAvailable || isAppleSignInAvailable;
   const setToken = useAuthStore((s) => s.setToken);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -50,9 +69,8 @@ export function LoginScreen({ navigation }: AuthStackScreenProps<'Login'>): Reac
   async function handleGoogle() {
     setLoading(true);
     try {
-      await GoogleSignin.hasPlayServices();
-      const { idToken } = await GoogleSignin.signIn();
-      const res = await authService.loginWithGoogle(idToken ?? '');
+      const idToken = await getGoogleIdToken();
+      const res = await authService.loginWithGoogle(idToken);
       setToken(res.token, res.user);
     } catch {
       Alert.alert('Erro', 'Login com Google falhou.');
@@ -61,12 +79,36 @@ export function LoginScreen({ navigation }: AuthStackScreenProps<'Login'>): Reac
     }
   }
 
+  async function handleApple() {
+    setLoading(true);
+    try {
+      const { identityToken, fullName } = await getAppleSignInPayload();
+      const res = await authService.loginWithApple(identityToken, fullName);
+      setToken(res.token, res.user);
+    } catch {
+      Alert.alert('Erro', 'Login com Apple falhou.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
     <ScrollView
+      style={styles.screen}
       contentContainerStyle={styles.container}
       keyboardShouldPersistTaps="handled"
     >
-      <Text variant="heading2" style={styles.title}>Entrar</Text>
+      <View style={styles.header}>
+        <Text
+          accessibilityRole="header"
+          variant="heading1"
+          style={styles.logo}
+        >
+          calor<Text variant="heading1" style={styles.logoAccent}>IA</Text>
+        </Text>
+        <Text variant="heading2" style={styles.title}>{titleLabel}</Text>
+        <Text variant="body" style={styles.subtitle}>{subtitleLabel}</Text>
+      </View>
 
       <Input
         label="E-mail"
@@ -93,7 +135,7 @@ export function LoginScreen({ navigation }: AuthStackScreenProps<'Login'>): Reac
         onPress={() => navigation.navigate('ForgotPassword')}
         style={styles.forgotLink}
       >
-        <Text variant="caption" color={colors.primary}>Esqueci minha senha</Text>
+        <Text variant="caption" style={styles.linkText}>Esqueci minha senha</Text>
       </TouchableOpacity>
 
       <Button
@@ -101,46 +143,121 @@ export function LoginScreen({ navigation }: AuthStackScreenProps<'Login'>): Reac
         loading={loading}
         disabled={!isFormValid}
         size="lg"
-        style={styles.btn}
+        style={[styles.btn, styles.primaryButton]}
+        labelStyle={styles.primaryButtonLabel}
       >
-        Entrar
+        {loginButtonLabel}
       </Button>
 
-      <View style={styles.divider}>
-        <View style={styles.line} />
-        <Text variant="caption" style={styles.orText}>ou</Text>
-        <View style={styles.line} />
-      </View>
+      {hasSocialAuth ? (
+        <>
+          <View style={styles.divider}>
+            <View style={styles.line} />
+            <Text variant="caption" style={styles.orText}>ou</Text>
+            <View style={styles.line} />
+          </View>
 
-      <Button variant="secondary" onPress={handleGoogle} size="lg" style={styles.btn}>
-        Continuar com Google
+          {isGoogleSignInAvailable ? (
+            <Button
+              variant="secondary"
+              onPress={handleGoogle}
+              size="lg"
+              style={[styles.btn, styles.secondaryButton]}
+              labelStyle={styles.secondaryButtonLabel}
+            >
+              {googleButtonLabel}
+            </Button>
+          ) : null}
+
+          {isAppleSignInAvailable ? (
+            <Button
+              variant="secondary"
+              onPress={handleApple}
+              size="lg"
+              style={[styles.btn, styles.secondaryButton]}
+              labelStyle={styles.secondaryButtonLabel}
+            >
+              {appleButtonLabel}
+            </Button>
+          ) : null}
+        </>
+      ) : null}
+
+      <Button
+        variant="ghost"
+        onPress={() => navigation.replace('Register')}
+        size="md"
+        style={styles.footerButton}
+        labelStyle={styles.footerButtonLabel}
+      >
+        {registerFooterLabel}
       </Button>
-
-      {Platform.OS === 'ios' && (
-        <Button variant="secondary" onPress={() => {}} size="lg" style={styles.btn}>
-          Continuar com Apple
-        </Button>
-      )}
-
-      <TouchableOpacity onPress={() => navigation.navigate('Register')} style={styles.footer}>
-        <Text variant="caption">
-          Não tem conta?{' '}
-          <Text variant="caption" color={colors.primary}>
-            Criar conta
-          </Text>
-        </Text>
-      </TouchableOpacity>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 24, paddingTop: 60, backgroundColor: colors.background, flexGrow: 1 },
-  title: { marginBottom: 32 },
+  screen: { flex: 1, backgroundColor: colors.brandBackground },
+  container: {
+    alignSelf: 'center',
+    backgroundColor: colors.brandBackground,
+    flexGrow: 1,
+    maxWidth: 420,
+    padding: 24,
+    paddingTop: 54,
+    width: '100%',
+  },
+  header: { alignItems: 'center', marginBottom: 30 },
+  logo: {
+    color: colors.brandAnchor,
+    fontFamily: interfaceSemiBoldFont,
+    fontSize: 38,
+    lineHeight: 44,
+    textAlign: 'center',
+  },
+  logoAccent: {
+    color: colors.brandPrimary,
+    fontFamily: interfaceSemiBoldFont,
+    fontSize: 38,
+    lineHeight: 44,
+  },
+  title: {
+    color: colors.brandAnchor,
+    fontFamily: interfaceSemiBoldFont,
+    marginTop: 28,
+    textAlign: 'center',
+  },
+  subtitle: {
+    color: colors.brandText,
+    fontFamily: interfaceFont,
+    marginTop: 10,
+    maxWidth: 310,
+    textAlign: 'center',
+  },
   forgotLink: { alignSelf: 'flex-end', marginBottom: 24, marginTop: -8 },
-  btn: { marginBottom: 12 },
+  linkText: { color: colors.brandPrimary, fontFamily: interfaceFont },
+  btn: { borderRadius: 16, marginBottom: 12, minHeight: 52, paddingVertical: 0 },
+  primaryButton: { backgroundColor: colors.brandPrimary },
+  primaryButtonLabel: {
+    color: colors.brandAnchor,
+    fontFamily: interfaceSemiBoldFont,
+    fontSize: 16,
+    fontWeight: typography.fontWeight.semiBold,
+  },
+  secondaryButton: {
+    backgroundColor: colors.transparent,
+    borderColor: colors.brandAnchor,
+    borderWidth: 1.5,
+  },
+  secondaryButtonLabel: {
+    color: colors.brandAnchor,
+    fontFamily: interfaceSemiBoldFont,
+    fontSize: 16,
+    fontWeight: typography.fontWeight.semiBold,
+  },
   divider: { flexDirection: 'row', alignItems: 'center', marginVertical: 16, gap: 12 },
-  line: { flex: 1, height: 1, backgroundColor: colors.border },
-  orText: { color: colors.textDisabled },
-  footer: { alignItems: 'center', marginTop: 24 },
+  line: { flex: 1, height: 1, backgroundColor: colors.brandDivider },
+  orText: { color: colors.brandText, fontFamily: interfaceFont },
+  footerButton: { marginTop: 10, minHeight: 44, paddingHorizontal: 16 },
+  footerButtonLabel: { color: colors.brandPrimary, fontFamily: interfaceSemiBoldFont, fontSize: 13 },
 });

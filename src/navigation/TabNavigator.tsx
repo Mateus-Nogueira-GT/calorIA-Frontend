@@ -1,5 +1,8 @@
 import React from 'react';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import {
+  createBottomTabNavigator,
+  BottomTabNavigationOptions,
+} from '@react-navigation/bottom-tabs';
 import { Text } from 'react-native';
 import { DashboardScreen } from '@features/dashboard/screens/DashboardScreen';
 import { FoodLogScreen } from '@features/food-log/screens/FoodLogScreen';
@@ -19,21 +22,31 @@ const tabIcons: Record<keyof TabParamList, string> = {
   Profile: '👤',
 };
 
+function TabIcon({ routeName }: { routeName: keyof TabParamList }): React.JSX.Element {
+  return <Text style={styles.tabIcon}>{tabIcons[routeName]}</Text>;
+}
+
+function getScreenOptions({
+  route,
+}: {
+  route: { name: keyof TabParamList };
+}): BottomTabNavigationOptions {
+  return {
+    headerShown: false,
+    tabBarActiveTintColor: colors.brandPrimary,
+    tabBarInactiveTintColor: colors.brandAnchor,
+    tabBarStyle: {
+      backgroundColor: colors.brandBackground,
+      borderTopColor: colors.brandDivider,
+    },
+    tabBarIcon: () => <TabIcon routeName={route.name} />,
+  };
+}
+
 export function TabNavigator(): React.JSX.Element {
   return (
     <Tab.Navigator
-      screenOptions={({ route }) => ({
-        headerShown: false,
-        tabBarActiveTintColor: colors.tabBarActive,
-        tabBarInactiveTintColor: colors.tabBarInactive,
-        tabBarStyle: {
-          backgroundColor: colors.tabBarBackground,
-          borderTopColor: colors.border,
-        },
-        tabBarIcon: ({ color }) => (
-          <Text style={{ fontSize: 20, color }}>{tabIcons[route.name]}</Text>
-        ),
-      })}
+      screenOptions={getScreenOptions}
     >
       <Tab.Screen name="Dashboard" component={DashboardScreen} />
       <Tab.Screen name="FoodLog" component={FoodLogScreen} options={{ title: 'Diário' }} />
@@ -43,3 +56,9 @@ export function TabNavigator(): React.JSX.Element {
     </Tab.Navigator>
   );
 }
+
+const styles = {
+  tabIcon: {
+    fontSize: 20,
+  },
+};

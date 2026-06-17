@@ -16,6 +16,7 @@ export function ScannerScreen(): React.JSX.Element {
   const [state, setState] = useState<ScanState>('idle');
   const [result, setResult] = useState<ScanResult | null>(null);
   const addMeal = useFoodLogStore((s) => s.addMeal);
+  const setSelectedDate = useFoodLogStore((s) => s.setSelectedDate);
   const navigation = useNavigation();
 
   async function handlePickImage(uri: string) {
@@ -32,8 +33,10 @@ export function ScannerScreen(): React.JSX.Element {
   async function handleAddToDiary() {
     if (!result) return;
     try {
+      const date = todayString();
       const meal = await foodLogService.addMeal({ name: result.name, calories: result.calories, protein: result.protein, carbs: result.carbs, fat: result.fat });
-      addMeal(todayString(), meal);
+      addMeal(date, meal);
+      setSelectedDate(date);
       Alert.alert('Adicionado!', `${result.name} foi adicionado ao seu diário.`);
       handleReset();
       navigation.navigate('FoodLog' as never);

@@ -1,5 +1,13 @@
 import React, { useState } from 'react';
-import { Modal, View, TextInput, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import {
+  DimensionValue,
+  Modal,
+  View,
+  TextInput,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+} from 'react-native';
 import { Text, Button } from '@shared/components';
 import { colors, typography } from '@theme';
 import { AddMealPayload } from '@shared/services/food-log.service';
@@ -9,6 +17,9 @@ interface Props {
   onClose: () => void;
   onSubmit: (data: AddMealPayload) => Promise<void>;
 }
+
+const saveMealLabel = 'Salvar refeição';
+const sheetMaxHeight: DimensionValue = '80%';
 
 export function AddMealModal({ visible, onClose, onSubmit }: Props): React.JSX.Element {
   const [name, setName] = useState('');
@@ -46,7 +57,9 @@ export function AddMealModal({ visible, onClose, onSubmit }: Props): React.JSX.E
               <TextInput style={[styles.input, styles.inputHalf]} placeholder="Carbs (g)" placeholderTextColor={colors.textDisabled} keyboardType="numeric" value={carbs} onChangeText={setCarbs} />
             </View>
             <TextInput style={styles.input} placeholder="Gordura (g)" placeholderTextColor={colors.textDisabled} keyboardType="numeric" value={fat} onChangeText={setFat} />
-            <Button onPress={handleSubmit} loading={loading} style={styles.submitBtn}>Salvar refeição</Button>
+            <Button onPress={handleSubmit} loading={loading} style={styles.submitBtn} labelStyle={styles.submitBtnLabel}>
+              {saveMealLabel}
+            </Button>
           </ScrollView>
         </View>
       </View>
@@ -56,12 +69,13 @@ export function AddMealModal({ visible, onClose, onSubmit }: Props): React.JSX.E
 
 const styles = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: colors.overlay, justifyContent: 'flex-end' },
-  sheet: { backgroundColor: colors.background, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 40, maxHeight: '80%' as any },
+  sheet: { backgroundColor: colors.brandBackground, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 40, maxHeight: sheetMaxHeight },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  headerTitle: { fontSize: typography.fontSize.md, fontFamily: typography.fontFamily.bold, color: colors.textPrimary },
-  closeBtn: { fontSize: 18, color: colors.textSecondary, padding: 4 },
-  input: { borderWidth: 1, borderColor: colors.border, borderRadius: 10, padding: 12, fontSize: typography.fontSize.base, color: colors.textPrimary, marginBottom: 12, fontFamily: typography.fontFamily.regular, backgroundColor: colors.surface },
+  headerTitle: { fontSize: typography.fontSize.md, fontFamily: typography.fontFamily.bold, color: colors.brandAnchor },
+  closeBtn: { fontSize: 18, color: colors.brandAnchor, padding: 4 },
+  input: { borderWidth: 1, borderColor: colors.brandDivider, borderRadius: 10, padding: 12, fontSize: typography.fontSize.base, color: colors.brandAnchor, marginBottom: 12, fontFamily: typography.fontFamily.regular, backgroundColor: colors.brandSurface },
   row: { flexDirection: 'row', gap: 10 },
   inputHalf: { flex: 1 },
-  submitBtn: { marginTop: 8 },
+  submitBtn: { backgroundColor: colors.brandPrimary, marginTop: 8 },
+  submitBtnLabel: { color: colors.brandAnchor },
 });

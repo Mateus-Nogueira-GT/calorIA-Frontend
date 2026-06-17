@@ -11,6 +11,7 @@ interface FoodLogState {
   addMeal: (date: string, meal: Meal) => void;
   removeMeal: (date: string, id: string) => void;
   setLoading: (loading: boolean) => void;
+  clear: () => void;
 }
 
 export const useFoodLogStore = create<FoodLogState>((set) => ({
@@ -35,4 +36,5 @@ export const useFoodLogStore = create<FoodLogState>((set) => ({
       },
     })),
   setLoading: (loading) => set({ isLoading: loading }),
+  clear: () => set({ mealsByDate: {}, selectedDate: todayString(), isLoading: false }),
 }));

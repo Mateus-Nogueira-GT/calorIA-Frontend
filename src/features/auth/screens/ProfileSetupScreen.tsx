@@ -67,6 +67,7 @@ interface ChatMessage {
 
 export function ProfileSetupScreen({ navigation }: AuthStackScreenProps<'ProfileSetup'>): React.JSX.Element {
   const setToken = useAuthStore((s) => s.setToken);
+  const setProfilePreferences = useAuthStore((s) => s.setProfilePreferences);
   const pendingAuth = useAuthStore((s) => s.pendingAuth);
   const user = useAuthStore((s) => s.user);
 
@@ -118,6 +119,10 @@ export function ProfileSetupScreen({ navigation }: AuthStackScreenProps<'Profile
         coachGender: (finalAnswers.gender as ProfileSetupPayload['coachGender']) ?? 'neutral',
       };
       await authService.profileSetup(payload);
+      setProfilePreferences({
+        goal: (finalAnswers.goal as 'lose_weight' | 'gain_muscle' | 'maintain' | 'health') ?? null,
+        coachPersonality: (finalAnswers.personality as 'motivational' | 'direct' | 'empathetic' | 'scientific') ?? null,
+      });
       if (pendingAuth) {
         setToken(pendingAuth.token, pendingAuth.user);
       }
