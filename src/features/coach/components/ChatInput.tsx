@@ -1,43 +1,81 @@
-import React, { useState } from 'react';
-import { StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
-import { Text } from '@shared/components';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, NativeSyntheticEvent, Platform, StyleSheet, TextInput, TextInputKeyPressEventData, TouchableOpacity, View } from 'react-native';
 import { colors, typography } from '@theme';
 
 interface Props {
-  onSend: (text: string) => void;
+  onSend: (text: string) => Promise<boolean>;
   disabled: boolean;
 }
 
 export function ChatInput({ onSend, disabled }: Props): React.JSX.Element {
   const [text, setText] = useState('');
+  const [keyboardInset, setKeyboardInset] = useState(0);
 
-  function handleSend() {
-    if (!text.trim()) return;
-    onSend(text.trim());
-    setText('');
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined' || !window.visualViewport) return;
+
+    const viewport = window.visualViewport;
+    const syncInset = () => {
+      const inset = Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop);
+      setKeyboardInset(inset);
+    };
+
+    syncInset();
+    viewport.addEventListener('resize', syncInset);
+    viewport.addEventListener('scroll', syncInset);
+
+    return () => {
+      viewport.removeEventListener('resize', syncInset);
+      viewport.removeEventListener('scroll', syncInset);
+    };
+  }, []);
+
+  async function handleSend() {
+    const trimmed = text.trim();
+    if (!trimmed || disabled) return;
+
+    const sent = await onSend(trimmed);
+    if (sent) {
+      setText('');
+    }
+  }
+
+  function handleKeyPress(event: NativeSyntheticEvent<TextInputKeyPressEventData>) {
+    if (Platform.OS !== 'web') return;
+    const nativeEvent = event.nativeEvent as TextInputKeyPressEventData & { shiftKey?: boolean; preventDefault?: () => void };
+    if (nativeEvent.key === 'Enter' && !nativeEvent.shiftKey) {
+      nativeEvent.preventDefault?.();
+      void handleSend();
+    }
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingBottom: 12 + keyboardInset }]}>
       <TextInput
         style={styles.input}
-        placeholder="Pergunte ao coach..."
-        placeholderTextColor={colors.textDisabled}
+        placeholder="Pergunte ao Coach..."
+        placeholderTextColor={colors.brandTextMuted}
         value={text}
         onChangeText={setText}
-        onSubmitEditing={handleSend}
+        onSubmitEditing={() => void handleSend()}
+        onKeyPress={handleKeyPress}
         returnKeyType="send"
         multiline
         maxLength={500}
         editable={!disabled}
+        blurOnSubmit={false}
+        textAlignVertical='top'
+        accessibilityLabel='Campo de mensagem do Coach IA'
       />
       <TouchableOpacity
         style={[styles.sendBtn, (!text.trim() || disabled) && styles.sendBtnDisabled]}
-        onPress={handleSend}
+        onPress={() => void handleSend()}
         disabled={!text.trim() || disabled}
         testID="chat-send-btn"
+        accessibilityRole='button'
+        accessibilityLabel='Enviar mensagem para o Coach IA'
       >
-        <Text color={colors.white}>↑</Text>
+        {disabled ? <ActivityIndicator size='small' color={colors.brandAnchor} /> : <View style={styles.sendGlyph} />}
       </TouchableOpacity>
     </View>
   );
@@ -49,28 +87,41 @@ const styles = StyleSheet.create({
     padding: 12,
     gap: 8,
     borderTopWidth: 1,
-    borderTopColor: colors.border,
-    backgroundColor: colors.white,
+    borderTopColor: colors.brandDivider,
+    backgroundColor: colors.brandBackground,
     alignItems: 'flex-end',
   },
   input: {
     flex: 1,
-    backgroundColor: colors.surface,
-    borderRadius: 20,
+    minHeight: 48,
+    backgroundColor: colors.brandSurface,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: colors.brandDivider,
     paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingVertical: 12,
     fontFamily: typography.fontFamily.regular,
     fontSize: typography.fontSize.base,
-    color: colors.textPrimary,
-    maxHeight: 100,
+    color: colors.brandText,
+    lineHeight: typography.fontSize.base * 1.45,
+    maxHeight: 128,
   },
   sendBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: colors.primary,
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    backgroundColor: colors.brandPrimary,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  sendBtnDisabled: { backgroundColor: colors.border },
+  sendBtnDisabled: { backgroundColor: colors.brandTrack },
+  sendGlyph: {
+    width: 16,
+    height: 16,
+    borderTopWidth: 2,
+    borderRightWidth: 2,
+    borderColor: colors.brandAnchor,
+    transform: [{ rotate: '45deg' }],
+    marginRight: 2,
+  },
 });

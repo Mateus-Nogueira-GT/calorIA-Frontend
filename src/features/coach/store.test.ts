@@ -13,7 +13,7 @@ jest.mock('@shared/services/coach.service', () => ({
 }));
 
 describe('useCoachStore', () => {
-  beforeEach(() => useCoachStore.setState({ messages: [], isLoading: false }));
+  beforeEach(() => useCoachStore.setState({ messages: [], isLoading: false, error: null, hasLoadedHistory: false, lastFailedAction: null }));
 
   it('carrega o histórico corretamente', async () => {
     const { result } = renderHook(() => useCoachStore());
@@ -34,6 +34,16 @@ describe('useCoachStore', () => {
     const { result } = renderHook(() => useCoachStore());
     await act(() => result.current.sendMessage('Teste'));
     expect(result.current.isLoading).toBe(false);
+  });
+
+  it('define erro amigável quando o envio falha', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { coachService } = require('@shared/services/coach.service');
+    coachService.sendMessage.mockRejectedValueOnce(new Error('boom'));
+    const { result } = renderHook(() => useCoachStore());
+    await act(() => result.current.sendMessage('Teste'));
+    expect(result.current.error).toBe('Nao foi possivel enviar sua mensagem. Tente novamente.');
+    expect(result.current.lastFailedAction).toBe('send');
   });
 
   it('preserva canGenerateDiet em mensagens do histórico', async () => {

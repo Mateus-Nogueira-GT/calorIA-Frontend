@@ -17,9 +17,7 @@ export function DietPlanSection(): React.JSX.Element {
 
   if (plan === undefined || isLoading) {
     return (
-      <View>
-        <MealCardSkeleton />
-        <MealCardSkeleton />
+      <View style={styles.stateBlock}>
         <MealCardSkeleton />
         <MealCardSkeleton />
       </View>
@@ -46,5 +44,6 @@ export function DietPlanSection(): React.JSX.Element {
 }
 
 const styles = StyleSheet.create({
-  container: { marginTop: 12 },
+  container: { marginTop: 8 },
+  stateBlock: { marginTop: 8 },
 });

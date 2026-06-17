@@ -1,10 +1,14 @@
+import { Platform } from 'react-native';
+
+const webFontStack = '"DM Sans", Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+
 export const typography = {
   fontFamily: {
-    regular: 'Inter-Regular',
-    medium: 'Inter-Medium',
-    semiBold: 'Inter-SemiBold',
-    bold: 'Inter-Bold',
-    extraBold: 'Inter-ExtraBold',
+    regular: Platform.select({ web: webFontStack, default: 'Inter-Regular' })!,
+    medium: Platform.select({ web: webFontStack, default: 'Inter-Medium' })!,
+    semiBold: Platform.select({ web: webFontStack, default: 'Inter-SemiBold' })!,
+    bold: Platform.select({ web: webFontStack, default: 'Inter-Bold' })!,
+    extraBold: Platform.select({ web: webFontStack, default: 'Inter-ExtraBold' })!,
   },
   fontSize: {
     xs: 11,

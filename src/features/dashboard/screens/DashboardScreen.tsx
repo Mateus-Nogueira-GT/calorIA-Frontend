@@ -1,5 +1,5 @@
-import React, { useEffect } from 'react';
-import { View, ScrollView, StyleSheet } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { ScrollView, StyleSheet, View } from 'react-native';
 import { Text } from '@shared/components';
 import { colors, typography } from '@theme';
 import { useAuthStore } from '@features/auth/store';
@@ -17,7 +17,7 @@ const DEFAULT_PROTEIN_GOAL = 150;
 const DEFAULT_CARBS_GOAL = 250;
 const DEFAULT_FAT_GOAL = 65;
 
-const DAYS_PT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+const DAYS_PT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab'];
 const MONTHS_PT = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 
 function todayLabel(): string {
@@ -25,9 +25,30 @@ function todayLabel(): string {
   return `${DAYS_PT[d.getDay()]}, ${d.getDate()} ${MONTHS_PT[d.getMonth()]}`;
 }
 
+function DashboardMealSkeleton(): React.JSX.Element {
+  return (
+    <View style={styles.sectionCard}>
+      <View style={styles.skeletonTitle} />
+      <View style={styles.skeletonMealRow}>
+        <View style={styles.skeletonMealMain} />
+        <View style={styles.skeletonMealKcal} />
+      </View>
+      <View style={styles.skeletonMealRow}>
+        <View style={styles.skeletonMealSecondary} />
+        <View style={styles.skeletonMealKcal} />
+      </View>
+      <View style={styles.skeletonMealRow}>
+        <View style={styles.skeletonMealMain} />
+        <View style={styles.skeletonMealKcal} />
+      </View>
+    </View>
+  );
+}
+
 export function DashboardScreen(): React.JSX.Element {
   const user = useAuthStore((s) => s.user);
   const today = todayString();
+  const [foodLogError, setFoodLogError] = useState(false);
 
   const foodLogMeals = useFoodLogStore((s) => s.mealsByDate[today] ?? []);
   const setMeals = useFoodLogStore((s) => s.setMeals);
@@ -39,11 +60,12 @@ export function DashboardScreen(): React.JSX.Element {
 
   useEffect(() => {
     if (useFoodLogStore.getState().mealsByDate[today] === undefined) {
+      setFoodLogError(false);
       setFoodLogLoading(true);
       foodLogService
         .getMeals(today)
         .then((data) => setMeals(today, data))
-        .catch(() => {})
+        .catch(() => setFoodLogError(true))
         .finally(() => setFoodLogLoading(false));
     }
     if (useDietStore.getState().plan === undefined) {
@@ -78,98 +100,174 @@ export function DashboardScreen(): React.JSX.Element {
   const proteinGoal = plan?.totalProtein ?? DEFAULT_PROTEIN_GOAL;
   const carbsGoal = plan?.totalCarbs ?? DEFAULT_CARBS_GOAL;
   const fatGoal = plan?.totalFat ?? DEFAULT_FAT_GOAL;
+  const greetingLabel = user?.name ? `Ola, ${user.name}` : 'Seu resumo de hoje';
+  const percentLabel = calorieGoal > 0 ? Math.round((totals.calories / calorieGoal) * 100) : 0;
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View style={styles.headerRow}>
-        <Text style={styles.greeting}>Olá, {user?.name ?? 'visitante'} 👋</Text>
-        <Text style={styles.date}>{todayLabel()}</Text>
-      </View>
-
-      <View style={styles.ringCard}>
-        <CalorieRing current={totals.calories} goal={calorieGoal} size={110} />
-        <View style={styles.ringInfo}>
-          <Text style={styles.kcalLabel}>CALORIAS HOJE</Text>
-          <Text style={styles.kcalValue}>{totals.calories}</Text>
-          <Text style={styles.kcalGoal}>de {calorieGoal} kcal</Text>
+      <View style={styles.shell}>
+        <View style={styles.headerRow}>
+          <Text style={styles.date}>{todayLabel()}</Text>
+          <Text style={styles.greeting}>{greetingLabel}</Text>
+          <Text style={styles.headerHint}>Calorias, macros e o que ainda falta no seu dia.</Text>
         </View>
-      </View>
 
-      <View style={styles.macroRow}>
-        <MacroCard label="Proteína" current={totals.protein} goal={proteinGoal} color="#FF8C42" />
-        <View style={styles.macroGap} />
-        <MacroCard label="Carboidratos" current={totals.carbs} goal={carbsGoal} color="#17A2B8" />
-        <View style={styles.macroGap} />
-        <MacroCard label="Gordura" current={totals.fat} goal={fatGoal} color="#FFC107" />
-      </View>
-
-      <DietPlanSection />
-
-      {isFoodLogLoading ? (
-        <Text style={styles.loadingText}>Carregando refeições...</Text>
-      ) : foodLogMeals.length > 0 ? (
-        <View style={styles.mealsCard}>
-          <Text style={styles.mealsTitle}>REGISTRADAS HOJE (DIÁRIO LIVRE)</Text>
-          {foodLogMeals.map((m) => (
-            <MealListItem key={m.id} meal={m} />
-          ))}
+        <View style={styles.ringCard}>
+          <View style={styles.ringSummary}>
+            <View style={styles.badge}>
+              <Text style={styles.badgeText}>Resumo calorico</Text>
+            </View>
+            <Text style={styles.kcalValue}>{totals.calories}</Text>
+            <Text style={styles.kcalGoal}>de {calorieGoal} kcal</Text>
+            <View style={styles.progressMeta}>
+              <Text style={styles.progressMetaLabel}>Meta diaria</Text>
+              <Text style={styles.progressMetaValue}>{percentLabel}%</Text>
+            </View>
+          </View>
+          <CalorieRing current={totals.calories} goal={calorieGoal} size={132} />
         </View>
-      ) : null}
+
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Macronutrientes</Text>
+          <Text style={styles.sectionSubtitle}>Distribuicao consumida em relacao a meta atual.</Text>
+        </View>
+
+        <View style={styles.macroGrid}>
+          <MacroCard label='Proteina' current={totals.protein} goal={proteinGoal} color={colors.brandPrimary} />
+          <MacroCard label='Carboidratos' current={totals.carbs} goal={carbsGoal} color={colors.brandAnchor} />
+          <MacroCard label='Gordura' current={totals.fat} goal={fatGoal} color={colors.brandSupport} />
+        </View>
+
+        <DietPlanSection />
+
+        <View style={[styles.sectionHeader, styles.freeDiaryHeader]}>
+          <Text style={styles.sectionTitle}>Diario alimentar</Text>
+          <Text style={styles.sectionSubtitle}>Registros adicionados fora do plano do dia.</Text>
+        </View>
+
+        {isFoodLogLoading ? (
+          <DashboardMealSkeleton />
+        ) : foodLogError ? (
+          <View style={styles.feedbackCard}>
+            <Text style={styles.feedbackTitle}>Nao foi possivel carregar o diario livre</Text>
+            <Text style={styles.feedbackText}>Atualize a pagina ou tente novamente em instantes.</Text>
+          </View>
+        ) : foodLogMeals.length > 0 ? (
+          <View style={styles.sectionCard}>
+            {foodLogMeals.map((meal, index) => (
+              <MealListItem key={meal.id} meal={meal} hideBorder={index === foodLogMeals.length - 1} />
+            ))}
+          </View>
+        ) : (
+          <View style={styles.feedbackCard}>
+            <Text style={styles.feedbackTitle}>Nada registrado por aqui ainda</Text>
+            <Text style={styles.feedbackText}>Quando voce adicionar algo no diario livre, ele aparece nesta secao.</Text>
+          </View>
+        )}
+      </View>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background, paddingTop: 56 },
-  content: { padding: 16, paddingBottom: 32 },
-  headerRow: { marginBottom: 20 },
+  container: { flex: 1, backgroundColor: colors.brandBackground, paddingTop: 56 },
+  content: { paddingHorizontal: 16, paddingBottom: 110 },
+  shell: { width: '100%', maxWidth: 760, alignSelf: 'center' },
+  headerRow: { marginBottom: 24 },
   greeting: {
-    fontSize: typography.fontSize.xl,
-    fontFamily: typography.fontFamily.bold,
-    color: colors.textPrimary,
+    fontSize: typography.fontSize.xxl,
+    fontFamily: typography.fontFamily.extraBold,
+    color: colors.brandAnchor,
+    marginTop: 6,
   },
-  date: { fontSize: typography.fontSize.sm, color: colors.textSecondary, marginTop: 2 },
+  date: { fontSize: typography.fontSize.sm, color: colors.brandTextMuted, fontFamily: typography.fontFamily.medium },
+  headerHint: { fontSize: typography.fontSize.sm, color: colors.brandTextMuted, marginTop: 6 },
   ringCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 20,
-    backgroundColor: colors.white,
-    borderRadius: 16,
+    justifyContent: 'space-between',
+    gap: 16,
+    backgroundColor: colors.brandSurface,
+    borderRadius: 22,
     borderWidth: 1,
-    borderColor: colors.border,
-    padding: 16,
+    borderColor: colors.brandDivider,
+    padding: 22,
+    marginBottom: 20,
+  },
+  ringSummary: { flex: 1, minWidth: 0 },
+  badge: {
+    alignSelf: 'flex-start',
+    backgroundColor: colors.brandMutedSurface,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     marginBottom: 12,
   },
-  ringInfo: {},
-  kcalLabel: {
-    fontSize: typography.fontSize.xs,
-    color: colors.textSecondary,
-    fontFamily: typography.fontFamily.semiBold,
-    letterSpacing: 0.5,
-  },
+  badgeText: { fontSize: typography.fontSize.xs, color: colors.brandAnchor, fontFamily: typography.fontFamily.semiBold },
   kcalValue: {
-    fontSize: typography.fontSize.xxl,
+    fontSize: typography.fontSize.xxxl,
     fontFamily: typography.fontFamily.extraBold,
-    color: colors.textPrimary,
+    color: colors.brandAnchor,
   },
-  kcalGoal: { fontSize: typography.fontSize.sm, color: colors.textSecondary },
-  macroRow: { flexDirection: 'row', marginBottom: 16 },
-  macroGap: { width: 8 },
-  mealsCard: {
-    backgroundColor: colors.white,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-    overflow: 'hidden',
+  kcalGoal: { fontSize: typography.fontSize.base, color: colors.brandTextMuted, marginTop: 2 },
+  progressMeta: {
     marginTop: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
   },
-  mealsTitle: {
-    fontSize: typography.fontSize.xs,
+  progressMetaLabel: { fontSize: typography.fontSize.sm, color: colors.brandTextMuted },
+  progressMetaValue: { fontSize: typography.fontSize.md, color: colors.brandPrimary, fontFamily: typography.fontFamily.bold },
+  sectionHeader: { marginBottom: 12 },
+  freeDiaryHeader: { marginTop: 20 },
+  sectionTitle: {
+    fontSize: typography.fontSize.lg,
     fontFamily: typography.fontFamily.bold,
-    color: colors.textSecondary,
-    letterSpacing: 0.5,
-    padding: 12,
-    paddingBottom: 8,
+    color: colors.brandAnchor,
   },
-  loadingText: { color: colors.textSecondary, textAlign: 'center', marginTop: 16 },
+  sectionSubtitle: { fontSize: typography.fontSize.sm, color: colors.brandTextMuted, marginTop: 4 },
+  macroGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginBottom: 8,
+  },
+  sectionCard: {
+    backgroundColor: colors.brandSurface,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: colors.brandDivider,
+    overflow: 'hidden',
+  },
+  feedbackCard: {
+    backgroundColor: colors.brandSurface,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: colors.brandDivider,
+    padding: 18,
+  },
+  feedbackTitle: { fontSize: typography.fontSize.base, fontFamily: typography.fontFamily.bold, color: colors.brandAnchor },
+  feedbackText: { fontSize: typography.fontSize.sm, color: colors.brandTextMuted, marginTop: 4 },
+  skeletonTitle: {
+    height: 14,
+    width: '34%',
+    borderRadius: 999,
+    backgroundColor: colors.brandTrack,
+    margin: 18,
+    marginBottom: 8,
+  },
+  skeletonMealRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    borderTopWidth: 1,
+    borderTopColor: colors.brandDivider,
+    gap: 12,
+  },
+  skeletonMealMain: { height: 14, flex: 1, borderRadius: 999, backgroundColor: colors.brandTrack },
+  skeletonMealSecondary: { height: 14, width: '58%', borderRadius: 999, backgroundColor: colors.brandTrack },
+  skeletonMealKcal: { height: 14, width: 64, borderRadius: 999, backgroundColor: colors.brandTrack },
 });

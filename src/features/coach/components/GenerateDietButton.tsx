@@ -1,7 +1,7 @@
 import React from 'react';
 import { ActivityIndicator, Alert, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Text } from '@shared/components';
-import { colors } from '@theme';
+import { colors, typography } from '@theme';
 import { useDietStore } from '@features/diet/store';
 
 interface Props {
@@ -32,11 +32,11 @@ export function GenerateDietButton({ onSuccess }: Props): React.JSX.Element {
       >
         {isGenerating ? (
           <View style={styles.loadingRow}>
-            <ActivityIndicator size="small" color={colors.white} />
+            <ActivityIndicator size="small" color={colors.brandAnchor} />
             <Text style={styles.btnText}>  Gerando sua dieta...</Text>
           </View>
         ) : (
-          <Text style={styles.btnText}>✨ Gerar minha dieta agora</Text>
+          <Text style={styles.btnText}>Gerar minha dieta agora</Text>
         )}
       </TouchableOpacity>
     </View>
@@ -44,15 +44,15 @@ export function GenerateDietButton({ onSuccess }: Props): React.JSX.Element {
 }
 
 const styles = StyleSheet.create({
-  row: { marginBottom: 16, paddingHorizontal: 8 },
+  row: { marginBottom: 16, paddingLeft: 40, paddingRight: 8 },
   btn: {
-    backgroundColor: colors.primary,
+    backgroundColor: colors.brandPrimary,
     paddingVertical: 12,
     paddingHorizontal: 16,
-    borderRadius: 12,
+    borderRadius: 14,
     alignItems: 'center',
   },
   btnDisabled: { opacity: 0.7 },
   loadingRow: { flexDirection: 'row', alignItems: 'center' },
-  btnText: { color: colors.white, fontWeight: '700', fontSize: 14 },
+  btnText: { color: colors.brandAnchor, fontFamily: typography.fontFamily.bold, fontSize: 14 },
 });

@@ -64,10 +64,10 @@ export function ScannerScreen(): React.JSX.Element {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background, padding: 16, paddingTop: 56 },
-  title: { fontSize: typography.fontSize.xl, fontFamily: typography.fontFamily.bold, color: colors.textPrimary, marginBottom: 4 },
-  subtitle: { fontSize: typography.fontSize.sm, color: colors.textSecondary, marginBottom: 16 },
-  analyzingText: { color: colors.textSecondary, fontFamily: typography.fontFamily.medium, textAlign: 'center', marginTop: 16 },
+  container: { flex: 1, backgroundColor: colors.brandBackground, padding: 16, paddingTop: 56 },
+  title: { fontSize: typography.fontSize.xl, fontFamily: typography.fontFamily.bold, color: colors.brandAnchor, marginBottom: 4 },
+  subtitle: { fontSize: typography.fontSize.sm, color: colors.brandText, marginBottom: 16 },
+  analyzingText: { color: colors.brandText, fontFamily: typography.fontFamily.medium, textAlign: 'center', marginTop: 16 },
   resultContainer: { marginTop: 16 },
   errorText: { color: colors.error, textAlign: 'center', marginTop: 16 },
 });
