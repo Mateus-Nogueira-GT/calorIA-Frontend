@@ -52,7 +52,7 @@ export function DashboardScreen(): React.JSX.Element {
 
   const foodLogMeals = useFoodLogStore((s) => s.mealsByDate[today] ?? []);
   const setMeals = useFoodLogStore((s) => s.setMeals);
-  const isFoodLogLoading = useFoodLogStore((s) => s.isLoading);
+  const isFoodLogLoading = useFoodLogStore((s) => s.loadingByDate[today] ?? false);
   const setFoodLogLoading = useFoodLogStore((s) => s.setLoading);
 
   const plan = useDietStore((s) => s.plan);
@@ -61,12 +61,12 @@ export function DashboardScreen(): React.JSX.Element {
   useEffect(() => {
     if (useFoodLogStore.getState().mealsByDate[today] === undefined) {
       setFoodLogError(false);
-      setFoodLogLoading(true);
+      setFoodLogLoading(today, true);
       foodLogService
         .getMeals(today)
         .then((data) => setMeals(today, data))
         .catch(() => setFoodLogError(true))
-        .finally(() => setFoodLogLoading(false));
+        .finally(() => setFoodLogLoading(today, false));
     }
     if (useDietStore.getState().plan === undefined) {
       loadCurrentDiet();

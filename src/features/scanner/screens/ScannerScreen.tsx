@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Alert, StyleSheet } from 'react-native';
+import { View, Alert, Platform, StyleSheet } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Text } from '@shared/components';
 import { colors, typography } from '@theme';
@@ -11,6 +11,17 @@ import { ScannerViewfinder } from '../components/ScannerViewfinder';
 import { ScanResultCard } from '../components/ScanResultCard';
 
 type ScanState = 'idle' | 'analyzing' | 'result' | 'error';
+
+function ScannerUnavailableState(): React.JSX.Element {
+  return (
+    <View style={styles.unavailableState}>
+      <Text style={styles.unavailableTitle}>Scanner ainda nao disponivel aqui</Text>
+      <Text style={styles.unavailableSubtitle}>
+        O envio de fotos para analise ainda nao foi integrado no app nativo.
+      </Text>
+    </View>
+  );
+}
 
 export function ScannerScreen(): React.JSX.Element {
   const [state, setState] = useState<ScanState>('idle');
@@ -50,6 +61,16 @@ export function ScannerScreen(): React.JSX.Element {
     setResult(null);
   }
 
+  if (Platform.OS !== 'web') {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.title}>Scanner de alimentos</Text>
+        <Text style={styles.subtitle}>Fotografe seu prato para analisar os nutrientes</Text>
+        <ScannerUnavailableState />
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Scanner de alimentos</Text>
@@ -73,4 +94,26 @@ const styles = StyleSheet.create({
   analyzingText: { color: colors.brandText, fontFamily: typography.fontFamily.medium, textAlign: 'center', marginTop: 16 },
   resultContainer: { marginTop: 16 },
   errorText: { color: colors.error, textAlign: 'center', marginTop: 16 },
+  unavailableState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+    paddingBottom: 48,
+  },
+  unavailableTitle: {
+    color: colors.brandAnchor,
+    fontFamily: typography.fontFamily.bold,
+    fontSize: typography.fontSize.lg,
+    textAlign: 'center',
+  },
+  unavailableSubtitle: {
+    marginTop: 10,
+    maxWidth: 320,
+    color: colors.brandTextMuted,
+    fontFamily: typography.fontFamily.regular,
+    fontSize: typography.fontSize.base,
+    lineHeight: typography.fontSize.base * 1.5,
+    textAlign: 'center',
+  },
 });

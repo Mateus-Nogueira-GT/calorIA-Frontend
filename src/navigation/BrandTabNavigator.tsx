@@ -3,7 +3,7 @@ import {
   BottomTabNavigationOptions,
   createBottomTabNavigator,
 } from '@react-navigation/bottom-tabs';
-import { StyleSheet, View } from 'react-native';
+import { Platform, StyleSheet, View } from 'react-native';
 import { DashboardScreen } from '@features/dashboard/screens/DashboardScreen';
 import { FoodLogScreen } from '@features/food-log/screens/FoodLogScreen';
 import { ScannerScreen } from '@features/scanner/screens/ScannerScreen';
@@ -98,11 +98,15 @@ function getScreenOptions({ route }: { route: { name: keyof TabParamList } }): B
 }
 
 export function BrandTabNavigator(): React.JSX.Element {
+  const supportsScanner = Platform.OS === 'web';
+
   return (
     <Tab.Navigator screenOptions={getScreenOptions}>
       <Tab.Screen name='Dashboard' component={DashboardScreen} options={{ title: 'Dashboard' }} />
       <Tab.Screen name='FoodLog' component={FoodLogScreen} options={{ title: 'Diario' }} />
-      <Tab.Screen name='Scanner' component={ScannerScreen} options={{ title: 'Scanner' }} />
+      {supportsScanner ? (
+        <Tab.Screen name='Scanner' component={ScannerScreen} options={{ title: 'Scanner' }} />
+      ) : null}
       <Tab.Screen name='Coach' component={CoachScreen} options={{ title: 'Coach' }} />
       <Tab.Screen name='Profile' component={ProfileScreen} options={{ title: 'Perfil' }} />
     </Tab.Navigator>

@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, TouchableOpacity, StyleSheet, Platform } from 'react-native';
+import { Alert, View, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import { Text } from '@shared/components';
 import { colors, typography } from '@theme';
 
@@ -7,7 +7,14 @@ interface Props { onPickImage: (uri: string) => void; isAnalyzing: boolean }
 
 export function ScannerViewfinder({ onPickImage, isAnalyzing }: Props): React.JSX.Element {
   function handlePress() {
-    if (Platform.OS !== 'web') return;
+    if (Platform.OS !== 'web') {
+      Alert.alert(
+        'Scanner indisponivel',
+        'O envio de foto ainda nao esta disponivel no app nativo.',
+      );
+      return;
+    }
+
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = 'image/*';
@@ -25,7 +32,13 @@ export function ScannerViewfinder({ onPickImage, isAnalyzing }: Props): React.JS
         <View style={[styles.corner, styles.tr]} />
         <View style={[styles.corner, styles.bl]} />
         <View style={[styles.corner, styles.br]} />
-        <Text style={styles.hint}>{isAnalyzing ? 'Analisando...' : 'Toque para escolher uma foto'}</Text>
+        <Text style={styles.hint}>
+          {isAnalyzing
+            ? 'Analisando...'
+            : Platform.OS === 'web'
+              ? 'Toque para escolher uma foto'
+              : 'Disponivel na versao web'}
+        </Text>
       </View>
     </TouchableOpacity>
   );

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import {
+  Alert,
   DimensionValue,
   Modal,
   View,
@@ -36,6 +37,8 @@ export function AddMealModal({ visible, onClose, onSubmit }: Props): React.JSX.E
       await onSubmit({ name: name.trim(), calories: Number(calories), protein: Number(protein) || 0, carbs: Number(carbs) || 0, fat: Number(fat) || 0 });
       setName(''); setCalories(''); setProtein(''); setCarbs(''); setFat('');
       onClose();
+    } catch {
+      Alert.alert('Nao foi possivel salvar a refeicao', 'Tente novamente em instantes.');
     } finally {
       setLoading(false);
     }

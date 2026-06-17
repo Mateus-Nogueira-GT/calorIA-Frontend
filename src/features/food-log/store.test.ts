@@ -6,7 +6,7 @@ const meal1 = { id: 'm1', name: 'Frango', calories: 450, protein: 38, carbs: 52,
 const meal2 = { id: 'm2', name: 'Salada', calories: 280, protein: 30, carbs: 12, fat: 10, loggedAt: new Date().toISOString() };
 
 beforeEach(() => {
-  useFoodLogStore.setState({ mealsByDate: {}, selectedDate: '2026-06-09', isLoading: false });
+  useFoodLogStore.setState({ mealsByDate: {}, loadingByDate: {}, selectedDate: '2026-06-09' });
 });
 
 describe('useFoodLogStore', () => {
@@ -34,22 +34,30 @@ describe('useFoodLogStore', () => {
     expect(useFoodLogStore.getState().selectedDate).toBe('2026-06-08');
   });
 
-  it('setLoading atualiza isLoading', () => {
-    useFoodLogStore.getState().setLoading(true);
-    expect(useFoodLogStore.getState().isLoading).toBe(true);
-    useFoodLogStore.getState().setLoading(false);
-    expect(useFoodLogStore.getState().isLoading).toBe(false);
+  it('setLoading atualiza o loading por data', () => {
+    useFoodLogStore.getState().setLoading('2026-06-09', true);
+    expect(useFoodLogStore.getState().loadingByDate['2026-06-09']).toBe(true);
+    useFoodLogStore.getState().setLoading('2026-06-09', false);
+    expect(useFoodLogStore.getState().loadingByDate['2026-06-09']).toBe(false);
+  });
+
+  it('mantem o loading isolado por data', () => {
+    useFoodLogStore.getState().setLoading('2026-06-09', true);
+    useFoodLogStore.getState().setLoading('2026-06-08', false);
+
+    expect(useFoodLogStore.getState().loadingByDate['2026-06-09']).toBe(true);
+    expect(useFoodLogStore.getState().loadingByDate['2026-06-08']).toBe(false);
   });
 
   it('clear remove o cache e reseta o estado do diario', () => {
     useFoodLogStore.getState().setMeals('2026-06-09', [meal1, meal2]);
     useFoodLogStore.getState().setSelectedDate('2026-06-08');
-    useFoodLogStore.getState().setLoading(true);
+    useFoodLogStore.getState().setLoading('2026-06-09', true);
 
     useFoodLogStore.getState().clear();
 
     expect(useFoodLogStore.getState().mealsByDate).toEqual({});
+    expect(useFoodLogStore.getState().loadingByDate).toEqual({});
     expect(useFoodLogStore.getState().selectedDate).toBe(todayString());
-    expect(useFoodLogStore.getState().isLoading).toBe(false);
   });
 });

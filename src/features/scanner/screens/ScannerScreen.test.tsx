@@ -41,7 +41,7 @@ beforeEach(() => {
   mockNavigate.mockClear();
   mockAnalyzePhoto.mockClear();
   mockAddMeal.mockClear();
-  useFoodLogStore.setState({ mealsByDate: {}, selectedDate: '2026-06-01', isLoading: false });
+  useFoodLogStore.setState({ mealsByDate: {}, loadingByDate: {}, selectedDate: '2026-06-01' });
 });
 
 describe('ScannerScreen', () => {

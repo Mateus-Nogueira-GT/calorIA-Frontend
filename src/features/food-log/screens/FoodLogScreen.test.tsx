@@ -13,7 +13,7 @@ jest.mock('@shared/services/food-log.service', () => ({
   },
 }));
 
-beforeEach(() => useFoodLogStore.setState({ mealsByDate: {}, selectedDate: '2026-06-09', isLoading: false }));
+beforeEach(() => useFoodLogStore.setState({ mealsByDate: {}, loadingByDate: {}, selectedDate: '2026-06-09' }));
 
 describe('FoodLogScreen', () => {
   it('renderiza o titulo e o CTA principal', () => {
