@@ -5,10 +5,10 @@ import { z } from 'zod'
 export const genderEnum = z.enum(['male', 'female', 'other'])
 export const goalEnum = z.enum(['lose_weight', 'maintain', 'gain_muscle', 'gain_weight'])
 export const activityLevelEnum = z.enum([
-  'sedentary',   // Sedentário (sem exercício)
-  'light',       // Levemente ativo (1-3x/semana)
-  'moderate',    // Moderadamente ativo (3-5x/semana)
-  'active',      // Ativo (6-7x/semana)
+  'sedentary', // Sedentário (sem exercício)
+  'light', // Levemente ativo (1-3x/semana)
+  'moderate', // Moderadamente ativo (3-5x/semana)
+  'active', // Ativo (6-7x/semana)
   'very_active', // Muito ativo (2x/dia ou treino intenso)
 ])
 
@@ -16,6 +16,7 @@ export const activityLevelEnum = z.enum([
 
 export const profileSchema = z.object({
   id: z.string().uuid(),
+  username: z.string().nullable(),
   full_name: z.string().nullable(),
   avatar_url: z.string().url().nullable(),
   weight_kg: z.number().positive().nullable(),
@@ -34,6 +35,12 @@ export const profileSchema = z.object({
 
 export const updateProfileBodySchema = z
   .object({
+    username: z
+      .string()
+      .min(3, 'Username deve ter ao menos 3 caracteres')
+      .max(30)
+      .regex(/^[a-z0-9_]+$/, 'Username deve conter apenas letras minúsculas, números e underscore')
+      .optional(),
     full_name: z.string().min(2).max(100).optional(),
     weight_kg: z
       .number({ invalid_type_error: 'Peso deve ser um número' })

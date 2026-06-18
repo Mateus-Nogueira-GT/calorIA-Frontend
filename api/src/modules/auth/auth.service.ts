@@ -47,10 +47,7 @@ export async function registerUser(
  * Autentica um usuário com email e senha.
  * Retorna access_token (JWT), refresh_token e dados básicos do usuário.
  */
-export async function loginUser(
-  fastify: FastifyInstance,
-  data: LoginBody,
-): Promise<AuthResponse> {
+export async function loginUser(fastify: FastifyInstance, data: LoginBody): Promise<AuthResponse> {
   const { data: session, error } = await fastify.supabaseAuth.auth.signInWithPassword({
     email: data.email,
     password: data.password,

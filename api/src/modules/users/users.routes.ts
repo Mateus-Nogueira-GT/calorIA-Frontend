@@ -20,48 +20,55 @@ const usersRoutes: FastifyPluginAsyncZod = async (fastify) => {
    * GET /users/me
    * Retorna o perfil completo do usuário autenticado.
    */
-  fastify.get('/me', {
-    schema: {
-      tags: ['Users'],
-      summary: 'Meu perfil',
-      description: 'Retorna todos os dados do perfil do usuário autenticado.',
-      security: [{ bearerAuth: [] }],
-      response: {
-        200: profileSchema,
-        401: errorSchema,
-        404: errorSchema,
+  fastify.get(
+    '/me',
+    {
+      schema: {
+        tags: ['Users'],
+        summary: 'Meu perfil',
+        description: 'Retorna todos os dados do perfil do usuário autenticado.',
+        security: [{ bearerAuth: [] }],
+        response: {
+          200: profileSchema,
+          401: errorSchema,
+          404: errorSchema,
+        },
       },
     },
-  }, async (request, reply) => {
-    const { sub: userId } = request.user as JwtPayload
-    const profile = await getUserProfile(fastify, userId)
-    return reply.send(profile)
-  })
+    async (request, reply) => {
+      const { sub: userId } = request.user as JwtPayload
+      const profile = await getUserProfile(fastify, userId)
+      return reply.send(profile)
+    },
+  )
 
   /**
    * PUT /users/me/profile
    * Atualiza dados do perfil (peso, altura, objetivo, restrições, etc.)
    */
-  fastify.put('/me/profile', {
-    schema: {
-      tags: ['Users'],
-      summary: 'Atualizar perfil',
-      description:
-        'Atualiza parcialmente o perfil. Envie apenas os campos que deseja alterar.',
-      security: [{ bearerAuth: [] }],
-      body: updateProfileBodySchema,
-      response: {
-        200: profileSchema,
-        401: errorSchema,
-        404: errorSchema,
-        422: errorSchema,
+  fastify.put(
+    '/me/profile',
+    {
+      schema: {
+        tags: ['Users'],
+        summary: 'Atualizar perfil',
+        description: 'Atualiza parcialmente o perfil. Envie apenas os campos que deseja alterar.',
+        security: [{ bearerAuth: [] }],
+        body: updateProfileBodySchema,
+        response: {
+          200: profileSchema,
+          401: errorSchema,
+          404: errorSchema,
+          422: errorSchema,
+        },
       },
     },
-  }, async (request, reply) => {
-    const { sub: userId } = request.user as JwtPayload
-    const profile = await updateUserProfile(fastify, userId, request.body)
-    return reply.send(profile)
-  })
+    async (request, reply) => {
+      const { sub: userId } = request.user as JwtPayload
+      const profile = await updateUserProfile(fastify, userId, request.body)
+      return reply.send(profile)
+    },
+  )
 }
 
 export default usersRoutes

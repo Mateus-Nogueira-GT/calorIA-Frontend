@@ -33,17 +33,19 @@ const chatRoutes: FastifyPluginAsyncZod = async (fastify) => {
    *  2. Mensagens seguintes → conversation_id do retorno anterior
    *  3. Quando diet_generated: true → redirecionar para a tela da dieta
    */
-  fastify.post('/message', {
-    config: {
-      rateLimit: {
-        max: 30,           // máximo de 30 mensagens
-        timeWindow: '1 minute',
+  fastify.post(
+    '/message',
+    {
+      config: {
+        rateLimit: {
+          max: 30, // máximo de 30 mensagens
+          timeWindow: '1 minute',
+        },
       },
-    },
-    schema: {
-      tags: ['Chat'],
-      summary: 'Enviar mensagem',
-      description: `
+      schema: {
+        tags: ['Chat'],
+        summary: 'Enviar mensagem',
+        description: `
 Envia uma mensagem para o assistente de dietas com IA.
 
 **Fluxo de uso:**
@@ -52,44 +54,52 @@ Envia uma mensagem para o assistente de dietas com IA.
 3. Quando coletar tudo, \`diet_generated\` retornará \`true\` e \`diet_id\` terá o ID da dieta
 4. Redirecione para a tela principal com a dieta gerada
       `.trim(),
-      security: [{ bearerAuth: [] }],
-      body: chatMessageBodySchema,
-      response: {
-        200: chatResponseSchema,
-        401: errorSchema,
-        429: errorSchema.describe('Limite de mensagens atingido'),
-        502: errorSchema.describe('Serviço de IA indisponível'),
+        security: [{ bearerAuth: [] }],
+        body: chatMessageBodySchema,
+        response: {
+          200: chatResponseSchema,
+          401: errorSchema,
+          429: errorSchema.describe('Limite de mensagens atingido'),
+          502: errorSchema.describe('Serviço de IA indisponível'),
+        },
       },
     },
-  }, async (request, reply) => {
-    const { sub: userId } = request.user as JwtPayload
-    const result = await sendChatMessage(fastify, userId, request.body)
-    return reply.send(result)
-  })
+    async (request, reply) => {
+      const { sub: userId } = request.user as JwtPayload
+      const result = await sendChatMessage(fastify, userId, request.body)
+      return reply.send(result)
+    },
+  )
 
   /**
    * GET /chat/history/:conversationId
    * Retorna o histórico completo de uma conversa.
    */
-  fastify.get('/history/:conversationId', {
-    schema: {
-      tags: ['Chat'],
-      summary: 'Histórico de conversa',
-      security: [{ bearerAuth: [] }],
-      params: z.object({ conversationId: z.string().uuid() }),
-      response: {
-        200: z.object({
-          messages: z.array(z.object({ role: z.enum(['user', 'assistant']), content: z.string() })),
-          status: z.string(),
-        }),
-        401: errorSchema,
-        404: errorSchema,
+  fastify.get(
+    '/history/:conversationId',
+    {
+      schema: {
+        tags: ['Chat'],
+        summary: 'Histórico de conversa',
+        security: [{ bearerAuth: [] }],
+        params: z.object({ conversationId: z.string().uuid() }),
+        response: {
+          200: z.object({
+            messages: z.array(
+              z.object({ role: z.enum(['user', 'assistant']), content: z.string() }),
+            ),
+            status: z.string(),
+          }),
+          401: errorSchema,
+          404: errorSchema,
+        },
       },
     },
-  }, async (request, reply) => {
-    const { sub: userId } = request.user as JwtPayload
-    return reply.send(await getChatHistory(fastify, userId, request.params.conversationId))
-  })
+    async (request, reply) => {
+      const { sub: userId } = request.user as JwtPayload
+      return reply.send(await getChatHistory(fastify, userId, request.params.conversationId))
+    },
+  )
 }
 
 export default chatRoutes

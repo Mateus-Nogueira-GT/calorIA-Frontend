@@ -54,22 +54,39 @@ const COLLECT_DIET_DATA_TOOL: OpenAI.Chat.ChatCompletionTool = {
     parameters: {
       type: 'object',
       required: [
-        'weight_kg', 'height_cm', 'age', 'gender', 'goal',
-        'activity_level', 'meals_per_day', 'message_to_user',
-        'dietary_restrictions', 'allergies', 'food_preferences',
+        'weight_kg',
+        'height_cm',
+        'age',
+        'gender',
+        'goal',
+        'activity_level',
+        'meals_per_day',
+        'message_to_user',
+        'dietary_restrictions',
+        'allergies',
+        'food_preferences',
       ],
       properties: {
-        weight_kg:            { type: 'number', description: 'Peso em kg' },
-        height_cm:            { type: 'number', description: 'Altura em cm' },
-        age:                  { type: 'integer', description: 'Idade em anos' },
-        gender:               { type: 'string', enum: ['male', 'female', 'other'] },
-        goal:                 { type: 'string', enum: ['lose_weight', 'maintain', 'gain_muscle', 'gain_weight'] },
-        activity_level:       { type: 'string', enum: ['sedentary', 'light', 'moderate', 'active', 'very_active'] },
-        meals_per_day:        { type: 'integer', minimum: 3, maximum: 6 },
+        weight_kg: { type: 'number', description: 'Peso em kg' },
+        height_cm: { type: 'number', description: 'Altura em cm' },
+        age: { type: 'integer', description: 'Idade em anos' },
+        gender: { type: 'string', enum: ['male', 'female', 'other'] },
+        goal: { type: 'string', enum: ['lose_weight', 'maintain', 'gain_muscle', 'gain_weight'] },
+        activity_level: {
+          type: 'string',
+          enum: ['sedentary', 'light', 'moderate', 'active', 'very_active'],
+        },
+        meals_per_day: { type: 'integer', minimum: 3, maximum: 6 },
         dietary_restrictions: { type: 'array', items: { type: 'string' } },
-        allergies:            { type: 'array', items: { type: 'string' } },
-        food_preferences:     { type: ['string', 'null'], description: 'Preferências e aversões alimentares' },
-        message_to_user:      { type: 'string', description: 'Mensagem encorajadora enquanto a dieta é gerada' },
+        allergies: { type: 'array', items: { type: 'string' } },
+        food_preferences: {
+          type: ['string', 'null'],
+          description: 'Preferências e aversões alimentares',
+        },
+        message_to_user: {
+          type: 'string',
+          description: 'Mensagem encorajadora enquanto a dieta é gerada',
+        },
       },
       additionalProperties: false,
     },
@@ -141,10 +158,7 @@ export async function sendChatMessage(
   try {
     completion = await fastify.openai.chat.completions.create({
       model: env.OPENAI_MODEL,
-      messages: [
-        { role: 'system', content: CHAT_SYSTEM_PROMPT },
-        ...history,
-      ],
+      messages: [{ role: 'system', content: CHAT_SYSTEM_PROMPT }, ...history],
       tools: [COLLECT_DIET_DATA_TOOL],
       tool_choice: 'auto',
       max_tokens: 600,
@@ -167,7 +181,8 @@ export async function sendChatMessage(
   }
 
   // ── Resposta de conversa normal ──────────────────────────────────────────
-  const assistantMessage = choice.message.content ?? 'Desculpe, não consegui processar sua mensagem.'
+  const assistantMessage =
+    choice.message.content ?? 'Desculpe, não consegui processar sua mensagem.'
   history.push({ role: 'assistant', content: assistantMessage })
   await persistHistory(fastify, userId, conversationId, history, 'collecting')
 
@@ -193,8 +208,12 @@ async function handleDietGeneration(
   const parseResult = collectedUserDataSchema.safeParse(rawArgs)
 
   if (!parseResult.success) {
-    fastify.log.warn({ errors: parseResult.error.flatten() }, 'Dados coletados pela IA são inválidos')
-    const fallbackMsg = 'Preciso de mais algumas informações antes de gerar sua dieta. Poderia confirmar seu peso e altura?'
+    fastify.log.warn(
+      { errors: parseResult.error.flatten() },
+      'Dados coletados pela IA são inválidos',
+    )
+    const fallbackMsg =
+      'Preciso de mais algumas informações antes de gerar sua dieta. Poderia confirmar seu peso e altura?'
     history.push({ role: 'assistant', content: fallbackMsg })
     await persistHistory(fastify, userId, conversationId, history, 'collecting')
     return {
@@ -235,7 +254,11 @@ async function handleDietGeneration(
   } catch (err) {
     fastify.log.error({ err }, 'Erro ao gerar dieta estruturada')
     await persistHistory(fastify, userId, conversationId, history, 'collecting')
-    throw new AppError(502, 'DIET_GENERATION_ERROR', 'Erro ao gerar o plano alimentar. Tente novamente.')
+    throw new AppError(
+      502,
+      'DIET_GENERATION_ERROR',
+      'Erro ao gerar o plano alimentar. Tente novamente.',
+    )
   }
 
   // ── Persiste a dieta no banco ────────────────────────────────────────────

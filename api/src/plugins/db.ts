@@ -11,9 +11,9 @@ declare module 'fastify' {
 
 const dbPlugin: FastifyPluginAsync = fp(async (fastify) => {
   const sql = postgres(env.DATABASE_URL, {
-    max: 10,              // máximo de conexões no pool
-    idle_timeout: 20,     // fechar conexões idle após 20s
-    connect_timeout: 10,  // timeout de conexão em segundos
+    max: 10, // máximo de conexões no pool
+    idle_timeout: 20, // fechar conexões idle após 20s
+    connect_timeout: 10, // timeout de conexão em segundos
     transform: {
       // Converte snake_case do DB para camelCase no JS automaticamente
       // Deixamos off para manter snake_case e ser explícito

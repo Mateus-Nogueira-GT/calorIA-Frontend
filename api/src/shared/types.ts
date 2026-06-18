@@ -1,8 +1,8 @@
 /** Payload do JWT gerado pelo Supabase Auth */
 export interface JwtPayload {
-  sub: string    // Supabase user ID (UUID)
+  sub: string // Supabase user ID (UUID)
   email: string
-  role: string   // 'authenticated' | 'anon'
+  role: string // 'authenticated' | 'anon'
   aud: string
   exp: number
   iat: number

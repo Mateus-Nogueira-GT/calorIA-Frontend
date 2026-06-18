@@ -18,6 +18,9 @@ import authRoutes from './modules/auth/auth.routes.js'
 import usersRoutes from './modules/users/users.routes.js'
 import chatRoutes from './modules/chat/chat.routes.js'
 import dietsRoutes from './modules/diets/diets.routes.js'
+import friendsRoutes from './modules/friends/friends.routes.js'
+import feedRoutes from './modules/feed/feed.routes.js'
+import challengesRoutes from './modules/challenges/challenges.routes.js'
 
 import { env } from './shared/env.js'
 import { AppError } from './shared/errors.js'
@@ -83,6 +86,9 @@ export async function buildApp() {
           { name: 'Users', description: 'Perfil do usuário' },
           { name: 'Chat', description: 'Chat com IA para geração de dietas' },
           { name: 'Diets', description: 'Plano alimentar + progresso diário' },
+          { name: 'Friends', description: 'Amizades entre usuários' },
+          { name: 'Feed', description: 'Feed social' },
+          { name: 'Challenges', description: 'Desafios entre amigos' },
         ],
         components: {
           securitySchemes: {
@@ -150,6 +156,9 @@ export async function buildApp() {
   await app.register(usersRoutes, { prefix: '/users' })
   await app.register(chatRoutes, { prefix: '/chat' })
   await app.register(dietsRoutes, { prefix: '/diets' })
+  await app.register(friendsRoutes, { prefix: '/friends' })
+  await app.register(feedRoutes, { prefix: '/feed' })
+  await app.register(challengesRoutes, { prefix: '/challenges' })
 
   return app
 }

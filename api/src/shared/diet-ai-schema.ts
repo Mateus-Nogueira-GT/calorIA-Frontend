@@ -22,14 +22,7 @@ export const aiDietItemSchema = z.object({
 })
 
 export const aiDietMealSchema = z.object({
-  meal_type: z.enum([
-    'breakfast',
-    'morning_snack',
-    'lunch',
-    'afternoon_snack',
-    'dinner',
-    'supper',
-  ]),
+  meal_type: z.enum(['breakfast', 'morning_snack', 'lunch', 'afternoon_snack', 'dinner', 'supper']),
   name: z.string(),
   time_suggestion: z.string(),
   total_calories: z.number(),

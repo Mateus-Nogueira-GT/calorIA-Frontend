@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import type { AiDietPlan, CollectedUserData } from '../../shared/diet-ai-schema.js'
 import { AppError } from '../../shared/errors.js'
+import { createSystemPost } from '../feed/feed.service.js'
 import type { Diet, DietDay, DietMeal, DietWithDays, ReplaceDietItemBody } from './diets.schemas.js'
 import { randomUUID } from 'node:crypto'
 
@@ -155,7 +156,12 @@ export async function getActiveDiet(fastify: FastifyInstance, userId: string): P
     LIMIT 1
   `
 
-  if (!diet) throw new AppError(404, 'NO_ACTIVE_DIET', 'Nenhuma dieta ativa encontrada. Converse com a IA para gerar uma!')
+  if (!diet)
+    throw new AppError(
+      404,
+      'NO_ACTIVE_DIET',
+      'Nenhuma dieta ativa encontrada. Converse com a IA para gerar uma!',
+    )
 
   return diet
 }
@@ -220,10 +226,7 @@ export async function getDietWithDays(
 }
 
 /** Retorna só o dia atual da dieta ativa (para a tela principal). */
-export async function getTodayDiet(
-  fastify: FastifyInstance,
-  userId: string,
-): Promise<DietDay> {
+export async function getTodayDiet(fastify: FastifyInstance, userId: string): Promise<DietDay> {
   const diet = await getActiveDiet(fastify, userId)
 
   // Dia da semana: 1=Segunda, 2=Terça, ..., 7=Domingo
@@ -295,6 +298,19 @@ export async function toggleMealCompleted(
 
   if (newState) {
     await fastify.db`SELECT update_user_streak(${userId})`
+
+    const [streak] = await fastify.db<{ current_streak: number }[]>`
+      SELECT current_streak FROM streaks WHERE user_id = ${userId}
+    `
+    if (streak && streak.current_streak > 0 && streak.current_streak % 7 === 0) {
+      await createSystemPost(
+        fastify,
+        userId,
+        'streak_milestone',
+        `${streak.current_streak} dias seguidos seguindo a dieta! 🔥`,
+        { streak: streak.current_streak },
+      )
+    }
   }
 
   return { is_completed: newState }
@@ -345,10 +361,7 @@ export async function replaceDietItem(
 }
 
 /** Histórico de dietas do usuário (apenas cabeçalhos). */
-export async function getDietHistory(
-  fastify: FastifyInstance,
-  userId: string,
-): Promise<Diet[]> {
+export async function getDietHistory(fastify: FastifyInstance, userId: string): Promise<Diet[]> {
   return fastify.db<Diet[]>`
     SELECT
       id, user_id, name, description, user_goal,
