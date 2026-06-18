@@ -58,7 +58,7 @@ export function LoginScreen({ navigation }: AuthStackScreenProps<'Login'>): Reac
     setLoading(true);
     try {
       const res = await authService.login({ email, password });
-      setToken(res.token, res.user);
+      setToken(res.token, res.user, res.refreshToken);
     } catch {
       Alert.alert('Erro', 'Credenciais inválidas. Verifique e tente novamente.');
     } finally {
@@ -71,7 +71,7 @@ export function LoginScreen({ navigation }: AuthStackScreenProps<'Login'>): Reac
     try {
       const idToken = await getGoogleIdToken();
       const res = await authService.loginWithGoogle(idToken);
-      setToken(res.token, res.user);
+      setToken(res.token, res.user, res.refreshToken);
     } catch {
       Alert.alert('Erro', 'Login com Google falhou.');
     } finally {
@@ -84,7 +84,7 @@ export function LoginScreen({ navigation }: AuthStackScreenProps<'Login'>): Reac
     try {
       const { identityToken, fullName } = await getAppleSignInPayload();
       const res = await authService.loginWithApple(identityToken, fullName);
-      setToken(res.token, res.user);
+      setToken(res.token, res.user, res.refreshToken);
     } catch {
       Alert.alert('Erro', 'Login com Apple falhou.');
     } finally {

@@ -23,6 +23,7 @@ export interface ProfileSetupPayload {
 
 export interface AuthResponse {
   token: string;
+  refreshToken: string;
   user: {
     id: string;
     name: string;
@@ -47,6 +48,7 @@ interface BackendAuthResponse {
 function toAuthResponse(data: BackendAuthResponse): AuthResponse {
   return {
     token: data.access_token,
+    refreshToken: data.refresh_token,
     user: {
       id: data.user.id,
       name: data.user.name ?? '',
@@ -61,6 +63,11 @@ export const authService = {
 
   register: (data: RegisterPayload) =>
     api.post<BackendAuthResponse>('/auth/register', data).then((r) => toAuthResponse(r.data)),
+
+  refresh: (refreshToken: string) =>
+    api
+      .post<BackendAuthResponse>('/auth/refresh', { refresh_token: refreshToken })
+      .then((r) => toAuthResponse(r.data)),
 
   loginWithGoogle: (idToken: string) =>
     api.post<AuthResponse>('/auth/google', { idToken }).then((r) => r.data),

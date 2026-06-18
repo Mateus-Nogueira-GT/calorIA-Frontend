@@ -20,12 +20,13 @@ interface ProfilePreferences {
 
 interface AuthState {
   token: string | null;
+  refreshToken: string | null;
   user: User | null;
   isAuthenticated: boolean;
-  pendingAuth: { token: string; user: User } | null;
+  pendingAuth: { token: string; refreshToken: string; user: User } | null;
   profilePreferences: ProfilePreferences;
-  setToken: (token: string, user: User) => void;
-  setPendingAuth: (token: string, user: User) => void;
+  setToken: (token: string, user: User, refreshToken?: string) => void;
+  setPendingAuth: (token: string, user: User, refreshToken: string) => void;
   setProfilePreferences: (preferences: Partial<ProfilePreferences>) => void;
   clearToken: () => void;
 }
@@ -130,6 +131,7 @@ function clearPreviewQueryOnWeb(): void {
 
 export const useAuthStore = create<AuthState>((set) => ({
   token: null,
+  refreshToken: null,
   user: null,
   isAuthenticated: false,
   pendingAuth: null,
@@ -137,26 +139,27 @@ export const useAuthStore = create<AuthState>((set) => ({
     goal: null,
     coachPersonality: null,
   },
-  setToken: (token, user) =>
-    set(() => {
+  setToken: (token, user, refreshToken) =>
+    set((state) => {
       const profilePreferences = mergeProfilePreferences(user);
       persistPreferencesForUser(user.id, profilePreferences);
 
       return {
         token,
+        refreshToken: refreshToken ?? state.pendingAuth?.refreshToken ?? state.refreshToken,
         user,
         isAuthenticated: true,
         pendingAuth: null,
         profilePreferences,
       };
     }),
-  setPendingAuth: (token, user) =>
+  setPendingAuth: (token, user, refreshToken) =>
     set(() => {
       const profilePreferences = mergeProfilePreferences(user);
       persistPreferencesForUser(user.id, profilePreferences);
 
       return {
-        pendingAuth: { token, user },
+        pendingAuth: { token, refreshToken, user },
         profilePreferences,
       };
     }),
@@ -186,6 +189,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     clearPreviewQueryOnWeb();
     set({
       token: null,
+      refreshToken: null,
       user: null,
       isAuthenticated: false,
       pendingAuth: null,

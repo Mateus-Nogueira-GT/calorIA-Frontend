@@ -114,7 +114,7 @@ export function ProfileSetupScreen({ navigation }: AuthStackScreenProps<'Profile
       // interceptor do axios só anexa Authorization a partir de `token`
       // (pendingAuth.token ainda não conta pra ele).
       if (pendingAuth) {
-        setToken(pendingAuth.token, pendingAuth.user);
+        setToken(pendingAuth.token, pendingAuth.user, pendingAuth.refreshToken);
       }
 
       const payload: ProfileSetupPayload = {

@@ -63,7 +63,7 @@ export function RegisterScreen({ navigation }: AuthStackScreenProps<'Register'>)
     setLoading(true);
     try {
       const res = await authService.register({ name, email, password });
-      setPendingAuth(res.token, res.user);
+      setPendingAuth(res.token, res.user, res.refreshToken);
       navigation.navigate('ProfileSetup');
     } catch {
       Alert.alert('Erro', 'Não foi possível criar a conta. Tente novamente.');
@@ -77,7 +77,7 @@ export function RegisterScreen({ navigation }: AuthStackScreenProps<'Register'>)
     try {
       const idToken = await getGoogleIdToken();
       const res = await authService.loginWithGoogle(idToken);
-      setPendingAuth(res.token, res.user);
+      setPendingAuth(res.token, res.user, res.refreshToken);
       navigation.navigate('ProfileSetup');
     } catch {
       Alert.alert('Erro', 'Login com Google falhou.');
@@ -91,7 +91,7 @@ export function RegisterScreen({ navigation }: AuthStackScreenProps<'Register'>)
     try {
       const { identityToken, fullName } = await getAppleSignInPayload();
       const res = await authService.loginWithApple(identityToken, fullName);
-      setPendingAuth(res.token, res.user);
+      setPendingAuth(res.token, res.user, res.refreshToken);
       navigation.navigate('ProfileSetup');
     } catch {
       Alert.alert('Erro', 'Login com Apple falhou.');
