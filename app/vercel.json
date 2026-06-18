@@ -1,7 +1,0 @@
-{
-  "buildCommand": "node -e \"require('fs').writeFileSync('.env', 'API_BASE_URL='+(process.env.API_BASE_URL||'')+'\\nAPI_TIMEOUT='+(process.env.API_TIMEOUT||'10000')+'\\n')\" && npm run build:web",
-  "outputDirectory": "web/dist",
-  "rewrites": [
-    { "source": "/(.*)", "destination": "/index.html" }
-  ]
-}
