@@ -1,4 +1,4 @@
-import { buildApp } from '../dist/server.js'
+import { buildApp } from '../backend/dist/server.js'
 
 let appPromise
 
