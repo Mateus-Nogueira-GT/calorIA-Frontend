@@ -24,6 +24,8 @@ export type TabParamList = {
 export type RootStackParamList = {
   Auth: undefined;
   App: undefined;
+  ProfileGoals: undefined;
+  ProfileCoachPersonality: undefined;
 };
 
 // Screen props helpers
@@ -34,3 +36,6 @@ export type TabScreenProps<T extends keyof TabParamList> = CompositeScreenProps<
   BottomTabScreenProps<TabParamList, T>,
   NativeStackScreenProps<RootStackParamList>
 >;
+
+export type RootStackScreenProps<T extends keyof RootStackParamList> =
+  NativeStackScreenProps<RootStackParamList, T>;

@@ -1,14 +1,17 @@
 import React from 'react';
-import { View, StyleSheet } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { Text } from '@shared/components';
 import { colors, typography } from '@theme';
 import { Meal } from '@shared/services/food-log.service';
 
-interface Props { meal: Meal }
+interface Props {
+  meal: Meal;
+  hideBorder?: boolean;
+}
 
-export function MealListItem({ meal }: Props): React.JSX.Element {
+export function MealListItem({ meal, hideBorder }: Props): React.JSX.Element {
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, hideBorder && styles.containerLast]}>
       <View style={styles.info}>
         <Text style={styles.name}>{meal.name}</Text>
         <Text style={styles.macros}>P: {meal.protein}g · C: {meal.carbs}g · G: {meal.fat}g</Text>
@@ -19,9 +22,19 @@ export function MealListItem({ meal }: Props): React.JSX.Element {
 }
 
 const styles = StyleSheet.create({
-  container: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 14, borderBottomWidth: 1, borderBottomColor: colors.border },
+  container: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 18,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.brandDivider,
+    gap: 12,
+  },
+  containerLast: { borderBottomWidth: 0 },
   info: { flex: 1 },
-  name: { fontSize: typography.fontSize.sm, fontFamily: typography.fontFamily.semiBold, color: colors.textPrimary },
-  macros: { fontSize: typography.fontSize.xs, color: colors.textSecondary, marginTop: 2 },
-  calories: { fontSize: typography.fontSize.sm, fontFamily: typography.fontFamily.bold, color: colors.textPrimary },
+  name: { fontSize: typography.fontSize.base, fontFamily: typography.fontFamily.semiBold, color: colors.brandAnchor },
+  macros: { fontSize: typography.fontSize.xs, color: colors.brandTextMuted, marginTop: 4 },
+  calories: { fontSize: typography.fontSize.sm, fontFamily: typography.fontFamily.bold, color: colors.brandAnchor },
 });

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Alert, StyleSheet } from 'react-native';
+import { View, Alert, Platform, StyleSheet } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Text } from '@shared/components';
 import { colors, typography } from '@theme';
@@ -12,10 +12,22 @@ import { ScanResultCard } from '../components/ScanResultCard';
 
 type ScanState = 'idle' | 'analyzing' | 'result' | 'error';
 
+function ScannerUnavailableState(): React.JSX.Element {
+  return (
+    <View style={styles.unavailableState}>
+      <Text style={styles.unavailableTitle}>Scanner ainda nao disponivel aqui</Text>
+      <Text style={styles.unavailableSubtitle}>
+        O envio de fotos para analise ainda nao foi integrado no app nativo.
+      </Text>
+    </View>
+  );
+}
+
 export function ScannerScreen(): React.JSX.Element {
   const [state, setState] = useState<ScanState>('idle');
   const [result, setResult] = useState<ScanResult | null>(null);
   const addMeal = useFoodLogStore((s) => s.addMeal);
+  const setSelectedDate = useFoodLogStore((s) => s.setSelectedDate);
   const navigation = useNavigation();
 
   async function handlePickImage(uri: string) {
@@ -32,8 +44,10 @@ export function ScannerScreen(): React.JSX.Element {
   async function handleAddToDiary() {
     if (!result) return;
     try {
+      const date = todayString();
       const meal = await foodLogService.addMeal({ name: result.name, calories: result.calories, protein: result.protein, carbs: result.carbs, fat: result.fat });
-      addMeal(todayString(), meal);
+      addMeal(date, meal);
+      setSelectedDate(date);
       Alert.alert('Adicionado!', `${result.name} foi adicionado ao seu diário.`);
       handleReset();
       navigation.navigate('FoodLog' as never);
@@ -45,6 +59,16 @@ export function ScannerScreen(): React.JSX.Element {
   function handleReset() {
     setState('idle');
     setResult(null);
+  }
+
+  if (Platform.OS !== 'web') {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.title}>Scanner de alimentos</Text>
+        <Text style={styles.subtitle}>Fotografe seu prato para analisar os nutrientes</Text>
+        <ScannerUnavailableState />
+      </View>
+    );
   }
 
   return (
@@ -64,10 +88,32 @@ export function ScannerScreen(): React.JSX.Element {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background, padding: 16, paddingTop: 56 },
-  title: { fontSize: typography.fontSize.xl, fontFamily: typography.fontFamily.bold, color: colors.textPrimary, marginBottom: 4 },
-  subtitle: { fontSize: typography.fontSize.sm, color: colors.textSecondary, marginBottom: 16 },
-  analyzingText: { color: colors.textSecondary, fontFamily: typography.fontFamily.medium, textAlign: 'center', marginTop: 16 },
+  container: { flex: 1, backgroundColor: colors.brandBackground, padding: 16, paddingTop: 56 },
+  title: { fontSize: typography.fontSize.xl, fontFamily: typography.fontFamily.bold, color: colors.brandAnchor, marginBottom: 4 },
+  subtitle: { fontSize: typography.fontSize.sm, color: colors.brandText, marginBottom: 16 },
+  analyzingText: { color: colors.brandText, fontFamily: typography.fontFamily.medium, textAlign: 'center', marginTop: 16 },
   resultContainer: { marginTop: 16 },
   errorText: { color: colors.error, textAlign: 'center', marginTop: 16 },
+  unavailableState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+    paddingBottom: 48,
+  },
+  unavailableTitle: {
+    color: colors.brandAnchor,
+    fontFamily: typography.fontFamily.bold,
+    fontSize: typography.fontSize.lg,
+    textAlign: 'center',
+  },
+  unavailableSubtitle: {
+    marginTop: 10,
+    maxWidth: 320,
+    color: colors.brandTextMuted,
+    fontFamily: typography.fontFamily.regular,
+    fontSize: typography.fontSize.base,
+    lineHeight: typography.fontSize.base * 1.5,
+    textAlign: 'center',
+  },
 });

@@ -11,25 +11,53 @@ export function StreakBadge({ days }: StreakBadgeProps): React.JSX.Element {
   const label = days === 1 ? 'dia seguido' : 'dias seguidos';
   return (
     <View style={styles.container}>
-      <Text style={styles.text}>🔥 {days} {label}</Text>
+      <View style={styles.mark}>
+        <View style={styles.markStem} />
+        <View style={styles.markLeaf} />
+      </View>
+      <Text style={styles.text}>{days} {label}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    alignSelf: 'center',
-    backgroundColor: colors.surface,
-    borderRadius: 20,
-    paddingHorizontal: 16,
+    alignSelf: 'flex-start',
+    backgroundColor: colors.brandSurface,
+    borderRadius: 999,
+    paddingHorizontal: 14,
     paddingVertical: 8,
     borderWidth: 1,
-    borderColor: colors.border,
-    marginBottom: 8,
+    borderColor: colors.brandDivider,
+    marginTop: 4,
+    marginBottom: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  mark: {
+    width: 14,
+    height: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  markStem: {
+    position: 'absolute',
+    width: 4,
+    height: 12,
+    borderRadius: 999,
+    backgroundColor: colors.brandPrimary,
+  },
+  markLeaf: {
+    width: 10,
+    height: 6,
+    borderRadius: 999,
+    backgroundColor: colors.brandSupport,
+    transform: [{ rotate: '-28deg' }, { translateX: 2 }],
   },
   text: {
     fontSize: typography.fontSize.base,
-    fontWeight: typography.fontWeight.semiBold,
-    color: colors.textPrimary,
+    fontFamily: typography.fontFamily.semiBold,
+    color: colors.brandAnchor,
   },
 });

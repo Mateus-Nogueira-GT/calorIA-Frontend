@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, TouchableOpacity, StyleSheet, Platform } from 'react-native';
+import { Alert, View, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import { Text } from '@shared/components';
 import { colors, typography } from '@theme';
 
@@ -7,7 +7,14 @@ interface Props { onPickImage: (uri: string) => void; isAnalyzing: boolean }
 
 export function ScannerViewfinder({ onPickImage, isAnalyzing }: Props): React.JSX.Element {
   function handlePress() {
-    if (Platform.OS !== 'web') return;
+    if (Platform.OS !== 'web') {
+      Alert.alert(
+        'Scanner indisponivel',
+        'O envio de foto ainda nao esta disponivel no app nativo.',
+      );
+      return;
+    }
+
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = 'image/*';
@@ -25,7 +32,13 @@ export function ScannerViewfinder({ onPickImage, isAnalyzing }: Props): React.JS
         <View style={[styles.corner, styles.tr]} />
         <View style={[styles.corner, styles.bl]} />
         <View style={[styles.corner, styles.br]} />
-        <Text style={styles.hint}>{isAnalyzing ? 'Analisando...' : 'Toque para escolher uma foto'}</Text>
+        <Text style={styles.hint}>
+          {isAnalyzing
+            ? 'Analisando...'
+            : Platform.OS === 'web'
+              ? 'Toque para escolher uma foto'
+              : 'Disponivel na versao web'}
+        </Text>
       </View>
     </TouchableOpacity>
   );
@@ -35,10 +48,18 @@ const C = 20;
 const B = 3;
 
 const styles = StyleSheet.create({
-  container: { backgroundColor: '#1A1A2E', borderRadius: 16, height: 220, alignItems: 'center', justifyContent: 'center' },
+  container: {
+    backgroundColor: colors.brandAnchor,
+    borderColor: colors.brandDivider,
+    borderRadius: 16,
+    borderWidth: 1,
+    height: 220,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   frame: { width: 160, height: 160, alignItems: 'center', justifyContent: 'center' },
-  hint: { color: 'rgba(255,255,255,0.7)', fontSize: typography.fontSize.xs, textAlign: 'center' },
-  corner: { position: 'absolute', width: C, height: C, borderColor: colors.primary },
+  hint: { color: colors.brandSurface, fontSize: typography.fontSize.xs, textAlign: 'center' },
+  corner: { position: 'absolute', width: C, height: C, borderColor: colors.brandPrimary },
   tl: { top: 0, left: 0, borderTopWidth: B, borderLeftWidth: B, borderTopLeftRadius: 4 },
   tr: { top: 0, right: 0, borderTopWidth: B, borderRightWidth: B, borderTopRightRadius: 4 },
   bl: { bottom: 0, left: 0, borderBottomWidth: B, borderLeftWidth: B, borderBottomLeftRadius: 4 },

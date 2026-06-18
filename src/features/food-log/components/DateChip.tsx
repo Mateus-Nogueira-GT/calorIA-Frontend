@@ -1,5 +1,5 @@
 import React from 'react';
-import { TouchableOpacity, StyleSheet } from 'react-native';
+import { Platform, Pressable, StyleSheet, ViewStyle } from 'react-native';
 import { Text } from '@shared/components';
 import { colors, typography } from '@theme';
 
@@ -11,31 +11,47 @@ interface Props {
 
 export function DateChip({ label, selected, onPress }: Props): React.JSX.Element {
   return (
-    <TouchableOpacity
+    <Pressable
       onPress={onPress}
-      style={[styles.chip, selected && styles.chipSelected]}
-      activeOpacity={0.7}
+      style={({ pressed, focused }) => [
+        styles.chip,
+        selected && styles.chipSelected,
+        pressed && styles.chipPressed,
+        focused && styles.focused,
+      ]}
+      accessibilityRole='button'
+      accessibilityState={{ selected }}
+      {...(Platform.OS === 'web' ? { ['aria-current' as const]: selected ? 'date' : undefined } : undefined)}
     >
       <Text style={[styles.label, selected && styles.labelSelected]}>{label}</Text>
-    </TouchableOpacity>
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   chip: {
-    paddingVertical: 6,
-    paddingHorizontal: 14,
-    borderRadius: 20,
-    backgroundColor: colors.surface,
+    minHeight: 44,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 999,
+    backgroundColor: colors.brandSurface,
     borderWidth: 1,
-    borderColor: colors.border,
-    marginRight: 8,
+    borderColor: colors.brandDividerStrong,
+    marginRight: 10,
+    justifyContent: 'center',
   },
-  chipSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
+  chipSelected: { backgroundColor: colors.brandPrimary, borderColor: colors.brandPrimary },
+  chipPressed: { opacity: 0.9 },
   label: {
     fontSize: typography.fontSize.sm,
     fontFamily: typography.fontFamily.medium,
-    color: colors.textSecondary,
+    color: colors.brandAnchor,
   },
-  labelSelected: { color: colors.white },
+  labelSelected: { color: colors.brandAnchor, fontFamily: typography.fontFamily.semiBold },
+  focused: {
+    outlineColor: colors.brandAnchor,
+    outlineOffset: 2,
+    outlineStyle: 'solid',
+    outlineWidth: 2,
+  } as ViewStyle,
 });

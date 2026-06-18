@@ -1,52 +1,81 @@
 import React from 'react';
-import { View, StyleSheet } from 'react-native';
+import { Image, StyleSheet, View } from 'react-native';
 import { Text } from '@shared/components';
 import { colors, typography } from '@theme';
 
 interface ProfileHeaderProps {
   name: string;
   email: string;
+  avatarUri?: string;
 }
 
-export function ProfileHeader({ name, email }: ProfileHeaderProps): React.JSX.Element {
+function getInitials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean).slice(0, 2);
+  if (parts.length === 0) return 'U';
+  return parts.map((part) => part[0]?.toUpperCase() ?? '').join('');
+}
+
+export function ProfileHeader({ name, email, avatarUri }: ProfileHeaderProps): React.JSX.Element {
+  const initials = getInitials(name);
+  const showSecondary = email || 'Conta CalorIA';
+
   return (
     <View style={styles.container}>
-      <View style={styles.avatar}>
-        <Text style={styles.avatarEmoji}>😊</Text>
+      <View style={styles.identityRow}>
+        {avatarUri ? (
+          <Image
+            source={{ uri: avatarUri }}
+            accessibilityLabel={name ? `Foto de perfil de ${name}` : 'Foto de perfil'}
+            style={styles.avatarImage}
+          />
+        ) : (
+          <View style={styles.avatar} accessibilityLabel={name ? `Avatar de ${name}` : 'Avatar do usuario'}>
+            <Text style={styles.avatarInitials}>{initials}</Text>
+          </View>
+        )}
+        <View style={styles.copy}>
+          <Text numberOfLines={2} style={styles.name}>{name || 'Sua conta'}</Text>
+          <Text numberOfLines={1} style={styles.email}>{showSecondary}</Text>
+        </View>
       </View>
-      <Text style={styles.name}>{name}</Text>
-      <Text style={styles.email}>{email}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
+    paddingVertical: 8,
+  },
+  identityRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 24,
+    gap: 16,
   },
   avatar: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: colors.surface,
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: colors.brandAnchor,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 12,
-    borderWidth: 2,
-    borderColor: colors.primary,
+    flexShrink: 0,
   },
-  avatarEmoji: {
-    fontSize: 40,
+  avatarImage: { width: 72, height: 72, borderRadius: 36, backgroundColor: colors.brandMutedSurface },
+  avatarInitials: {
+    fontSize: typography.fontSize.xl,
+    fontFamily: typography.fontFamily.extraBold,
+    color: colors.brandBackground,
   },
+  copy: { flex: 1, minWidth: 0 },
   name: {
     fontSize: typography.fontSize.xl,
-    fontWeight: typography.fontWeight.bold,
-    color: colors.textPrimary,
+    fontFamily: typography.fontFamily.bold,
+    color: colors.brandAnchor,
     marginBottom: 4,
   },
   email: {
     fontSize: typography.fontSize.sm,
-    color: colors.textSecondary,
+    fontFamily: typography.fontFamily.regular,
+    color: colors.brandTextMuted,
   },
 });
