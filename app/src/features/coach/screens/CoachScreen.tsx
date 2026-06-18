@@ -32,7 +32,7 @@ export function CoachScreen(): React.JSX.Element {
 
   const lastCoachWithFlag = useMemo(() => {
     for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i].role === 'coach' && messages[i].canGenerateDiet) {
+      if (messages[i].role === 'coach' && messages[i].dietGenerated) {
         return messages[i].id;
       }
     }

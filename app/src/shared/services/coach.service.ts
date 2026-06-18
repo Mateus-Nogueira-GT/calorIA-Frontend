@@ -5,13 +5,57 @@ export interface CoachMessage {
   role: 'coach' | 'user';
   content: string;
   timestamp: string;
-  canGenerateDiet?: boolean;
+  dietGenerated?: boolean;
+  dietId?: string | null;
+}
+
+export interface HistoryResult {
+  messages: CoachMessage[];
+  status: string;
+}
+
+interface BackendHistoryMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+interface BackendChatResponse {
+  conversation_id: string;
+  message: { role: 'assistant'; content: string; created_at: string };
+  diet_generated: boolean;
+  diet_id: string | null;
+}
+
+function toCoachRole(role: 'user' | 'assistant'): 'coach' | 'user' {
+  return role === 'assistant' ? 'coach' : 'user';
 }
 
 export const coachService = {
-  getHistory: () =>
-    api.get<CoachMessage[]>('/coach/history').then((r) => r.data),
+  getHistory: (conversationId: string) =>
+    api
+      .get<{ messages: BackendHistoryMessage[]; status: string }>(`/chat/history/${conversationId}`)
+      .then((r) => ({
+        status: r.data.status,
+        messages: r.data.messages.map((m, i) => ({
+          id: `${conversationId}-${i}`,
+          role: toCoachRole(m.role),
+          content: m.content,
+          timestamp: new Date().toISOString(),
+        })),
+      })),
 
-  sendMessage: (content: string) =>
-    api.post<CoachMessage>('/coach/message', { content }).then((r) => r.data),
+  sendMessage: (content: string, conversationId: string | null) =>
+    api
+      .post<BackendChatResponse>('/chat/message', { message: content, conversation_id: conversationId })
+      .then((r) => ({
+        conversationId: r.data.conversation_id,
+        message: {
+          id: `${r.data.conversation_id}-${Date.now()}`,
+          role: 'coach' as const,
+          content: r.data.message.content,
+          timestamp: r.data.message.created_at,
+          dietGenerated: r.data.diet_generated,
+          dietId: r.data.diet_id,
+        },
+      })),
 };

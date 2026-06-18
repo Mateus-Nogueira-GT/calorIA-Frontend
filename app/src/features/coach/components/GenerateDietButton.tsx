@@ -9,15 +9,17 @@ interface Props {
 }
 
 export function GenerateDietButton({ onSuccess }: Props): React.JSX.Element {
-  const isGenerating = useDietStore((s) => s.isGenerating);
-  const generate = useDietStore((s) => s.generate);
+  const isLoading = useDietStore((s) => s.isLoading);
+  const loadCurrent = useDietStore((s) => s.loadCurrent);
 
   const handlePress = async () => {
     try {
-      await generate();
+      // A dieta já foi gerada pelo /chat/message — aqui só garantimos que
+      // a store está com os dados mais recentes antes de navegar.
+      await loadCurrent();
       onSuccess();
     } catch {
-      Alert.alert('Não foi possível gerar sua dieta', 'Tente novamente.');
+      Alert.alert('Não foi possível abrir sua dieta', 'Tente novamente.');
     }
   };
 
@@ -25,18 +27,18 @@ export function GenerateDietButton({ onSuccess }: Props): React.JSX.Element {
     <View style={styles.row}>
       <TouchableOpacity
         accessibilityRole="button"
-        accessibilityState={{ disabled: isGenerating }}
-        disabled={isGenerating}
+        accessibilityState={{ disabled: isLoading }}
+        disabled={isLoading}
         onPress={handlePress}
-        style={[styles.btn, isGenerating && styles.btnDisabled]}
+        style={[styles.btn, isLoading && styles.btnDisabled]}
       >
-        {isGenerating ? (
+        {isLoading ? (
           <View style={styles.loadingRow}>
             <ActivityIndicator size="small" color={colors.brandAnchor} />
-            <Text style={styles.btnText}>  Gerando sua dieta...</Text>
+            <Text style={styles.btnText}>  Abrindo sua dieta...</Text>
           </View>
         ) : (
-          <Text style={styles.btnText}>Gerar minha dieta agora</Text>
+          <Text style={styles.btnText}>Ver minha dieta</Text>
         )}
       </TouchableOpacity>
     </View>

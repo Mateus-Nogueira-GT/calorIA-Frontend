@@ -36,11 +36,7 @@ export interface DietPlan {
 
 export const dietService = {
   getCurrent: () =>
-    api.get<DietPlan | null>('/diet/current').then((r) => r.data),
-  generate: () =>
-    api.post<DietPlan>('/diet/generate').then((r) => r.data),
-  completeMeal: (mealId: string) =>
-    api.patch<PlannedMeal>(`/diet/meals/${mealId}/complete`).then((r) => r.data),
-  uncompleteMeal: (mealId: string) =>
-    api.patch<PlannedMeal>(`/diet/meals/${mealId}/uncomplete`).then((r) => r.data),
+    api.get<DietPlan | null>('/diets/current').then((r) => r.data),
+  toggleMeal: (mealId: string) =>
+    api.patch<{ is_completed: boolean }>(`/diets/meals/${mealId}/toggle`).then((r) => r.data),
 };

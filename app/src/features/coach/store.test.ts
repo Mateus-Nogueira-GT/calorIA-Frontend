@@ -3,19 +3,42 @@ import { useCoachStore } from './store';
 
 jest.mock('@shared/services/coach.service', () => ({
   coachService: {
-    getHistory: jest.fn().mockResolvedValue([
-      { id: '1', role: 'coach', content: 'Olá!', timestamp: '2026-01-01T00:00:00Z' },
-    ]),
+    getHistory: jest.fn().mockResolvedValue({
+      status: 'collecting',
+      messages: [{ id: 'c1-0', role: 'coach', content: 'Olá!', timestamp: '2026-01-01T00:00:00Z' }],
+    }),
     sendMessage: jest.fn().mockResolvedValue({
-      id: '2', role: 'coach', content: 'Resposta do coach', timestamp: '2026-01-01T00:00:01Z',
+      conversationId: 'c1',
+      message: { id: 'c1-123', role: 'coach', content: 'Resposta do coach', timestamp: '2026-01-01T00:00:01Z' },
     }),
   },
 }));
 
-describe('useCoachStore', () => {
-  beforeEach(() => useCoachStore.setState({ messages: [], isLoading: false, error: null, hasLoadedHistory: false, lastFailedAction: null }));
+jest.mock('@features/diet/store', () => ({
+  useDietStore: { getState: () => ({ loadCurrent: jest.fn() }) },
+}));
 
-  it('carrega o histórico corretamente', async () => {
+describe('useCoachStore', () => {
+  beforeEach(() =>
+    useCoachStore.setState({
+      conversationId: null,
+      messages: [],
+      isLoading: false,
+      error: null,
+      hasLoadedHistory: false,
+      lastFailedAction: null,
+    }),
+  );
+
+  it('não chama a API quando ainda não há conversa', async () => {
+    const { result } = renderHook(() => useCoachStore());
+    await act(() => result.current.loadHistory());
+    expect(result.current.messages).toHaveLength(0);
+    expect(result.current.hasLoadedHistory).toBe(true);
+  });
+
+  it('carrega o histórico corretamente quando há conversationId', async () => {
+    useCoachStore.setState({ conversationId: 'c1' });
     const { result } = renderHook(() => useCoachStore());
     await act(() => result.current.loadHistory());
     expect(result.current.messages).toHaveLength(1);
@@ -28,6 +51,7 @@ describe('useCoachStore', () => {
     expect(result.current.messages).toHaveLength(2);
     expect(result.current.messages[0].role).toBe('user');
     expect(result.current.messages[1].role).toBe('coach');
+    expect(result.current.conversationId).toBe('c1');
   });
 
   it('isLoading é false após envio concluído', async () => {
@@ -46,26 +70,45 @@ describe('useCoachStore', () => {
     expect(result.current.lastFailedAction).toBe('send');
   });
 
-  it('preserva canGenerateDiet em mensagens do histórico', async () => {
+  it('preserva dietGenerated em mensagens do histórico', async () => {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { coachService } = require('@shared/services/coach.service');
-    coachService.getHistory.mockResolvedValueOnce([
-      { id: 'h1', role: 'coach', content: 'Pronto!', timestamp: '2026-01-01T00:00:00Z', canGenerateDiet: true },
-    ]);
+    coachService.getHistory.mockResolvedValueOnce({
+      status: 'completed',
+      messages: [
+        {
+          id: 'h1',
+          role: 'coach',
+          content: 'Pronto!',
+          timestamp: '2026-01-01T00:00:00Z',
+          dietGenerated: true,
+          dietId: 'd1',
+        },
+      ],
+    });
+    useCoachStore.setState({ conversationId: 'c1' });
     const { result } = renderHook(() => useCoachStore());
     await act(() => result.current.loadHistory());
-    expect(result.current.messages[0].canGenerateDiet).toBe(true);
+    expect(result.current.messages[0].dietGenerated).toBe(true);
   });
 
-  it('preserva canGenerateDiet na resposta a sendMessage', async () => {
+  it('preserva dietGenerated na resposta a sendMessage', async () => {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { coachService } = require('@shared/services/coach.service');
     coachService.sendMessage.mockResolvedValueOnce({
-      id: 'r1', role: 'coach', content: 'Pode gerar!', timestamp: '2026-01-01T00:00:01Z', canGenerateDiet: true,
+      conversationId: 'c1',
+      message: {
+        id: 'r1',
+        role: 'coach',
+        content: 'Pode ver!',
+        timestamp: '2026-01-01T00:00:01Z',
+        dietGenerated: true,
+        dietId: 'd1',
+      },
     });
     const { result } = renderHook(() => useCoachStore());
     await act(() => result.current.sendMessage('Tudo certo'));
     const last = result.current.messages[result.current.messages.length - 1];
-    expect(last.canGenerateDiet).toBe(true);
+    expect(last.dietGenerated).toBe(true);
   });
 });

@@ -21,6 +21,7 @@ import dietsRoutes from './modules/diets/diets.routes.js'
 import friendsRoutes from './modules/friends/friends.routes.js'
 import feedRoutes from './modules/feed/feed.routes.js'
 import challengesRoutes from './modules/challenges/challenges.routes.js'
+import foodLogRoutes from './modules/food-log/food-log.routes.js'
 
 import { env } from './shared/env.js'
 import { AppError } from './shared/errors.js'
@@ -89,6 +90,7 @@ export async function buildApp() {
           { name: 'Friends', description: 'Amizades entre usuários' },
           { name: 'Feed', description: 'Feed social' },
           { name: 'Challenges', description: 'Desafios entre amigos' },
+          { name: 'FoodLog', description: 'Diário alimentar livre (fora do plano)' },
         ],
         components: {
           securitySchemes: {
@@ -159,6 +161,7 @@ export async function buildApp() {
   await app.register(friendsRoutes, { prefix: '/friends' })
   await app.register(feedRoutes, { prefix: '/feed' })
   await app.register(challengesRoutes, { prefix: '/challenges' })
+  await app.register(foodLogRoutes, { prefix: '/food-log' })
 
   return app
 }

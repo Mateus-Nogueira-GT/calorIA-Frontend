@@ -30,9 +30,7 @@ const plan: DietPlan = {
 jest.mock('@shared/services/diet.service', () => ({
   dietService: {
     getCurrent: jest.fn(),
-    generate: jest.fn(),
-    completeMeal: jest.fn(),
-    uncompleteMeal: jest.fn(),
+    toggleMeal: jest.fn(),
   },
 }));
 
@@ -44,7 +42,6 @@ describe('useDietStore', () => {
     useDietStore.setState({
       plan: undefined,
       isLoading: false,
-      isGenerating: false,
       togglingMealId: null,
     });
     jest.clearAllMocks();
@@ -65,26 +62,17 @@ describe('useDietStore', () => {
     expect(result.current.plan).toBeNull();
   });
 
-  it('generate persiste o plano retornado', async () => {
-    dietService.generate.mockResolvedValue(plan);
-    const { result } = renderHook(() => useDietStore());
-    await act(() => result.current.generate());
-    expect(result.current.plan).toEqual(plan);
-    expect(result.current.isGenerating).toBe(false);
-  });
-
-  it('toggleMealComplete aplica otimista e substitui pela resposta', async () => {
-    const completed: PlannedMeal = { ...meal('m1'), completedAt: '2026-06-11T08:30:00Z' };
-    dietService.completeMeal.mockResolvedValue(completed);
+  it('toggleMealComplete aplica otimista e confirma com a resposta', async () => {
+    dietService.toggleMeal.mockResolvedValue({ is_completed: true });
     useDietStore.setState({ plan });
     const { result } = renderHook(() => useDietStore());
     await act(() => result.current.toggleMealComplete('m1'));
-    expect(result.current.plan?.meals[0].completedAt).toBe('2026-06-11T08:30:00Z');
+    expect(result.current.plan?.meals[0].completedAt).toBeTruthy();
     expect(result.current.togglingMealId).toBeNull();
   });
 
   it('toggleMealComplete reverte em caso de erro', async () => {
-    dietService.completeMeal.mockRejectedValue(new Error('fail'));
+    dietService.toggleMeal.mockRejectedValue(new Error('fail'));
     useDietStore.setState({ plan });
     const { result } = renderHook(() => useDietStore());
     await act(async () => {
@@ -98,12 +86,12 @@ describe('useDietStore', () => {
     expect(result.current.togglingMealId).toBeNull();
   });
 
-  it('toggleMealComplete chama uncompleteMeal quando a refeição já estava concluída', async () => {
-    dietService.uncompleteMeal.mockResolvedValue({ ...meal('m2'), completedAt: null });
+  it('toggleMealComplete desmarca quando a refeição já estava concluída', async () => {
+    dietService.toggleMeal.mockResolvedValue({ is_completed: false });
     useDietStore.setState({ plan });
     const { result } = renderHook(() => useDietStore());
     await act(() => result.current.toggleMealComplete('m2'));
-    expect(dietService.uncompleteMeal).toHaveBeenCalledWith('m2');
+    expect(dietService.toggleMeal).toHaveBeenCalledWith('m2');
     expect(result.current.plan?.meals[1].completedAt).toBeNull();
   });
 

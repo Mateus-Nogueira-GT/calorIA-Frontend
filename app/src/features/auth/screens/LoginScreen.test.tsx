@@ -14,6 +14,7 @@ const mockLogin = jest.fn().mockResolvedValue({
 });
 const mockLoginWithApple = jest.fn().mockResolvedValue({
   token: 'tok',
+  refreshToken: 'refresh-tok',
   user: { id: '1', name: 'João', email: 'joao@test.com' },
 });
 const mockGetAppleSignInPayload = jest.fn().mockResolvedValue({
@@ -109,6 +110,8 @@ describe('LoginScreen', () => {
     await waitFor(() =>
       expect(mockLoginWithApple).toHaveBeenCalledWith('apple-token', 'João Teste'),
     );
-    await waitFor(() => expect(mockSetToken).toHaveBeenCalledWith('tok', expect.any(Object)));
+    await waitFor(() =>
+      expect(mockSetToken).toHaveBeenCalledWith('tok', expect.any(Object), 'refresh-tok'),
+    );
   });
 });

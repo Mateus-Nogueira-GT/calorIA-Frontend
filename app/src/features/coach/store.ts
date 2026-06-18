@@ -1,15 +1,18 @@
 import { create } from 'zustand';
 import { coachService, CoachMessage } from '@shared/services/coach.service';
+import { useDietStore } from '@features/diet/store';
 
 interface StoreMessage {
   id: string;
   role: 'coach' | 'user';
   content: string;
   timestamp: Date;
-  canGenerateDiet?: boolean;
+  dietGenerated?: boolean;
+  dietId?: string | null;
 }
 
 interface CoachState {
+  conversationId: string | null;
   messages: StoreMessage[];
   isLoading: boolean;
   error: string | null;
@@ -26,11 +29,12 @@ function toStoreMessage(m: CoachMessage): StoreMessage {
     role: m.role,
     content: m.content,
     timestamp: new Date(m.timestamp),
-    ...(m.canGenerateDiet ? { canGenerateDiet: true } : {}),
+    ...(m.dietGenerated ? { dietGenerated: true, dietId: m.dietId } : {}),
   };
 }
 
 export const useCoachStore = create<CoachState>((set, get) => ({
+  conversationId: null,
   messages: [],
   isLoading: false,
   error: null,
@@ -38,10 +42,15 @@ export const useCoachStore = create<CoachState>((set, get) => ({
   lastFailedAction: null,
 
   loadHistory: async () => {
+    const { conversationId } = get();
+    if (!conversationId) {
+      set({ hasLoadedHistory: true, error: null });
+      return;
+    }
     set({ error: null, hasLoadedHistory: false });
     try {
-      const history = await coachService.getHistory();
-      set({ messages: history.map(toStoreMessage), hasLoadedHistory: true, lastFailedAction: null });
+      const history = await coachService.getHistory(conversationId);
+      set({ messages: history.messages.map(toStoreMessage), hasLoadedHistory: true, lastFailedAction: null });
     } catch {
       set({
         error: 'Nao foi possivel carregar sua conversa agora.',
@@ -67,13 +76,17 @@ export const useCoachStore = create<CoachState>((set, get) => ({
       error: null,
     });
     try {
-      const response = await coachService.sendMessage(trimmed);
+      const { conversationId, message } = await coachService.sendMessage(trimmed, get().conversationId);
       set((s) => ({
-        messages: [...s.messages, toStoreMessage(response)],
+        conversationId,
+        messages: [...s.messages, toStoreMessage(message)],
         isLoading: false,
         error: null,
         lastFailedAction: null,
       }));
+      if (message.dietGenerated) {
+        void useDietStore.getState().loadCurrent();
+      }
       return true;
     } catch {
       set({
@@ -86,7 +99,7 @@ export const useCoachStore = create<CoachState>((set, get) => ({
   },
 
   retryLastAction: async () => {
-    const { lastFailedAction, messages } = get();
+    const { lastFailedAction, messages, conversationId } = get();
 
     if (lastFailedAction === 'history') {
       await get().loadHistory();
@@ -99,13 +112,20 @@ export const useCoachStore = create<CoachState>((set, get) => ({
 
       set({ isLoading: true, error: null });
       try {
-        const response = await coachService.sendMessage(lastUserMessage.content);
+        const { conversationId: nextConversationId, message } = await coachService.sendMessage(
+          lastUserMessage.content,
+          conversationId,
+        );
         set((state) => ({
-          messages: [...state.messages, toStoreMessage(response)],
+          conversationId: nextConversationId,
+          messages: [...state.messages, toStoreMessage(message)],
           isLoading: false,
           error: null,
           lastFailedAction: null,
         }));
+        if (message.dietGenerated) {
+          void useDietStore.getState().loadCurrent();
+        }
       } catch {
         set({
           isLoading: false,

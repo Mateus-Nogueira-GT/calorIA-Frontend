@@ -5,10 +5,8 @@ import { dietService, DietPlan } from '@shared/services/diet.service';
 interface DietState {
   plan: DietPlan | null | undefined;
   isLoading: boolean;
-  isGenerating: boolean;
   togglingMealId: string | null;
   loadCurrent: () => Promise<void>;
-  generate: () => Promise<DietPlan>;
   toggleMealComplete: (mealId: string) => Promise<void>;
   clear: () => void;
 }
@@ -16,7 +14,6 @@ interface DietState {
 export const useDietStore = create<DietState>((set, get) => ({
   plan: undefined,
   isLoading: false,
-  isGenerating: false,
   togglingMealId: null,
 
   loadCurrent: async () => {
@@ -26,18 +23,6 @@ export const useDietStore = create<DietState>((set, get) => ({
       set({ plan, isLoading: false });
     } catch {
       set({ isLoading: false });
-    }
-  },
-
-  generate: async () => {
-    set({ isGenerating: true });
-    try {
-      const plan = await dietService.generate();
-      set({ plan, isGenerating: false });
-      return plan;
-    } catch (e) {
-      set({ isGenerating: false });
-      throw e;
     }
   },
 
@@ -58,13 +43,18 @@ export const useDietStore = create<DietState>((set, get) => ({
       },
     });
     try {
-      const updated = wasCompleted
-        ? await dietService.uncompleteMeal(mealId)
-        : await dietService.completeMeal(mealId);
+      const { is_completed } = await dietService.toggleMeal(mealId);
       set((s) => ({
         togglingMealId: null,
         plan: s.plan
-          ? { ...s.plan, meals: s.plan.meals.map((m) => (m.id === mealId ? updated : m)) }
+          ? {
+              ...s.plan,
+              meals: s.plan.meals.map((m) =>
+                m.id === mealId
+                  ? { ...m, completedAt: is_completed ? optimisticAt : null }
+                  : m,
+              ),
+            }
           : s.plan,
       }));
     } catch (e) {
@@ -84,5 +74,5 @@ export const useDietStore = create<DietState>((set, get) => ({
     }
   },
 
-  clear: () => set({ plan: undefined, isLoading: false, isGenerating: false, togglingMealId: null }),
+  clear: () => set({ plan: undefined, isLoading: false, togglingMealId: null }),
 }));

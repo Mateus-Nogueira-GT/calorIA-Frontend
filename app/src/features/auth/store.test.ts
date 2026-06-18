@@ -83,7 +83,7 @@ describe('useAuthStore', () => {
       id: 'user-1',
       name: 'Maria',
       email: 'maria@test.com',
-    });
+    }, 'refresh-tok');
     useAuthStore.getState().setProfilePreferences({
       goal: 'health',
       coachPersonality: 'empathetic',

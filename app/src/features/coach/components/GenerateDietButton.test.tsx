@@ -10,7 +10,6 @@ describe('GenerateDietButton', () => {
   beforeEach(() => {
     useDietStore.setState({
       plan: undefined,
-      isGenerating: false,
       isLoading: false,
       togglingMealId: null,
     });
@@ -18,26 +17,26 @@ describe('GenerateDietButton', () => {
 
   it('renderiza estado idle', () => {
     const { getByText } = render(<GenerateDietButton onSuccess={() => {}} />);
-    expect(getByText('✨ Gerar minha dieta agora')).toBeTruthy();
+    expect(getByText('Ver minha dieta')).toBeTruthy();
   });
 
-  it('chama onSuccess quando generate resolve', async () => {
+  it('chama onSuccess quando loadCurrent resolve', async () => {
     const onSuccess = jest.fn();
     useDietStore.setState({
-      generate: jest.fn().mockResolvedValue({ id: 'p1' }),
+      loadCurrent: jest.fn().mockResolvedValue(undefined),
     } as never);
     const { getByText } = render(<GenerateDietButton onSuccess={onSuccess} />);
-    fireEvent.press(getByText('✨ Gerar minha dieta agora'));
+    fireEvent.press(getByText('Ver minha dieta'));
     await waitFor(() => expect(onSuccess).toHaveBeenCalled());
   });
 
-  it('dispara Alert quando generate falha', async () => {
+  it('dispara Alert quando loadCurrent falha', async () => {
     const onSuccess = jest.fn();
     useDietStore.setState({
-      generate: jest.fn().mockRejectedValue(new Error('boom')),
+      loadCurrent: jest.fn().mockRejectedValue(new Error('boom')),
     } as never);
     const { getByText } = render(<GenerateDietButton onSuccess={onSuccess} />);
-    fireEvent.press(getByText('✨ Gerar minha dieta agora'));
+    fireEvent.press(getByText('Ver minha dieta'));
     await waitFor(() => expect(Alert.alert).toHaveBeenCalled());
     expect(onSuccess).not.toHaveBeenCalled();
   });
