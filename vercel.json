@@ -6,6 +6,9 @@
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "functions": {
-    "api/handler.js": { "maxDuration": 30 }
+    "api/handler.js": {
+      "maxDuration": 30,
+      "includeFiles": "backend/node_modules/openai/**"
+    }
   }
 }
