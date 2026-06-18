@@ -1,5 +1,6 @@
 import React, { useRef, useState } from 'react';
 import {
+  Alert,
   FlatList,
   KeyboardAvoidingView,
   Platform,
@@ -126,6 +127,8 @@ export function ProfileSetupScreen({ navigation }: AuthStackScreenProps<'Profile
       if (pendingAuth) {
         setToken(pendingAuth.token, pendingAuth.user);
       }
+    } catch {
+      Alert.alert('Erro', 'Não foi possível salvar seu perfil. Tente novamente.');
     } finally {
       setSubmitting(false);
     }

@@ -3,7 +3,7 @@ import { z } from 'zod'
 // ─── Enums compartilhados ─────────────────────────────────────────────────────
 
 export const genderEnum = z.enum(['male', 'female', 'other'])
-export const goalEnum = z.enum(['lose_weight', 'maintain', 'gain_muscle', 'gain_weight'])
+export const goalEnum = z.enum(['lose_weight', 'maintain', 'gain_muscle', 'gain_weight', 'health'])
 export const activityLevelEnum = z.enum([
   'sedentary', // Sedentário (sem exercício)
   'light', // Levemente ativo (1-3x/semana)
@@ -11,6 +11,9 @@ export const activityLevelEnum = z.enum([
   'active', // Ativo (6-7x/semana)
   'very_active', // Muito ativo (2x/dia ou treino intenso)
 ])
+export const bodyTypeEnum = z.enum(['ectomorph', 'mesomorph', 'endomorph', 'unknown'])
+export const coachPersonalityEnum = z.enum(['motivational', 'direct', 'empathetic', 'scientific'])
+export const coachGenderEnum = z.enum(['male', 'female', 'neutral'])
 
 // ─── Responses ────────────────────────────────────────────────────────────────
 
@@ -25,6 +28,9 @@ export const profileSchema = z.object({
   gender: genderEnum.nullable(),
   goal: goalEnum.nullable(),
   activity_level: activityLevelEnum.nullable(),
+  body_type: bodyTypeEnum.nullable(),
+  coach_personality: coachPersonalityEnum.nullable(),
+  coach_gender: coachGenderEnum.nullable(),
   dietary_restrictions: z.array(z.string()).nullable(),
   allergies: z.array(z.string()).nullable(),
   created_at: z.string(),
@@ -60,6 +66,9 @@ export const updateProfileBodySchema = z
     gender: genderEnum.optional(),
     goal: goalEnum.optional(),
     activity_level: activityLevelEnum.optional(),
+    body_type: bodyTypeEnum.optional(),
+    coach_personality: coachPersonalityEnum.optional(),
+    coach_gender: coachGenderEnum.optional(),
     dietary_restrictions: z.array(z.string()).max(20).optional(),
     allergies: z.array(z.string()).max(20).optional(),
   })

@@ -69,7 +69,17 @@ export const authService = {
     api.post<AuthResponse>('/auth/apple', { identityToken, fullName }).then((r) => r.data),
 
   profileSetup: (data: ProfileSetupPayload) =>
-    api.patch('/auth/profile-setup', data).then((r) => r.data),
+    api
+      .put('/users/me/profile', {
+        full_name: data.name,
+        height_cm: data.heightCm,
+        weight_kg: data.weightKg,
+        goal: data.goal,
+        body_type: data.bodyType,
+        coach_personality: data.coachPersonality,
+        coach_gender: data.coachGender,
+      })
+      .then((r) => r.data),
 
   logout: () => api.post('/auth/logout').then((r) => r.data),
 };
