@@ -32,12 +32,35 @@ export interface AuthResponse {
   };
 }
 
+interface BackendAuthResponse {
+  access_token: string;
+  refresh_token: string;
+  token_type: 'bearer';
+  expires_in: number;
+  user: {
+    id: string;
+    email: string;
+    name: string | null;
+  };
+}
+
+function toAuthResponse(data: BackendAuthResponse): AuthResponse {
+  return {
+    token: data.access_token,
+    user: {
+      id: data.user.id,
+      name: data.user.name ?? '',
+      email: data.user.email,
+    },
+  };
+}
+
 export const authService = {
   login: (data: LoginPayload) =>
-    api.post<AuthResponse>('/auth/login', data).then((r) => r.data),
+    api.post<BackendAuthResponse>('/auth/login', data).then((r) => toAuthResponse(r.data)),
 
   register: (data: RegisterPayload) =>
-    api.post<AuthResponse>('/auth/register', data).then((r) => r.data),
+    api.post<BackendAuthResponse>('/auth/register', data).then((r) => toAuthResponse(r.data)),
 
   loginWithGoogle: (idToken: string) =>
     api.post<AuthResponse>('/auth/google', { idToken }).then((r) => r.data),
