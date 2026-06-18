@@ -1,4 +1,4 @@
-import Fastify, { type FastifyError } from 'fastify'
+import Fastify, { type FastifyError, type FastifyRequest } from 'fastify'
 import {
   serializerCompiler,
   validatorCompiler,
@@ -9,6 +9,8 @@ import fastifyJwt from '@fastify/jwt'
 import rateLimit from '@fastify/rate-limit'
 import swagger from '@fastify/swagger'
 import swaggerUi from '@fastify/swagger-ui'
+import buildGetJwks from 'get-jwks'
+import type { TokenOrHeader } from '@fastify/jwt'
 
 import dbPlugin from './plugins/db.js'
 import supabasePlugin from './plugins/supabase.js'
@@ -63,8 +65,19 @@ export async function buildApp() {
     }),
   })
 
+  // O Supabase assina os JWT com chave assimétrica (ES256). A chave pública
+  // fica num endpoint JWKS do próprio projeto; buscamos por `kid` e cacheamos.
+  const getJwks = buildGetJwks({ max: 10, ttl: 60 * 60 * 1000 })
   await app.register(fastifyJwt, {
-    secret: env.SUPABASE_JWT_SECRET,
+    decode: { complete: true },
+    secret: async (_request: FastifyRequest, tokenOrHeader: TokenOrHeader): Promise<string> => {
+      const { header, payload } = tokenOrHeader as {
+        header: { kid: string; alg: string }
+        payload: { iss: string }
+      }
+      return getJwks.getPublicKey({ kid: header.kid, domain: payload.iss, alg: header.alg })
+    },
+    verify: { algorithms: ['ES256'] },
   })
 
   // ─── Plugins da aplicação ───────────────────────────────────────────────────
