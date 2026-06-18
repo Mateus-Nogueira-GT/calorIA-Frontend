@@ -14,16 +14,21 @@ export function WeeklyCalorieChart({ data }: WeeklyCalorieChartProps): React.JSX
   const maxCalories = Math.max(...data.map((d) => d.calories), 1);
   const total = data.reduce((sum, d) => sum + d.calories, 0);
   const avg = Math.round(total / data.length);
+  const hasAnyCalories = data.some((day) => day.calories > 0);
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>ESTA SEMANA</Text>
+      <View style={styles.header}>
+        <Text style={styles.title}>Esta semana</Text>
+        <Text style={styles.subtitle}>Media diaria</Text>
+      </View>
       <View style={styles.chart}>
         {data.map((day, index) => {
           const isToday = index === data.length - 1;
           const barHeight = Math.max((day.calories / maxCalories) * BAR_MAX_HEIGHT, 4);
           return (
             <View key={day.date} style={styles.barWrapper}>
+              <Text style={[styles.value, isToday && styles.valueToday]}>{day.calories} kcal</Text>
               <View
                 style={[
                   styles.bar,
@@ -36,60 +41,105 @@ export function WeeklyCalorieChart({ data }: WeeklyCalorieChartProps): React.JSX
           );
         })}
       </View>
-      <Text style={styles.avg}>Média: {avg} kcal/dia</Text>
+      <View style={styles.footer}>
+        <Text style={styles.avg}>{avg} kcal</Text>
+        <Text style={styles.avgCaption}>
+          {hasAnyCalories ? 'Media dos ultimos 7 dias' : 'Sem registros nesta semana'}
+        </Text>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: colors.white,
-    borderRadius: 12,
-    padding: 16,
+    backgroundColor: colors.brandSurface,
+    borderRadius: 20,
+    paddingHorizontal: 20,
+    paddingVertical: 22,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.brandDivider,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 18,
   },
   title: {
-    fontSize: typography.fontSize.xs,
-    fontWeight: typography.fontWeight.bold,
-    color: colors.textSecondary,
-    letterSpacing: 1,
-    marginBottom: 16,
+    fontSize: typography.fontSize.lg,
+    fontFamily: typography.fontFamily.bold,
+    color: colors.brandAnchor,
+  },
+  subtitle: {
+    fontSize: typography.fontSize.sm,
+    fontFamily: typography.fontFamily.medium,
+    color: colors.brandTextMuted,
   },
   chart: {
     flexDirection: 'row',
     alignItems: 'flex-end',
     justifyContent: 'space-between',
-    height: BAR_MAX_HEIGHT + 24,
+    height: BAR_MAX_HEIGHT + 56,
+    gap: 8,
   },
   barWrapper: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'flex-end',
+    minWidth: 30,
+  },
+  value: {
+    fontSize: typography.fontSize.xs,
+    color: colors.brandTextMuted,
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  valueToday: {
+    color: colors.brandAnchor,
+    fontFamily: typography.fontFamily.semiBold,
   },
   bar: {
-    width: 20,
-    borderRadius: 4,
-    marginBottom: 4,
+    width: 22,
+    borderRadius: 999,
+    marginBottom: 8,
   },
   barDefault: {
-    backgroundColor: colors.border,
+    backgroundColor: colors.brandSupportSoft,
   },
   barToday: {
-    backgroundColor: colors.primary,
+    backgroundColor: colors.brandPrimary,
+    width: 24,
   },
   label: {
     fontSize: typography.fontSize.xs,
-    color: colors.textSecondary,
+    color: colors.brandTextMuted,
+    minHeight: 18,
   },
   labelToday: {
-    color: colors.primary,
-    fontWeight: typography.fontWeight.semiBold,
+    color: colors.brandPrimary,
+    fontFamily: typography.fontFamily.semiBold,
+    backgroundColor: colors.brandPrimarySoft,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 999,
+  },
+  footer: {
+    marginTop: 18,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: colors.brandDivider,
+    alignItems: 'flex-start',
   },
   avg: {
+    fontSize: typography.fontSize.xl,
+    color: colors.brandPrimary,
+    fontFamily: typography.fontFamily.extraBold,
+  },
+  avgCaption: {
     fontSize: typography.fontSize.sm,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    marginTop: 12,
+    color: colors.brandTextMuted,
+    marginTop: 4,
   },
 });

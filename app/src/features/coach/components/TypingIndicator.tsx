@@ -1,12 +1,33 @@
-import React, { useEffect, useRef } from 'react';
-import { Animated, StyleSheet, View } from 'react-native';
-import { Avatar } from '@shared/components';
-import { colors } from '@theme';
+import React, { useEffect, useRef, useState } from 'react';
+import { AccessibilityInfo, Animated, EmitterSubscription, StyleSheet, View } from 'react-native';
+import { Text } from '@shared/components';
+import { colors, typography } from '@theme';
+import { CoachMark } from './CoachMark';
 
 function Dot({ delay }: { delay: number }): React.JSX.Element {
   const anim = useRef(new Animated.Value(0)).current;
+  const [reduceMotion, setReduceMotion] = useState(false);
 
   useEffect(() => {
+    let mounted = true;
+    let subscription: EmitterSubscription | undefined;
+
+    AccessibilityInfo.isReduceMotionEnabled?.().then((value) => {
+      if (mounted) setReduceMotion(value);
+    });
+
+    subscription = AccessibilityInfo.addEventListener?.('reduceMotionChanged', (value) => {
+      setReduceMotion(value);
+    });
+
+    if (reduceMotion) {
+      anim.setValue(0);
+      return () => {
+        mounted = false;
+        subscription?.remove();
+      };
+    }
+
     const bounce = Animated.loop(
       Animated.sequence([
         Animated.delay(delay),
@@ -16,8 +37,12 @@ function Dot({ delay }: { delay: number }): React.JSX.Element {
       ]),
     );
     bounce.start();
-    return () => bounce.stop();
-  }, [anim, delay]);
+    return () => {
+      mounted = false;
+      bounce.stop();
+      subscription?.remove();
+    };
+  }, [anim, delay, reduceMotion]);
 
   return (
     <Animated.View
@@ -29,22 +54,36 @@ function Dot({ delay }: { delay: number }): React.JSX.Element {
 export function TypingIndicator(): React.JSX.Element {
   return (
     <View style={styles.row}>
-      <Avatar size="sm" emoji="🤖" />
-      <View style={styles.bubble}>
-        <Dot delay={0} />
-        <Dot delay={150} />
-        <Dot delay={300} />
+      <CoachMark size='sm' />
+      <View style={styles.wrap}>
+        <Text style={styles.label}>Coach IA</Text>
+        <View style={styles.bubble} accessibilityLabel='Coach IA esta digitando'>
+          <Dot delay={0} />
+          <Dot delay={150} />
+          <Dot delay={300} />
+        </View>
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', gap: 8, alignItems: 'flex-end', marginBottom: 16 },
+  row: { flexDirection: 'row', gap: 10, alignItems: 'flex-end', marginBottom: 16 },
+  wrap: { maxWidth: '86%' },
+  label: {
+    marginBottom: 6,
+    color: colors.brandTextMuted,
+    fontFamily: typography.fontFamily.semiBold,
+    fontSize: typography.fontSize.xs,
+  },
   bubble: {
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    padding: 14,
+    backgroundColor: colors.brandSurface,
+    borderRadius: 18,
+    borderTopLeftRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.brandDivider,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     flexDirection: 'row',
     gap: 5,
     alignItems: 'center',
@@ -53,6 +92,6 @@ const styles = StyleSheet.create({
     width: 7,
     height: 7,
     borderRadius: 4,
-    backgroundColor: colors.textDisabled,
+    backgroundColor: colors.brandTextMuted,
   },
 });

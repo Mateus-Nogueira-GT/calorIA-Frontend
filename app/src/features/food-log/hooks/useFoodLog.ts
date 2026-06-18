@@ -5,15 +5,16 @@ import { useFoodLogStore } from '../store';
 export function useFoodLog() {
   const store = useFoodLogStore();
   const meals = store.mealsByDate[store.selectedDate] ?? [];
+  const isLoading = store.loadingByDate[store.selectedDate] ?? false;
 
   useEffect(() => {
     if (store.mealsByDate[store.selectedDate] !== undefined) return;
-    store.setLoading(true);
+    store.setLoading(store.selectedDate, true);
     foodLogService
       .getMeals(store.selectedDate)
       .then((data) => store.setMeals(store.selectedDate, data))
       .catch(() => {})
-      .finally(() => store.setLoading(false));
+      .finally(() => store.setLoading(store.selectedDate, false));
   }, [store.selectedDate]);
 
   const handleAddMeal = useCallback(async (data: AddMealPayload): Promise<void> => {
@@ -28,7 +29,7 @@ export function useFoodLog() {
 
   return {
     meals,
-    isLoading: store.isLoading,
+    isLoading,
     selectedDate: store.selectedDate,
     setSelectedDate: store.setSelectedDate,
     handleAddMeal,

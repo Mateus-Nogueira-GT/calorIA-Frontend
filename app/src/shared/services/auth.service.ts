@@ -27,6 +27,8 @@ export interface AuthResponse {
     id: string;
     name: string;
     email: string;
+    goal?: string | null;
+    coachPersonality?: ProfileSetupPayload['coachPersonality'] | null;
   };
 }
 
