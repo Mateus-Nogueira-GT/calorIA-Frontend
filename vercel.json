@@ -1,0 +1,11 @@
+{
+  "buildCommand": "cd api && npm ci && npm run build && cd ../app && npm ci && node -e \"require('fs').writeFileSync('.env', 'API_BASE_URL=/api\\nAPI_TIMEOUT=10000\\n')\" && npm run build:web",
+  "outputDirectory": "app/web/dist",
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/api/handler" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ],
+  "functions": {
+    "api/api/handler.js": { "maxDuration": 30 }
+  }
+}
