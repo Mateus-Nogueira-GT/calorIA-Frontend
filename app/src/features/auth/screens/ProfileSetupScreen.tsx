@@ -110,6 +110,13 @@ export function ProfileSetupScreen({ navigation }: AuthStackScreenProps<'Profile
   async function submitProfile(finalAnswers: Partial<Record<Step, string>>) {
     setSubmitting(true);
     try {
+      // O JWT precisa estar no estado de auth ANTES da chamada, pois o
+      // interceptor do axios só anexa Authorization a partir de `token`
+      // (pendingAuth.token ainda não conta pra ele).
+      if (pendingAuth) {
+        setToken(pendingAuth.token, pendingAuth.user);
+      }
+
       const payload: ProfileSetupPayload = {
         name: finalAnswers.name ?? user?.name ?? '',
         bodyType: (finalAnswers.bodyType as ProfileSetupPayload['bodyType']) ?? 'unknown',
@@ -124,9 +131,6 @@ export function ProfileSetupScreen({ navigation }: AuthStackScreenProps<'Profile
         goal: (finalAnswers.goal as 'lose_weight' | 'gain_muscle' | 'maintain' | 'health') ?? null,
         coachPersonality: (finalAnswers.personality as 'motivational' | 'direct' | 'empathetic' | 'scientific') ?? null,
       });
-      if (pendingAuth) {
-        setToken(pendingAuth.token, pendingAuth.user);
-      }
     } catch {
       Alert.alert('Erro', 'Não foi possível salvar seu perfil. Tente novamente.');
     } finally {
