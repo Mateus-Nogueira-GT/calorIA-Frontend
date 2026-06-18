@@ -14,13 +14,12 @@ const openaiPlugin: FastifyPluginAsync = fp(async (fastify) => {
     apiKey: env.OPENAI_API_KEY,
   })
 
-  // Testa a conexão listando modelos disponíveis
+  // Testa a conexão listando modelos disponíveis (não bloqueia o boot se falhar)
   try {
     await openai.models.list()
     fastify.log.info('✅  OpenAI conectado (modelo: %s)', env.OPENAI_MODEL)
   } catch (err) {
-    fastify.log.error(err, '❌  Falha ao conectar à OpenAI — verifique OPENAI_API_KEY')
-    throw err
+    fastify.log.warn(err, '⚠️  Falha ao conectar à OpenAI — verifique OPENAI_API_KEY')
   }
 
   fastify.decorate('openai', openai)
