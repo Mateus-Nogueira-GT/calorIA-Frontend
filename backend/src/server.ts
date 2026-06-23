@@ -24,6 +24,7 @@ import friendsRoutes from './modules/friends/friends.routes.js'
 import feedRoutes from './modules/feed/feed.routes.js'
 import challengesRoutes from './modules/challenges/challenges.routes.js'
 import foodLogRoutes from './modules/food-log/food-log.routes.js'
+import scannerRoutes from './modules/scanner/scanner.routes.js'
 
 import { env } from './shared/env.js'
 import { AppError } from './shared/errors.js'
@@ -104,6 +105,7 @@ export async function buildApp() {
           { name: 'Feed', description: 'Feed social' },
           { name: 'Challenges', description: 'Desafios entre amigos' },
           { name: 'FoodLog', description: 'Diário alimentar livre (fora do plano)' },
+          { name: 'Scanner', description: 'Análise de foto de refeição via IA Vision' },
         ],
         components: {
           securitySchemes: {
@@ -175,6 +177,7 @@ export async function buildApp() {
   await app.register(feedRoutes, { prefix: '/feed' })
   await app.register(challengesRoutes, { prefix: '/challenges' })
   await app.register(foodLogRoutes, { prefix: '/food-log' })
+  await app.register(scannerRoutes, { prefix: '/scanner' })
 
   return app
 }

@@ -10,8 +10,7 @@ export interface ScanResult {
 }
 
 export const scannerService = {
-  analyzePhoto: (uri: string) =>
-    api.post<ScanResult>('/scanner/analyze', { uri }).then((r) => r.data),
-  analyzeBarcode: (barcode: string) =>
-    api.get<ScanResult>(`/scanner/barcode/${barcode}`).then((r) => r.data),
+  /** Envia a imagem como data URL base64 para análise via IA Vision. */
+  analyzePhoto: (image: string) =>
+    api.post<ScanResult>('/scanner/analyze', { image }).then((r) => r.data),
 };

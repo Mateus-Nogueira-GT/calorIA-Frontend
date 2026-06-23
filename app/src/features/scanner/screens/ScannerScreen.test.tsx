@@ -1,8 +1,12 @@
 import React from 'react';
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
+import { Platform } from 'react-native';
 import { ScannerScreen } from './ScannerScreen';
 import { useFoodLogStore } from '@features/food-log/store';
 import { todayString } from '@shared/utils/date';
+
+// O scanner só é interativo na web; o screen esconde o viewfinder fora dela.
+(Platform as { OS: string }).OS = 'web';
 
 const mockNavigate = jest.fn();
 const mockAnalyzePhoto = jest.fn().mockResolvedValue({ name: 'Maçã', calories: 95, protein: 0.5, carbs: 25, fat: 0.3, confidence: 0.92 });
