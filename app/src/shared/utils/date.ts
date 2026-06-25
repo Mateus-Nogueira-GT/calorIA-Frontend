@@ -40,3 +40,14 @@ export function getMealGroup(loggedAt: string): MealGroup {
   if (hour >= 15 && hour < 18) return 'Lanche';
   return 'Jantar';
 }
+
+export function timeAgo(iso: string, now: Date = new Date()): string {
+  const diffMs = now.getTime() - new Date(iso).getTime();
+  const min = Math.floor(diffMs / 60000);
+  if (min < 1) return 'agora';
+  if (min < 60) return `há ${min}min`;
+  const hours = Math.floor(min / 60);
+  if (hours < 24) return `há ${hours}h`;
+  const days = Math.floor(hours / 24);
+  return `há ${days}d`;
+}

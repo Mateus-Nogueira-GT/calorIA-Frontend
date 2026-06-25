@@ -9,6 +9,7 @@ import { FoodLogScreen } from '@features/food-log/screens/FoodLogScreen';
 import { ScannerScreen } from '@features/scanner/screens/ScannerScreen';
 import { CoachScreen } from '@features/coach/screens/CoachScreen';
 import { ProfileScreen } from '@features/profile/screens/ProfileScreen';
+import { CommunityNavigator } from './CommunityNavigator';
 import { colors, typography } from '@theme';
 import type { TabParamList } from './types';
 
@@ -67,6 +68,18 @@ function TabIcon({ routeName, color, focused }: { routeName: keyof TabParamList;
     );
   }
 
+  if (routeName === 'Community') {
+    return (
+      <View style={styles.iconFrame}>
+        <View style={styles.communityRow}>
+          <View style={[styles.communityHead, { borderColor: tint }]} />
+          <View style={[styles.communityHead, { borderColor: tint, marginLeft: -3 }]} />
+        </View>
+        <View style={[styles.communityBody, { borderColor: tint }]} />
+      </View>
+    );
+  }
+
   return (
     <View style={styles.iconFrame}>
       <View style={[styles.profileHead, { borderColor: tint }]} />
@@ -108,6 +121,7 @@ export function BrandTabNavigator(): React.JSX.Element {
         <Tab.Screen name='Scanner' component={ScannerScreen} options={{ title: 'Scanner' }} />
       ) : null}
       <Tab.Screen name='Coach' component={CoachScreen} options={{ title: 'Coach' }} />
+      <Tab.Screen name='Community' component={CommunityNavigator} options={{ title: 'Comunidade' }} />
       <Tab.Screen name='Profile' component={ProfileScreen} options={{ title: 'Perfil' }} />
     </Tab.Navigator>
   );
@@ -134,4 +148,7 @@ const styles = StyleSheet.create({
   dot: { width: 2.5, height: 2.5, borderRadius: 999 },
   profileHead: { width: 8, height: 8, borderRadius: 999, borderWidth: 1.5, marginBottom: 1.5 },
   profileBody: { width: 14, height: 7, borderTopLeftRadius: 8, borderTopRightRadius: 8, borderWidth: 1.5, borderBottomWidth: 0 },
+  communityRow: { flexDirection: 'row' },
+  communityHead: { width: 6, height: 6, borderRadius: 999, borderWidth: 1.4 },
+  communityBody: { width: 16, height: 7, borderTopLeftRadius: 8, borderTopRightRadius: 8, borderWidth: 1.4, borderBottomWidth: 0, marginTop: 1.5 },
 });
