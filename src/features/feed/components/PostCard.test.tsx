@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, fireEvent } from '@testing-library/react-native';
+import { render, fireEvent, act } from '@testing-library/react-native';
 import { PostCard } from './PostCard';
 import type { Post } from '@shared/services/feed.service';
 
@@ -42,7 +42,9 @@ describe('PostCard', () => {
       <PostCard post={basePost} onPressComments={onComments} onToggleLike={onLike} />,
     );
     fireEvent.press(getByTestId('comments-button'));
-    fireEvent.press(getByTestId('like-button'));
+    act(() => {
+      fireEvent.press(getByTestId('like-button'));
+    });
     expect(onComments).toHaveBeenCalledWith('p1');
     expect(onLike).toHaveBeenCalledWith('p1');
   });

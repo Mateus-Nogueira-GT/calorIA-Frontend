@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, fireEvent } from '@testing-library/react-native';
+import { render, fireEvent, act } from '@testing-library/react-native';
 import { LikeButton } from './LikeButton';
 
 describe('LikeButton', () => {
@@ -9,7 +9,9 @@ describe('LikeButton', () => {
       <LikeButton liked={false} count={5} onPress={onPress} />,
     );
     expect(getByText('5')).toBeTruthy();
-    fireEvent.press(getByTestId('like-button'));
+    act(() => {
+      fireEvent.press(getByTestId('like-button'));
+    });
     expect(onPress).toHaveBeenCalled();
   });
 
