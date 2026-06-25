@@ -22,4 +22,23 @@ describe('ScanItemRow', () => {
     fireEvent.press(getByTestId('scan-item-remove'));
     expect(onRemove).toHaveBeenCalledWith('1');
   });
+
+  it('editar campo macro para "1.5" chama onChange com valor decimal', () => {
+    const onChange = jest.fn();
+    const { getByTestId } = render(
+      <ScanItemRow item={item} onChange={onChange} onRemove={() => {}} />,
+    );
+    fireEvent.changeText(getByTestId('scan-item-calories'), '1.5');
+    expect(onChange).toHaveBeenCalledWith('1', { calories: 1.5 });
+  });
+
+  it('limpar campo macro chama onChange com 0 e mantém input exibindo ""', () => {
+    const onChange = jest.fn();
+    const { getByTestId } = render(
+      <ScanItemRow item={item} onChange={onChange} onRemove={() => {}} />,
+    );
+    fireEvent.changeText(getByTestId('scan-item-calories'), '');
+    expect(onChange).toHaveBeenCalledWith('1', { calories: 0 });
+    expect(getByTestId('scan-item-calories').props.value).toBe('');
+  });
 });
