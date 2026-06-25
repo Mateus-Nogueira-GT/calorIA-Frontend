@@ -6,7 +6,6 @@ import {
 import { Text } from 'react-native';
 import { DashboardScreen } from '@features/dashboard/screens/DashboardScreen';
 import { FoodLogScreen } from '@features/food-log/screens/FoodLogScreen';
-import { ScannerScreen } from '@features/scanner/screens/ScannerScreen';
 import { CoachScreen } from '@features/coach/screens/CoachScreen';
 import { ProfileScreen } from '@features/profile/screens/ProfileScreen';
 import { colors } from '@theme';
@@ -14,10 +13,9 @@ import type { TabParamList } from './types';
 
 const Tab = createBottomTabNavigator<TabParamList>();
 
-const tabIcons: Record<keyof TabParamList, string> = {
+const tabIcons: Partial<Record<keyof TabParamList, string>> = {
   Dashboard: '🏠',
   FoodLog: '📋',
-  Scanner: '📷',
   Coach: '🤖',
   Profile: '👤',
 };
@@ -50,7 +48,6 @@ export function TabNavigator(): React.JSX.Element {
     >
       <Tab.Screen name="Dashboard" component={DashboardScreen} />
       <Tab.Screen name="FoodLog" component={FoodLogScreen} options={{ title: 'Diário' }} />
-      <Tab.Screen name="Scanner" component={ScannerScreen} />
       <Tab.Screen name="Coach" component={CoachScreen} />
       <Tab.Screen name="Profile" component={ProfileScreen} options={{ title: 'Perfil' }} />
     </Tab.Navigator>

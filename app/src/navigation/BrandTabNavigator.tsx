@@ -3,10 +3,9 @@ import {
   BottomTabNavigationOptions,
   createBottomTabNavigator,
 } from '@react-navigation/bottom-tabs';
-import { Platform, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { DashboardScreen } from '@features/dashboard/screens/DashboardScreen';
 import { FoodLogScreen } from '@features/food-log/screens/FoodLogScreen';
-import { ScannerScreen } from '@features/scanner/screens/ScannerScreen';
 import { CoachScreen } from '@features/coach/screens/CoachScreen';
 import { ProfileScreen } from '@features/profile/screens/ProfileScreen';
 import { colors, typography } from '@theme';
@@ -41,14 +40,6 @@ function TabIcon({ routeName, color, focused }: { routeName: keyof TabParamList;
         {[0, 1, 2].map((line) => (
           <View key={line} style={[styles.diaryLine, { backgroundColor: tint, width: line === 2 ? 11 : 15 }]} />
         ))}
-      </View>
-    );
-  }
-
-  if (routeName === 'Scanner') {
-    return (
-      <View style={[styles.scannerOuter, { borderColor: tint }]}>
-        <View style={[styles.scannerInner, { borderColor: tint }]} />
       </View>
     );
   }
@@ -98,15 +89,10 @@ function getScreenOptions({ route }: { route: { name: keyof TabParamList } }): B
 }
 
 export function BrandTabNavigator(): React.JSX.Element {
-  const supportsScanner = Platform.OS === 'web';
-
   return (
     <Tab.Navigator screenOptions={getScreenOptions}>
       <Tab.Screen name='Dashboard' component={DashboardScreen} options={{ title: 'Dashboard' }} />
       <Tab.Screen name='FoodLog' component={FoodLogScreen} options={{ title: 'Diario' }} />
-      {supportsScanner ? (
-        <Tab.Screen name='Scanner' component={ScannerScreen} options={{ title: 'Scanner' }} />
-      ) : null}
       <Tab.Screen name='Coach' component={CoachScreen} options={{ title: 'Coach' }} />
       <Tab.Screen name='Profile' component={ProfileScreen} options={{ title: 'Perfil' }} />
     </Tab.Navigator>
@@ -127,8 +113,6 @@ const styles = StyleSheet.create({
   grid: { width: 16, height: 16, flexDirection: 'row', flexWrap: 'wrap', gap: 2 },
   gridCell: { width: 7, height: 7, borderRadius: 2, borderWidth: 1.3 },
   diaryLine: { height: 2, borderRadius: 999, marginVertical: 1.5 },
-  scannerOuter: { width: 18, height: 14, borderRadius: 5, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
-  scannerInner: { width: 6, height: 6, borderRadius: 999, borderWidth: 1.5 },
   coachBubble: { width: 18, height: 14, borderRadius: 5, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
   coachDots: { flexDirection: 'row', gap: 2 },
   dot: { width: 2.5, height: 2.5, borderRadius: 999 },
