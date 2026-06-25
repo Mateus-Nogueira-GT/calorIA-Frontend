@@ -28,5 +28,5 @@ const styles = StyleSheet.create({
   emoji: { fontSize: 26 },
   texts: { flex: 1 },
   title: { fontSize: 15, color: colors.brandAnchor, fontFamily: typography.fontFamily.semiBold },
-  subtitle: { fontSize: 13, color: colors.brandTextMuted, marginTop: 2 },
+  subtitle: { fontSize: 13, color: colors.brandTextMuted, marginTop: 2, fontFamily: typography.fontFamily.regular },
 });

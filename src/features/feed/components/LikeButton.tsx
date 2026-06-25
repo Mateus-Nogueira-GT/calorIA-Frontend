@@ -10,14 +10,19 @@ interface Props {
 
 export function LikeButton({ liked, count, onPress }: Props): React.JSX.Element {
   const scale = useRef(new Animated.Value(1)).current;
+  const anim = useRef<Animated.CompositeAnimation | null>(null);
 
   const handlePress = () => {
-    Animated.sequence([
+    anim.current?.stop();
+    anim.current = Animated.sequence([
       Animated.spring(scale, { toValue: 1.3, useNativeDriver: true, speed: 50 }),
       Animated.spring(scale, { toValue: 1, useNativeDriver: true, speed: 30 }),
-    ]).start();
+    ]);
+    anim.current.start();
     onPress();
   };
+
+  const heartColor = liked ? colors.brandPrimary : colors.brandTextMuted;
 
   return (
     <Pressable
@@ -28,7 +33,7 @@ export function LikeButton({ liked, count, onPress }: Props): React.JSX.Element 
       style={styles.row}
       hitSlop={8}
     >
-      <Animated.Text style={[styles.heart, { color: liked ? colors.brandPrimary : colors.brandTextMuted, transform: [{ scale }] }]}>
+      <Animated.Text style={[styles.heart, { color: heartColor, transform: [{ scale }] }]}>
         {liked ? '♥' : '♡'}
       </Animated.Text>
       <Text style={styles.count}>{count}</Text>
