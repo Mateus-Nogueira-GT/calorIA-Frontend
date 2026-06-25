@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { useDietStore } from '@features/diet/store';
 import { useFoodLogStore } from '@features/food-log/store';
+import { useFeedStore } from '@features/feed/store';
 
 interface User {
   id: string;
@@ -183,6 +184,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   clearToken: () => {
     useDietStore.getState().clear();
     useFoodLogStore.getState().clear();
+    useFeedStore.getState().clear();
     clearPreviewQueryOnWeb();
     set({
       token: null,

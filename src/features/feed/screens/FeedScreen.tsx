@@ -15,11 +15,9 @@ import { useFeedStore } from '../store';
 import { PostCard } from '../components/PostCard';
 import { PostCardSkeleton } from '../components/PostCardSkeleton';
 import { EmptyFeedState } from '../components/EmptyFeedState';
+import type { CommunityStackScreenProps } from '@navigation/types';
 
-interface Props {
-  navigation: { navigate: (screen: string, params?: object) => void };
-  route: { key: string; name: string };
-}
+type Props = CommunityStackScreenProps<'Feed'>;
 
 export function FeedScreen({ navigation }: Props): React.JSX.Element {
   const {

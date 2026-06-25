@@ -4,6 +4,7 @@ import { LikeButton } from './LikeButton';
 
 describe('LikeButton', () => {
   it('mostra o contador e dispara onPress', () => {
+    jest.useFakeTimers();
     const onPress = jest.fn();
     const { getByText, getByTestId } = render(
       <LikeButton liked={false} count={5} onPress={onPress} />,
@@ -11,8 +12,10 @@ describe('LikeButton', () => {
     expect(getByText('5')).toBeTruthy();
     act(() => {
       fireEvent.press(getByTestId('like-button'));
+      jest.runAllTimers();
     });
     expect(onPress).toHaveBeenCalled();
+    jest.useRealTimers();
   });
 
   it('renderiza coração preenchido quando liked', () => {

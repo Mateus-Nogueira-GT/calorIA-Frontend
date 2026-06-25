@@ -36,6 +36,7 @@ describe('PostCard', () => {
   });
 
   it('aciona onPressComments e onToggleLike', () => {
+    jest.useFakeTimers();
     const onComments = jest.fn();
     const onLike = jest.fn();
     const { getByTestId } = render(
@@ -44,8 +45,10 @@ describe('PostCard', () => {
     fireEvent.press(getByTestId('comments-button'));
     act(() => {
       fireEvent.press(getByTestId('like-button'));
+      jest.runAllTimers();
     });
     expect(onComments).toHaveBeenCalledWith('p1');
     expect(onLike).toHaveBeenCalledWith('p1');
+    jest.useRealTimers();
   });
 });

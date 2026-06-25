@@ -5,10 +5,9 @@ import { colors, typography } from '@theme';
 import { Button } from '@shared/components/Button';
 import { useFeedStore } from '../store';
 import type { AchievementType, PostAchievement } from '@shared/services/feed.service';
+import type { CommunityStackScreenProps } from '@navigation/types';
 
-interface Props {
-  navigation: { goBack: () => void };
-}
+type Props = CommunityStackScreenProps<'CreatePost'>;
 
 const SUBMIT_LABEL = 'Publicar';
 

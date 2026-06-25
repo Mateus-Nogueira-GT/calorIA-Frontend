@@ -14,10 +14,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '@theme';
 import { useFeedStore } from '../store';
 import { CommentRow } from '../components/CommentRow';
+import type { CommunityStackScreenProps } from '@navigation/types';
 
-interface Props {
-  route: { params: { postId: string } };
-}
+type Props = CommunityStackScreenProps<'PostComments'>;
 
 export function PostCommentsScreen({ route }: Props): React.JSX.Element {
   const { postId } = route.params;
