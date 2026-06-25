@@ -15,6 +15,8 @@ import { useFeedStore } from '../store';
 import { PostCard } from '../components/PostCard';
 import { PostCardSkeleton } from '../components/PostCardSkeleton';
 import { EmptyFeedState } from '../components/EmptyFeedState';
+import { NotificationBell } from '@features/notifications/components/NotificationBell';
+import { useNotificationsStore } from '@features/notifications/store';
 import type { CommunityStackScreenProps } from '@navigation/types';
 
 type Props = CommunityStackScreenProps<'Feed'>;
@@ -32,6 +34,7 @@ export function FeedScreen({ navigation }: Props): React.JSX.Element {
     isEmpty,
   } = useFeed();
   const [hasError, setHasError] = useState(false);
+  const unreadCount = useNotificationsStore((s) => s.unreadCount);
 
   useEffect(() => {
     if (useFeedStore.getState().posts.length === 0) {
@@ -43,14 +46,18 @@ export function FeedScreen({ navigation }: Props): React.JSX.Element {
 
   const goCreate = () => navigation.navigate('CreatePost');
   const goChallenges = () => navigation.navigate('Challenges');
+  const goNotifications = () => navigation.navigate('Notifications');
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
         <Text style={styles.title}>Comunidade</Text>
-        <Pressable onPress={goChallenges} accessibilityRole='button' accessibilityLabel='Desafios' style={styles.headerAction}>
-          <Text style={styles.headerActionIcon}>🏆</Text>
-        </Pressable>
+        <View style={styles.headerActions}>
+          <Pressable onPress={goChallenges} accessibilityRole='button' accessibilityLabel='Desafios' style={styles.headerAction}>
+            <Text style={styles.headerActionIcon}>🏆</Text>
+          </Pressable>
+          <NotificationBell count={unreadCount} onPress={goNotifications} />
+        </View>
       </View>
 
       {isLoadingInitial ? (
@@ -119,6 +126,7 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.brandBackground },
   header: { paddingHorizontal: 20, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   title: { fontSize: 24, color: colors.brandAnchor, fontFamily: typography.fontFamily.bold },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   headerAction: { padding: 4 },
   headerActionIcon: { fontSize: 22 },
   listContent: { paddingHorizontal: 16, paddingBottom: 96, flexGrow: 1 },

@@ -19,7 +19,7 @@ export type CommunityStackParamList = {
   Challenges: undefined;
   CreateChallenge: undefined;
   ChallengeLeaderboard: { challengeId?: string; code?: string };
-  // Notifications é adicionada no Plano 3.
+  Notifications: undefined;
 };
 
 // Tab Navigator
