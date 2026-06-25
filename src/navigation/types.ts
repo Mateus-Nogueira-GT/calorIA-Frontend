@@ -16,7 +16,10 @@ export type CommunityStackParamList = {
   Feed: undefined;
   CreatePost: undefined;
   PostComments: { postId: string };
-  // Challenges screens são adicionadas no Plano 2; Notifications no Plano 3.
+  Challenges: undefined;
+  CreateChallenge: undefined;
+  ChallengeLeaderboard: { challengeId?: string; code?: string };
+  // Notifications é adicionada no Plano 3.
 };
 
 // Tab Navigator

@@ -25,8 +25,8 @@ const linking: LinkingOptions<RootStackParamList> = {
         screens: {
           Community: {
             screens: {
-              // Plano 2 adiciona: ChallengeLeaderboard: 'challenge/:challengeId'
               PostComments: 'post/:postId',
+              ChallengeLeaderboard: 'challenge/:code',
             },
           },
         },

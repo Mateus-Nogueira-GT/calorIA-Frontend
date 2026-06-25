@@ -42,11 +42,15 @@ export function FeedScreen({ navigation }: Props): React.JSX.Element {
   }, [loadInitial]);
 
   const goCreate = () => navigation.navigate('CreatePost');
+  const goChallenges = () => navigation.navigate('Challenges');
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
         <Text style={styles.title}>Comunidade</Text>
+        <Pressable onPress={goChallenges} accessibilityRole='button' accessibilityLabel='Desafios' style={styles.headerAction}>
+          <Text style={styles.headerActionIcon}>🏆</Text>
+        </Pressable>
       </View>
 
       {isLoadingInitial ? (
@@ -113,8 +117,10 @@ export function FeedScreen({ navigation }: Props): React.JSX.Element {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.brandBackground },
-  header: { paddingHorizontal: 20, paddingVertical: 12 },
+  header: { paddingHorizontal: 20, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   title: { fontSize: 24, color: colors.brandAnchor, fontFamily: typography.fontFamily.bold },
+  headerAction: { padding: 4 },
+  headerActionIcon: { fontSize: 22 },
   listContent: { paddingHorizontal: 16, paddingBottom: 96, flexGrow: 1 },
   footer: { paddingVertical: 16 },
   fab: {

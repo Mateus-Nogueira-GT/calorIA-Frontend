@@ -5,6 +5,7 @@ import { scannerHandlers } from './handlers/scanner';
 import { coachHandlers } from './handlers/coach';
 import { dietHandlers } from './handlers/diet';
 import { feedHandlers } from './handlers/feed';
+import { challengesHandlers } from './handlers/challenges';
 
 export const server = setupServer(
   ...authHandlers,
@@ -13,6 +14,7 @@ export const server = setupServer(
   ...coachHandlers,
   ...dietHandlers,
   ...feedHandlers,
+  ...challengesHandlers,
 );
 
 export function startMocks(): void {
