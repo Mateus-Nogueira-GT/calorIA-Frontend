@@ -5,10 +5,9 @@ import { colors, typography } from '@theme';
 import { Button } from '@shared/components/Button';
 import { pickImage } from '@shared/services/image-picker.service';
 import { ScannerViewfinder } from '../components/ScannerViewfinder';
+import type { ScannerStackScreenProps } from '@navigation/types';
 
-interface Props {
-  navigation: { navigate: (screen: string, params?: object) => void };
-}
+type Props = ScannerStackScreenProps<'Capture'>;
 
 export function CaptureScreen({ navigation }: Props): React.JSX.Element {
   const go = (image: string) => navigation.navigate('Analyzing', { image });

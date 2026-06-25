@@ -5,14 +5,9 @@ import { colors } from '@theme';
 import { Button } from '@shared/components/Button';
 import { ScanResultList } from '../components/ScanResultList';
 import { useScannerStore } from '../store';
+import type { ScannerStackScreenProps } from '@navigation/types';
 
-interface Props {
-  navigation: {
-    navigate: (screen: string, params?: object) => void;
-    getParent: () => { goBack: () => void } | undefined;
-  };
-  route: never;
-}
+type Props = ScannerStackScreenProps<'ScanResult'>;
 
 export function ScanResultScreen({ navigation }: Props): React.JSX.Element {
   const items = useScannerStore((s) => s.items);
@@ -27,7 +22,6 @@ export function ScanResultScreen({ navigation }: Props): React.JSX.Element {
     try {
       await confirm();
       navigation.getParent()?.goBack();
-      navigation.navigate('FoodLog');
     } catch {
       /* store já exibe alerta */
     } finally {

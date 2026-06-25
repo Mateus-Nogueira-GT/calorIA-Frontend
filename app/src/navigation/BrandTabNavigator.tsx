@@ -3,15 +3,36 @@ import {
   BottomTabNavigationOptions,
   createBottomTabNavigator,
 } from '@react-navigation/bottom-tabs';
-import { StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { DashboardScreen } from '@features/dashboard/screens/DashboardScreen';
 import { FoodLogScreen } from '@features/food-log/screens/FoodLogScreen';
 import { CoachScreen } from '@features/coach/screens/CoachScreen';
 import { ProfileScreen } from '@features/profile/screens/ProfileScreen';
 import { colors, typography } from '@theme';
-import type { TabParamList } from './types';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { RootStackParamList, TabParamList } from './types';
 
 const Tab = createBottomTabNavigator<TabParamList>();
+
+function CameraTabButton({ onPress }: { onPress: () => void }): React.JSX.Element {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={styles.cameraButton}
+      accessibilityRole='button'
+      accessibilityLabel='Escanear refeição'
+    >
+      <View style={styles.cameraInner}>
+        {/* Ícone de câmera desenhado */}
+        <View style={styles.cameraBody}>
+          <View style={styles.cameraLens} />
+          <View style={styles.cameraFlash} />
+        </View>
+      </View>
+    </Pressable>
+  );
+}
 
 function TabIcon({ routeName, color, focused }: { routeName: keyof TabParamList; color: string; focused: boolean }): React.JSX.Element {
   const tint = focused ? color : `${color}B8`;
@@ -89,10 +110,21 @@ function getScreenOptions({ route }: { route: { name: keyof TabParamList } }): B
 }
 
 export function BrandTabNavigator(): React.JSX.Element {
+  const rootNavigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+
   return (
     <Tab.Navigator screenOptions={getScreenOptions}>
       <Tab.Screen name='Dashboard' component={DashboardScreen} options={{ title: 'Dashboard' }} />
-      <Tab.Screen name='FoodLog' component={FoodLogScreen} options={{ title: 'Diario' }} />
+      <Tab.Screen name='FoodLog' component={FoodLogScreen} options={{ title: 'Diário' }} />
+      <Tab.Screen
+        name='CameraAction'
+        component={DashboardScreen}
+        options={{
+          tabBarButton: () => (
+            <CameraTabButton onPress={() => rootNavigation.navigate('Scanner')} />
+          ),
+        }}
+      />
       <Tab.Screen name='Coach' component={CoachScreen} options={{ title: 'Coach' }} />
       <Tab.Screen name='Profile' component={ProfileScreen} options={{ title: 'Perfil' }} />
     </Tab.Navigator>
@@ -118,4 +150,51 @@ const styles = StyleSheet.create({
   dot: { width: 2.5, height: 2.5, borderRadius: 999 },
   profileHead: { width: 8, height: 8, borderRadius: 999, borderWidth: 1.5, marginBottom: 1.5 },
   profileBody: { width: 14, height: 7, borderTopLeftRadius: 8, borderTopRightRadius: 8, borderWidth: 1.5, borderBottomWidth: 0 },
+  // Botão central de câmera
+  cameraButton: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cameraInner: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: colors.brandPrimary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: -16,
+    shadowColor: colors.brandPrimary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  cameraBody: {
+    width: 22,
+    height: 17,
+    borderRadius: 3,
+    borderWidth: 2,
+    borderColor: colors.brandBackground,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  cameraLens: {
+    width: 9,
+    height: 9,
+    borderRadius: 999,
+    borderWidth: 1.5,
+    borderColor: colors.brandBackground,
+  },
+  cameraFlash: {
+    position: 'absolute',
+    top: -5,
+    right: 3,
+    width: 5,
+    height: 3,
+    borderRadius: 1,
+    borderWidth: 1.5,
+    borderColor: colors.brandBackground,
+  },
 });

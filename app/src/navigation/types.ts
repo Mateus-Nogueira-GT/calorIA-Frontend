@@ -1,6 +1,6 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
-import type { CompositeScreenProps } from '@react-navigation/native';
+import type { CompositeScreenProps, NavigatorScreenParams } from '@react-navigation/native';
 
 // Auth Stack
 export type AuthStackParamList = {
@@ -15,9 +15,16 @@ export type AuthStackParamList = {
 export type TabParamList = {
   Dashboard: undefined;
   FoodLog: undefined;
-  Scanner: undefined;
+  CameraAction: undefined;
   Coach: undefined;
   Profile: undefined;
+};
+
+// Scanner Stack
+export type ScannerStackParamList = {
+  Capture: undefined;
+  Analyzing: { image: string };
+  ScanResult: undefined;
 };
 
 // Root Stack
@@ -26,6 +33,7 @@ export type RootStackParamList = {
   App: undefined;
   ProfileGoals: undefined;
   ProfileCoachPersonality: undefined;
+  Scanner: NavigatorScreenParams<ScannerStackParamList>;
 };
 
 // Screen props helpers
@@ -39,3 +47,6 @@ export type TabScreenProps<T extends keyof TabParamList> = CompositeScreenProps<
 
 export type RootStackScreenProps<T extends keyof RootStackParamList> =
   NativeStackScreenProps<RootStackParamList, T>;
+
+export type ScannerStackScreenProps<T extends keyof ScannerStackParamList> =
+  NativeStackScreenProps<ScannerStackParamList, T>;

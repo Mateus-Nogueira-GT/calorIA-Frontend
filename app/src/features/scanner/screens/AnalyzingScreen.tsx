@@ -5,11 +5,9 @@ import { colors } from '@theme';
 import { Button } from '@shared/components/Button';
 import { AnalyzingAnimation } from '../components/AnalyzingAnimation';
 import { useScannerStore } from '../store';
+import type { ScannerStackScreenProps } from '@navigation/types';
 
-interface Props {
-  navigation: { replace: (screen: string) => void; goBack: () => void };
-  route: { params: { image: string } };
-}
+type Props = ScannerStackScreenProps<'Analyzing'>;
 
 export function AnalyzingScreen({ navigation, route }: Props): React.JSX.Element {
   const analyze = useScannerStore((s) => s.analyze);
