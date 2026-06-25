@@ -1,4 +1,11 @@
-import { dateToString, todayString, last7Days, formatChipLabel, getMealGroup } from './date';
+import {
+  dateToString,
+  todayString,
+  last7Days,
+  formatChipLabel,
+  getMealGroup,
+  timeAgo,
+} from './date';
 
 describe('dateToString', () => {
   it('formats date as YYYY-MM-DD', () => {
@@ -39,5 +46,25 @@ describe('getMealGroup', () => {
   });
   it('maps 20:00 to Jantar', () => {
     expect(getMealGroup(new Date(2026, 5, 9, 20, 0).toISOString())).toBe('Jantar');
+  });
+});
+
+describe('timeAgo', () => {
+  const now = new Date('2026-06-24T12:00:00Z');
+
+  it('retorna "agora" para menos de 1 minuto', () => {
+    expect(timeAgo('2026-06-24T11:59:30Z', now)).toBe('agora');
+  });
+
+  it('retorna minutos', () => {
+    expect(timeAgo('2026-06-24T11:45:00Z', now)).toBe('há 15min');
+  });
+
+  it('retorna horas', () => {
+    expect(timeAgo('2026-06-24T09:00:00Z', now)).toBe('há 3h');
+  });
+
+  it('retorna dias', () => {
+    expect(timeAgo('2026-06-22T12:00:00Z', now)).toBe('há 2d');
   });
 });
