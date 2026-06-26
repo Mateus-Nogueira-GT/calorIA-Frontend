@@ -1,7 +1,7 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Text } from '@shared/components';
-import { colors, typography } from '@theme';
+import { colors, typography, spacing, radius } from '@theme';
 import { CoachMark } from './CoachMark';
 
 interface Props {
@@ -42,16 +42,16 @@ export function ChatBubble({ message, role, timestamp }: Props): React.JSX.Eleme
 }
 
 const styles = StyleSheet.create({
-  coachRow: { flexDirection: 'row', gap: 10, alignItems: 'flex-start', marginBottom: 16 },
+  coachRow: { flexDirection: 'row', gap: 10, alignItems: 'flex-start', marginBottom: spacing.lg },
   coachWrap: { flex: 1, maxWidth: '86%' },
   coachBubble: {
     backgroundColor: colors.brandSurface,
     borderWidth: 1,
     borderColor: colors.brandDivider,
     borderRadius: 18,
-    borderTopLeftRadius: 8,
+    borderTopLeftRadius: radius.sm,
     paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingVertical: spacing.md,
   },
   coachMessage: {
     color: colors.brandText,
@@ -59,14 +59,14 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.base,
     lineHeight: typography.fontSize.base * 1.5,
   },
-  userRow: { alignItems: 'flex-end', marginBottom: 16 },
+  userRow: { alignItems: 'flex-end', marginBottom: spacing.lg },
   userWrap: { maxWidth: '80%', alignItems: 'flex-end' },
   userBubble: {
     backgroundColor: colors.brandAnchor,
     borderRadius: 18,
-    borderTopRightRadius: 8,
+    borderTopRightRadius: radius.sm,
     paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingVertical: spacing.md,
   },
   userMessage: {
     color: colors.brandBackground,

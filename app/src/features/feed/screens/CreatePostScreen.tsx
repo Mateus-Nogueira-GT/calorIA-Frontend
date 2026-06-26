@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, typography } from '@theme';
+import { colors, typography, spacing, radius } from '@theme';
 import { Button } from '@shared/components/Button';
 import { useFeedStore } from '../store';
 import type { AchievementType, PostAchievement } from '@shared/services/feed.service';
@@ -94,37 +94,37 @@ export function CreatePostScreen({ navigation }: Props): React.JSX.Element {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.brandBackground },
-  content: { padding: 20, gap: 16 },
+  content: { padding: spacing.xl, gap: spacing.lg },
   input: {
     minHeight: 120,
     backgroundColor: colors.white,
-    borderRadius: 12,
+    borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.brandDivider,
     padding: 14,
-    fontSize: 16,
+    fontSize: typography.fontSize.md,
     color: colors.brandText,
     textAlignVertical: 'top',
   },
-  label: { fontSize: 13, color: colors.brandTextMuted, fontFamily: typography.fontFamily.medium },
+  label: { fontSize: typography.fontSize.sm, color: colors.brandTextMuted, fontFamily: typography.fontFamily.medium },
   option: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: spacing.md,
     backgroundColor: colors.white,
-    borderRadius: 12,
+    borderRadius: radius.md,
     borderWidth: 1.5,
     borderColor: colors.brandDivider,
-    padding: 12,
+    padding: spacing.md,
   },
   optionActive: { borderColor: colors.brandPrimary, backgroundColor: colors.brandSupportSoft },
-  optionEmoji: { fontSize: 24 },
+  optionEmoji: { fontSize: typography.fontSize.xxl },
   optionTexts: { flex: 1 },
   optionTitle: {
-    fontSize: 15,
+    fontSize: typography.fontSize.base,
     color: colors.brandAnchor,
     fontFamily: typography.fontFamily.semiBold,
   },
-  optionSubtitle: { fontSize: 13, color: colors.brandTextMuted, marginTop: 2 },
-  footer: { padding: 20, borderTopWidth: 1, borderTopColor: colors.brandDivider },
+  optionSubtitle: { fontSize: typography.fontSize.sm, color: colors.brandTextMuted, marginTop: 2 },
+  footer: { padding: spacing.xl, borderTopWidth: 1, borderTopColor: colors.brandDivider },
 });

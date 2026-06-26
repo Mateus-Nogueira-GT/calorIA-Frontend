@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors } from '@theme';
+import { colors, typography, spacing } from '@theme';
 import { Button } from '@shared/components/Button';
 import { AnalyzingAnimation } from '../components/AnalyzingAnimation';
 import { useScannerStore } from '../store';
@@ -40,6 +40,6 @@ export function AnalyzingScreen({ navigation, route }: Props): React.JSX.Element
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.brandBackground, justifyContent: 'center' },
-  errorBox: { padding: 24, gap: 16, alignItems: 'center' },
-  errorText: { fontSize: 15, color: colors.brandText, textAlign: 'center' },
+  errorBox: { padding: spacing.xxl, gap: spacing.lg, alignItems: 'center' },
+  errorText: { fontSize: typography.fontSize.base, color: colors.brandText, textAlign: 'center' },
 });

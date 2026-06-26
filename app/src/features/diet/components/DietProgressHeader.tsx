@@ -1,7 +1,7 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Text } from '@shared/components';
-import { colors, typography } from '@theme';
+import { colors, radius, spacing, typography } from '@theme';
 
 interface Props {
   completedCount: number;
@@ -33,7 +33,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.brandDivider,
     padding: 18,
-    marginBottom: 12,
+    marginBottom: spacing.md,
   },
   copy: { paddingRight: 64 },
   title: {
@@ -44,19 +44,19 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: typography.fontSize.sm,
     color: colors.brandTextMuted,
-    marginTop: 4,
-    marginBottom: 12,
+    marginTop: spacing.xs,
+    marginBottom: spacing.md,
   },
   badge: {
     position: 'absolute',
     top: 18,
     right: 18,
     backgroundColor: colors.brandMutedSurface,
-    borderRadius: 999,
+    borderRadius: radius.pill,
     paddingHorizontal: 10,
     paddingVertical: 6,
   },
   badgeText: { fontSize: typography.fontSize.xs, fontFamily: typography.fontFamily.bold, color: colors.brandPrimary },
-  barBg: { height: 8, backgroundColor: colors.brandTrack, borderRadius: 999, overflow: 'hidden' },
-  barFill: { height: '100%', backgroundColor: colors.brandPrimary, borderRadius: 999 },
+  barBg: { height: 8, backgroundColor: colors.brandTrack, borderRadius: radius.pill, overflow: 'hidden' },
+  barFill: { height: '100%', backgroundColor: colors.brandPrimary, borderRadius: radius.pill },
 });

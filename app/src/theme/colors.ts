@@ -35,6 +35,7 @@ export const colors = {
   transparent: 'transparent',
   white: '#FFFFFF',
   black: '#000000',
+  successSoft: '#F0FDF4',
 } as const;
 
 export type Colors = typeof colors;

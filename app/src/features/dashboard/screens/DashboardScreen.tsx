@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { Text } from '@shared/components';
-import { colors, typography } from '@theme';
+import { colors, typography, spacing, radius } from '@theme';
 import { useAuthStore } from '@features/auth/store';
 import { useFoodLogStore } from '@features/food-log/store';
 import { foodLogService } from '@shared/services/food-log.service';
@@ -171,9 +171,9 @@ export function DashboardScreen(): React.JSX.Element {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.brandBackground, paddingTop: 56 },
-  content: { paddingHorizontal: 16, paddingBottom: 110 },
+  content: { paddingHorizontal: spacing.lg, paddingBottom: 110 },
   shell: { width: '100%', maxWidth: 760, alignSelf: 'center' },
-  headerRow: { marginBottom: 24 },
+  headerRow: { marginBottom: spacing.xxl },
   greeting: {
     fontSize: typography.fontSize.xxl,
     fontFamily: typography.fontFamily.extraBold,
@@ -186,22 +186,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 16,
+    gap: spacing.lg,
     backgroundColor: colors.brandSurface,
     borderRadius: 22,
     borderWidth: 1,
     borderColor: colors.brandDivider,
     padding: 22,
-    marginBottom: 20,
+    marginBottom: spacing.xl,
   },
   ringSummary: { flex: 1, minWidth: 0 },
   badge: {
     alignSelf: 'flex-start',
     backgroundColor: colors.brandMutedSurface,
-    borderRadius: 999,
+    borderRadius: radius.pill,
     paddingHorizontal: 10,
     paddingVertical: 6,
-    marginBottom: 12,
+    marginBottom: spacing.md,
   },
   badgeText: { fontSize: typography.fontSize.xs, color: colors.brandAnchor, fontFamily: typography.fontFamily.semiBold },
   kcalValue: {
@@ -211,16 +211,16 @@ const styles = StyleSheet.create({
   },
   kcalGoal: { fontSize: typography.fontSize.base, color: colors.brandTextMuted, marginTop: 2 },
   progressMeta: {
-    marginTop: 16,
+    marginTop: spacing.lg,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 12,
+    gap: spacing.md,
   },
   progressMetaLabel: { fontSize: typography.fontSize.sm, color: colors.brandTextMuted },
   progressMetaValue: { fontSize: typography.fontSize.md, color: colors.brandPrimary, fontFamily: typography.fontFamily.bold },
-  sectionHeader: { marginBottom: 12 },
-  freeDiaryHeader: { marginTop: 20 },
+  sectionHeader: { marginBottom: spacing.md },
+  freeDiaryHeader: { marginTop: spacing.xl },
   sectionTitle: {
     fontSize: typography.fontSize.lg,
     fontFamily: typography.fontFamily.bold,
@@ -231,7 +231,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 10,
-    marginBottom: 8,
+    marginBottom: spacing.sm,
   },
   sectionCard: {
     backgroundColor: colors.brandSurface,
@@ -252,10 +252,10 @@ const styles = StyleSheet.create({
   skeletonTitle: {
     height: 14,
     width: '34%',
-    borderRadius: 999,
+    borderRadius: radius.pill,
     backgroundColor: colors.brandTrack,
     margin: 18,
-    marginBottom: 8,
+    marginBottom: spacing.sm,
   },
   skeletonMealRow: {
     flexDirection: 'row',
@@ -265,9 +265,9 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderTopWidth: 1,
     borderTopColor: colors.brandDivider,
-    gap: 12,
+    gap: spacing.md,
   },
-  skeletonMealMain: { height: 14, flex: 1, borderRadius: 999, backgroundColor: colors.brandTrack },
-  skeletonMealSecondary: { height: 14, width: '58%', borderRadius: 999, backgroundColor: colors.brandTrack },
-  skeletonMealKcal: { height: 14, width: 64, borderRadius: 999, backgroundColor: colors.brandTrack },
+  skeletonMealMain: { height: 14, flex: 1, borderRadius: radius.pill, backgroundColor: colors.brandTrack },
+  skeletonMealSecondary: { height: 14, width: '58%', borderRadius: radius.pill, backgroundColor: colors.brandTrack },
+  skeletonMealKcal: { height: 14, width: 64, borderRadius: radius.pill, backgroundColor: colors.brandTrack },
 });

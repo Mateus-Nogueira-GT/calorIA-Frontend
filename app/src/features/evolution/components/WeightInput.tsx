@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
-import { colors, typography } from '@theme';
+import { colors, radius, spacing, typography } from '@theme';
 import { Button } from '@shared/components/Button';
 
 interface Props {
@@ -38,8 +38,8 @@ export function WeightInput({ onSave, saving }: Props): React.JSX.Element {
 }
 
 const styles = StyleSheet.create({
-  container: { backgroundColor: colors.white, borderRadius: 16, padding: 16, gap: 12 },
+  container: { backgroundColor: colors.white, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.md },
   label: { fontSize: typography.fontSize.sm, color: colors.brandTextMuted, fontFamily: typography.fontFamily.medium },
   row: { flexDirection: 'row' },
-  input: { flex: 1, backgroundColor: colors.brandMutedSurface, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: typography.fontSize.md, color: colors.brandText },
+  input: { flex: 1, backgroundColor: colors.brandMutedSurface, borderRadius: radius.md, paddingHorizontal: 14, paddingVertical: spacing.md, fontSize: typography.fontSize.md, color: colors.brandText },
 });

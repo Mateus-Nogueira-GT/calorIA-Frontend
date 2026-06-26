@@ -27,8 +27,9 @@ export const useNotificationsStore = create<NotificationsState>((set, get) => ({
     try {
       const res = await notificationsService.getNotifications();
       set({ items: res.items, unreadCount: res.unreadCount, isLoading: false });
-    } catch {
+    } catch (e) {
       set({ isLoading: false });
+      throw e;
     }
   },
 

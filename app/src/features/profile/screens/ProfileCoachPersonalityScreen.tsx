@@ -2,7 +2,7 @@ import React from 'react';
 import { ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { useAuthStore, type CoachPersonalityPreference } from '@features/auth/store';
 import { Text } from '@shared/components';
-import { colors, typography } from '@theme';
+import { colors, radius, spacing, typography } from '@theme';
 import type { RootStackScreenProps } from '@navigation/types';
 
 const PERSONALITY_OPTIONS: Array<{
@@ -82,12 +82,12 @@ const styles = StyleSheet.create({
     backgroundColor: colors.brandBackground,
   },
   content: {
-    padding: 20,
+    padding: spacing.xl,
     paddingTop: 28,
   },
   header: {
-    marginBottom: 20,
-    gap: 8,
+    marginBottom: spacing.xl,
+    gap: spacing.sm,
   },
   title: {
     color: colors.brandAnchor,
@@ -96,15 +96,15 @@ const styles = StyleSheet.create({
     color: colors.brandText,
   },
   list: {
-    gap: 12,
+    gap: spacing.md,
   },
   optionCard: {
     backgroundColor: colors.white,
     borderColor: colors.brandDivider,
-    borderRadius: 16,
+    borderRadius: radius.lg,
     borderWidth: 1,
     padding: 18,
-    gap: 8,
+    gap: spacing.sm,
   },
   optionCardSelected: {
     borderColor: colors.brandPrimary,
@@ -120,7 +120,7 @@ const styles = StyleSheet.create({
   optionAction: {
     color: colors.brandPrimary,
     fontFamily: typography.fontFamily.semiBold,
-    marginTop: 4,
+    marginTop: spacing.xs,
   },
   optionActionSelected: {
     color: colors.brandAnchor,

@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
 import { Text } from '@shared/components';
-import { colors, typography } from '@theme';
+import { colors, radius, spacing, typography } from '@theme';
 import { DayCalories } from '../hooks/useProfile';
 
 interface WeeklyCalorieChartProps {
@@ -55,7 +55,7 @@ const styles = StyleSheet.create({
   container: {
     backgroundColor: colors.brandSurface,
     borderRadius: 20,
-    paddingHorizontal: 20,
+    paddingHorizontal: spacing.xl,
     paddingVertical: 22,
     borderWidth: 1,
     borderColor: colors.brandDivider,
@@ -64,7 +64,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
-    gap: 12,
+    gap: spacing.md,
     marginBottom: 18,
   },
   title: {
@@ -82,7 +82,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     justifyContent: 'space-between',
     height: BAR_MAX_HEIGHT + 56,
-    gap: 8,
+    gap: spacing.sm,
   },
   barWrapper: {
     flex: 1,
@@ -102,8 +102,8 @@ const styles = StyleSheet.create({
   },
   bar: {
     width: 22,
-    borderRadius: 999,
-    marginBottom: 8,
+    borderRadius: radius.pill,
+    marginBottom: spacing.sm,
   },
   barDefault: {
     backgroundColor: colors.brandSupportSoft,
@@ -123,11 +123,11 @@ const styles = StyleSheet.create({
     backgroundColor: colors.brandPrimarySoft,
     paddingHorizontal: 6,
     paddingVertical: 2,
-    borderRadius: 999,
+    borderRadius: radius.pill,
   },
   footer: {
     marginTop: 18,
-    paddingTop: 16,
+    paddingTop: spacing.lg,
     borderTopWidth: 1,
     borderTopColor: colors.brandDivider,
     alignItems: 'flex-start',
@@ -140,6 +140,6 @@ const styles = StyleSheet.create({
   avgCaption: {
     fontSize: typography.fontSize.sm,
     color: colors.brandTextMuted,
-    marginTop: 4,
+    marginTop: spacing.xs,
   },
 });

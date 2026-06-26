@@ -1,6 +1,6 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { colors, typography } from '@theme';
+import { colors, typography, spacing } from '@theme';
 import { Avatar } from '@shared/components/Avatar';
 import { timeAgo } from '@shared/utils/date';
 import type { AppNotification } from '@shared/services/notifications.service';
@@ -32,10 +32,10 @@ export function NotificationRow({ notification, onPress }: Props): React.JSX.Ele
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 16 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.md, paddingHorizontal: spacing.lg },
   rowUnread: { backgroundColor: colors.brandMutedSurface },
   body: { flex: 1 },
-  text: { fontSize: 14, color: colors.brandText, lineHeight: 20 },
+  text: { fontSize: typography.fontSize.base, color: colors.brandText, lineHeight: 20 },
   actor: { color: colors.brandAnchor, fontFamily: typography.fontFamily.semiBold },
   time: { fontSize: 12, color: colors.brandTextMuted, marginTop: 2 },
   dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.brandPrimary },

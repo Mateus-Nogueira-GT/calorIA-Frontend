@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
 import { Text } from '@shared/components';
-import { colors, typography } from '@theme';
+import { colors, radius, spacing, typography } from '@theme';
 
 interface StreakBadgeProps {
   days: number;
@@ -24,16 +24,16 @@ const styles = StyleSheet.create({
   container: {
     alignSelf: 'flex-start',
     backgroundColor: colors.brandSurface,
-    borderRadius: 999,
+    borderRadius: radius.pill,
     paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingVertical: spacing.sm,
     borderWidth: 1,
     borderColor: colors.brandDivider,
-    marginTop: 4,
-    marginBottom: 4,
+    marginTop: spacing.xs,
+    marginBottom: spacing.xs,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: spacing.sm,
   },
   mark: {
     width: 14,
@@ -45,13 +45,13 @@ const styles = StyleSheet.create({
     position: 'absolute',
     width: 4,
     height: 12,
-    borderRadius: 999,
+    borderRadius: radius.pill,
     backgroundColor: colors.brandPrimary,
   },
   markLeaf: {
     width: 10,
     height: 6,
-    borderRadius: 999,
+    borderRadius: radius.pill,
     backgroundColor: colors.brandSupport,
     transform: [{ rotate: '-28deg' }, { translateX: 2 }],
   },

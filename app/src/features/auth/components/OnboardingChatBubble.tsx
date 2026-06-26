@@ -1,7 +1,7 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Avatar, Text } from '@shared/components';
-import { colors } from '@theme';
+import { colors, spacing, radius } from '@theme';
 
 interface Props {
   message: string;
@@ -29,22 +29,22 @@ export function OnboardingChatBubble({ message, role }: Props): React.JSX.Elemen
 }
 
 const styles = StyleSheet.create({
-  coachRow: { flexDirection: 'row', gap: 8, alignItems: 'flex-start', marginBottom: 12 },
+  coachRow: { flexDirection: 'row', gap: spacing.sm, alignItems: 'flex-start', marginBottom: spacing.md },
   coachBubble: {
     backgroundColor: colors.surface,
     borderRadius: 4,
-    borderTopLeftRadius: 16,
-    borderBottomLeftRadius: 16,
-    borderBottomRightRadius: 16,
-    padding: 12,
+    borderTopLeftRadius: radius.lg,
+    borderBottomLeftRadius: radius.lg,
+    borderBottomRightRadius: radius.lg,
+    padding: spacing.md,
     maxWidth: '80%',
   },
-  userRow: { alignItems: 'flex-end', marginBottom: 12 },
+  userRow: { alignItems: 'flex-end', marginBottom: spacing.md },
   userBubble: {
     backgroundColor: colors.primary,
-    borderRadius: 16,
+    borderRadius: radius.lg,
     borderTopRightRadius: 4,
-    padding: 12,
+    padding: spacing.md,
     maxWidth: '80%',
   },
 });

@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
-import { Text } from '@shared/components';
-import { colors, typography } from '@theme';
+import { Text, ErrorState } from '@shared/components';
+import { colors, typography, spacing, radius } from '@theme';
 import { useFoodLog } from '../hooks/useFoodLog';
 import { DateChip } from '../components/DateChip';
 import { DayMacroSummary } from '../components/DayMacroSummary';
@@ -38,7 +38,7 @@ function DiaryEmptyIcon(): React.JSX.Element {
 }
 
 export function FoodLogScreen(): React.JSX.Element {
-  const { meals, isLoading, selectedDate, setSelectedDate, handleAddMeal, handleDeleteMeal } = useFoodLog();
+  const { meals, isLoading, hasError, reload, selectedDate, setSelectedDate, handleAddMeal, handleDeleteMeal } = useFoodLog();
   const plan = useDietStore((s) => s.plan);
   const [modalVisible, setModalVisible] = useState(false);
   const dates = last7Days();
@@ -90,6 +90,8 @@ export function FoodLogScreen(): React.JSX.Element {
           <View style={styles.center}>
             <Text style={styles.loadingText}>Carregando refeições...</Text>
           </View>
+        ) : hasError ? (
+          <ErrorState onRetry={reload} />
         ) : (
           <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
             <CalorieProgressBar consumed={consumed} goal={goal} />
@@ -127,9 +129,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    gap: 12,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    gap: spacing.md,
     flexWrap: 'wrap',
   },
   title: {
@@ -146,7 +148,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.brandPrimary,
     borderRadius: 14,
     paddingVertical: 10,
-    paddingHorizontal: 16,
+    paddingHorizontal: spacing.lg,
   },
   addBtnText: {
     fontSize: typography.fontSize.sm,
@@ -163,19 +165,19 @@ const styles = StyleSheet.create({
     position: 'absolute',
     width: 2,
     height: 12,
-    borderRadius: 999,
+    borderRadius: radius.pill,
     backgroundColor: colors.brandAnchor,
   },
   addGlyphHorizontal: {
     width: 12,
     height: 2,
-    borderRadius: 999,
+    borderRadius: radius.pill,
     backgroundColor: colors.brandAnchor,
   },
   chips: { maxHeight: 58 },
-  chipsContent: { paddingHorizontal: 16, paddingVertical: 4 },
+  chipsContent: { paddingHorizontal: spacing.lg, paddingVertical: spacing.xs },
   scroll: { flex: 1 },
-  scrollContent: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 110 },
+  scrollContent: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: 110 },
   sections: { marginTop: 18 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   loadingText: { color: colors.brandTextMuted, fontSize: typography.fontSize.sm },
@@ -184,12 +186,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 20,
-    paddingVertical: 32,
+    paddingVertical: spacing.xxxl,
   },
   emptyIcon: {
     width: 52,
     height: 52,
-    borderRadius: 16,
+    borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: colors.brandDividerStrong,
     backgroundColor: colors.brandSurface,
@@ -203,17 +205,17 @@ const styles = StyleSheet.create({
     top: 10,
     bottom: 10,
     width: 4,
-    borderRadius: 999,
+    borderRadius: radius.pill,
     backgroundColor: colors.brandAnchor,
   },
   emptyIconPage: {
     width: 24,
     height: 28,
-    borderRadius: 8,
+    borderRadius: radius.sm,
     borderWidth: 1,
     borderColor: colors.brandDividerStrong,
     backgroundColor: colors.brandMutedSurface,
-    marginLeft: 8,
+    marginLeft: spacing.sm,
   },
   emptyIconLineShort: {
     position: 'absolute',
@@ -221,7 +223,7 @@ const styles = StyleSheet.create({
     top: 18,
     width: 10,
     height: 2,
-    borderRadius: 999,
+    borderRadius: radius.pill,
     backgroundColor: colors.brandAnchor,
   },
   emptyIconLineLong: {
@@ -230,7 +232,7 @@ const styles = StyleSheet.create({
     top: 26,
     width: 14,
     height: 2,
-    borderRadius: 999,
+    borderRadius: radius.pill,
     backgroundColor: colors.brandTextMuted,
   },
   emptyTitle: {
@@ -243,7 +245,7 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.sm,
     color: colors.brandTextMuted,
     textAlign: 'center',
-    marginTop: 8,
+    marginTop: spacing.sm,
     maxWidth: 320,
   },
   emptyCta: {
@@ -255,7 +257,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     backgroundColor: colors.brandPrimary,
     paddingVertical: 10,
-    paddingHorizontal: 16,
+    paddingHorizontal: spacing.lg,
   },
   emptyCtaText: {
     fontSize: typography.fontSize.sm,

@@ -1,7 +1,7 @@
 import React from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, typography } from '@theme';
+import { colors, spacing, typography } from '@theme';
 import { todayString } from '@shared/utils/date';
 import { useEvolution } from '../hooks/useEvolution';
 import { WeightInput } from '../components/WeightInput';
@@ -9,10 +9,19 @@ import { WeightLineChart } from '../components/WeightLineChart';
 import { WeeklyCalorieChart } from '@features/profile/components/WeeklyCalorieChart';
 import { StreakBadge } from '@features/profile/components/StreakBadge';
 import { useProfile } from '@features/profile/hooks/useProfile';
+import { ErrorState } from '@shared/components';
 
 export function EvolutionScreen(): React.JSX.Element {
-  const { entries, isSaving, addEntry, currentWeight, delta } = useEvolution();
+  const { entries, isSaving, addEntry, currentWeight, delta, hasError, reload } = useEvolution();
   const { weeklyData, streak } = useProfile();
+
+  if (hasError) {
+    return (
+      <SafeAreaView style={styles.safe} edges={['top']}>
+        <ErrorState onRetry={reload} />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -39,9 +48,9 @@ export function EvolutionScreen(): React.JSX.Element {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.brandBackground },
-  content: { padding: 16, gap: 10 },
-  title: { fontSize: typography.fontSize.xl, color: colors.brandAnchor, fontFamily: typography.fontFamily.bold, marginBottom: 4 },
-  section: { fontSize: typography.fontSize.md, color: colors.brandAnchor, fontFamily: typography.fontFamily.semiBold, marginTop: 16 },
+  content: { padding: spacing.lg, gap: 10 },
+  title: { fontSize: typography.fontSize.xl, color: colors.brandAnchor, fontFamily: typography.fontFamily.bold, marginBottom: spacing.xs },
+  section: { fontSize: typography.fontSize.md, color: colors.brandAnchor, fontFamily: typography.fontFamily.semiBold, marginTop: spacing.lg },
   summary: { fontSize: typography.fontSize.sm, color: colors.brandTextMuted },
   spacer: { height: 12 },
 });

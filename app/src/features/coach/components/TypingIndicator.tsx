@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { AccessibilityInfo, Animated, EmitterSubscription, StyleSheet, View } from 'react-native';
 import { Text } from '@shared/components';
-import { colors, typography } from '@theme';
+import { colors, radius, spacing, typography } from '@theme';
 import { CoachMark } from './CoachMark';
 
 function Dot({ delay }: { delay: number }): React.JSX.Element {
@@ -68,7 +68,7 @@ export function TypingIndicator(): React.JSX.Element {
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', gap: 10, alignItems: 'flex-end', marginBottom: 16 },
+  row: { flexDirection: 'row', gap: 10, alignItems: 'flex-end', marginBottom: spacing.lg },
   wrap: { maxWidth: '86%' },
   label: {
     marginBottom: 6,
@@ -79,11 +79,11 @@ const styles = StyleSheet.create({
   bubble: {
     backgroundColor: colors.brandSurface,
     borderRadius: 18,
-    borderTopLeftRadius: 8,
+    borderTopLeftRadius: radius.sm,
     borderWidth: 1,
     borderColor: colors.brandDivider,
     paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingVertical: spacing.md,
     flexDirection: 'row',
     gap: 5,
     alignItems: 'center',

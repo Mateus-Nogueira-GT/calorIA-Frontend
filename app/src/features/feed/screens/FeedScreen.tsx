@@ -9,7 +9,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, typography } from '@theme';
+import { colors, typography, spacing } from '@theme';
 import { useFeed } from '../hooks/useFeed';
 import { useFeedStore } from '../store';
 import { PostCard } from '../components/PostCard';
@@ -124,17 +124,17 @@ export function FeedScreen({ navigation }: Props): React.JSX.Element {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.brandBackground },
-  header: { paddingHorizontal: 20, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  title: { fontSize: 24, color: colors.brandAnchor, fontFamily: typography.fontFamily.bold },
-  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  headerAction: { padding: 4 },
+  header: { paddingHorizontal: spacing.xl, paddingVertical: spacing.md, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  title: { fontSize: typography.fontSize.xl, color: colors.brandAnchor, fontFamily: typography.fontFamily.bold },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  headerAction: { padding: spacing.xs },
   headerActionIcon: { fontSize: 22 },
-  listContent: { paddingHorizontal: 16, paddingBottom: 96, flexGrow: 1 },
-  footer: { paddingVertical: 16 },
+  listContent: { paddingHorizontal: spacing.lg, paddingBottom: 96, flexGrow: 1 },
+  footer: { paddingVertical: spacing.lg },
   fab: {
     position: 'absolute',
-    right: 20,
-    bottom: 24,
+    right: spacing.xl,
+    bottom: spacing.xxl,
     width: 56,
     height: 56,
     borderRadius: 28,

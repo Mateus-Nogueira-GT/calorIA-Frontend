@@ -11,7 +11,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors } from '@theme';
+import { colors, spacing, radius, typography } from '@theme';
 import { useFeedStore } from '../store';
 import { CommentRow } from '../components/CommentRow';
 import type { CommunityStackScreenProps } from '@navigation/types';
@@ -82,26 +82,26 @@ export function PostCommentsScreen({ route }: Props): React.JSX.Element {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.brandBackground },
   flex: { flex: 1 },
-  loader: { marginTop: 32 },
-  list: { padding: 16, flexGrow: 1 },
-  empty: { textAlign: 'center', color: colors.brandTextMuted, marginTop: 32, fontSize: 14 },
+  loader: { marginTop: spacing.xxxl },
+  list: { padding: spacing.lg, flexGrow: 1 },
+  empty: { textAlign: 'center', color: colors.brandTextMuted, marginTop: spacing.xxxl, fontSize: typography.fontSize.base },
   composer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    padding: 12,
+    gap: spacing.sm,
+    padding: spacing.md,
     borderTopWidth: 1,
     borderTopColor: colors.brandDivider,
   },
   input: {
     flex: 1,
     backgroundColor: colors.white,
-    borderRadius: 999,
+    borderRadius: radius.pill,
     borderWidth: 1,
     borderColor: colors.brandDivider,
-    paddingHorizontal: 16,
+    paddingHorizontal: spacing.lg,
     paddingVertical: 10,
-    fontSize: 15,
+    fontSize: typography.fontSize.base,
     color: colors.brandText,
   },
   sendBtn: {
@@ -112,5 +112,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  sendIcon: { color: colors.white, fontSize: 16 },
+  sendIcon: { color: colors.white, fontSize: typography.fontSize.md },
 });

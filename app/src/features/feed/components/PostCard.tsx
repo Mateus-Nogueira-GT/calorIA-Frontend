@@ -1,6 +1,6 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { colors, typography } from '@theme';
+import { colors, typography, spacing } from '@theme';
 import { Card } from '@shared/components/Card';
 import { Avatar } from '@shared/components/Avatar';
 import { timeAgo } from '@shared/utils/date';
@@ -35,7 +35,7 @@ export function PostCard({ post, onPressComments, onToggleLike }: Props): React.
           onPress={() => onPressComments(post.id)}
           style={styles.commentBtn}
           accessibilityRole='button'
-          hitSlop={8}
+          hitSlop={spacing.sm}
         >
           <Text style={styles.commentIcon}>💬</Text>
           <Text style={styles.commentCount}>{post.commentCount}</Text>
@@ -46,14 +46,14 @@ export function PostCard({ post, onPressComments, onToggleLike }: Props): React.
 }
 
 const styles = StyleSheet.create({
-  card: { marginBottom: 12 },
+  card: { marginBottom: spacing.md },
   header: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   headerText: { flex: 1 },
-  author: { fontSize: 15, color: colors.brandAnchor, fontFamily: typography.fontFamily.semiBold },
+  author: { fontSize: typography.fontSize.base, color: colors.brandAnchor, fontFamily: typography.fontFamily.semiBold },
   time: { fontSize: 12, color: colors.brandTextMuted, marginTop: 1 },
-  content: { fontSize: 15, color: colors.brandText, marginTop: 10, lineHeight: 21 },
-  actions: { flexDirection: 'row', alignItems: 'center', gap: 20, marginTop: 14 },
+  content: { fontSize: typography.fontSize.base, color: colors.brandText, marginTop: 10, lineHeight: 21 },
+  actions: { flexDirection: 'row', alignItems: 'center', gap: spacing.xl, marginTop: 14 },
   commentBtn: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  commentIcon: { fontSize: 16 },
-  commentCount: { fontSize: 14, color: colors.brandTextMuted, fontFamily: typography.fontFamily.medium },
+  commentIcon: { fontSize: typography.fontSize.md },
+  commentCount: { fontSize: typography.fontSize.base, color: colors.brandTextMuted, fontFamily: typography.fontFamily.medium },
 });

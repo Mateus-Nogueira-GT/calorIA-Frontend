@@ -1,7 +1,7 @@
 import React from 'react';
 import { TouchableOpacity, View, StyleSheet } from 'react-native';
 import { Text } from '@shared/components';
-import { colors, typography } from '@theme';
+import { colors, spacing, typography } from '@theme';
 
 interface ProfileMenuItemProps {
   label: string;
@@ -36,14 +36,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
+    paddingHorizontal: spacing.lg,
     paddingVertical: 14,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
   textBlock: {
     flex: 1,
-    gap: 4,
+    gap: spacing.xs,
   },
   label: {
     fontSize: typography.fontSize.base,
@@ -59,6 +59,6 @@ const styles = StyleSheet.create({
   chevron: {
     fontSize: typography.fontSize.lg,
     color: colors.textSecondary,
-    marginLeft: 8,
+    marginLeft: spacing.sm,
   },
 });

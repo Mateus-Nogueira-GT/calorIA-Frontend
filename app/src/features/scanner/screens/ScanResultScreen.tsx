@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors } from '@theme';
-import { Button } from '@shared/components/Button';
+import { colors, typography, spacing } from '@theme';
+import { Button, ErrorState } from '@shared/components';
 import { ScanResultList } from '../components/ScanResultList';
 import { useScannerStore } from '../store';
 import type { ScannerStackScreenProps } from '@navigation/types';
@@ -11,6 +11,7 @@ type Props = ScannerStackScreenProps<'ScanResult'>;
 
 export function ScanResultScreen({ navigation }: Props): React.JSX.Element {
   const items = useScannerStore((s) => s.items);
+  const error = useScannerStore((s) => s.error);
   const updateItem = useScannerStore((s) => s.updateItem);
   const removeItem = useScannerStore((s) => s.removeItem);
   const addManualItem = useScannerStore((s) => s.addManualItem);
@@ -28,6 +29,18 @@ export function ScanResultScreen({ navigation }: Props): React.JSX.Element {
       setSaving(false);
     }
   };
+
+  if (error && items.length === 0) {
+    return (
+      <SafeAreaView style={styles.safe} edges={['bottom']}>
+        <ErrorState
+          title="Não foi possível analisar a foto"
+          subtitle={error}
+          onRetry={() => navigation.getParent()?.goBack()}
+        />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>
@@ -53,12 +66,12 @@ export function ScanResultScreen({ navigation }: Props): React.JSX.Element {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.brandBackground },
-  content: { padding: 16 },
+  content: { padding: spacing.lg },
   empty: {
-    fontSize: 14,
+    fontSize: typography.fontSize.base,
     color: colors.brandTextMuted,
     textAlign: 'center',
-    marginBottom: 12,
+    marginBottom: spacing.md,
   },
-  footer: { padding: 16, borderTopWidth: 1, borderTopColor: colors.brandDivider },
+  footer: { padding: spacing.lg, borderTopWidth: 1, borderTopColor: colors.brandDivider },
 });

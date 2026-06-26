@@ -1,7 +1,7 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Text } from '@shared/components';
-import { colors, typography } from '@theme';
+import { colors, typography, spacing, radius } from '@theme';
 import { Meal } from '@shared/services/food-log.service';
 import { FoodLogItem } from './FoodLogItem';
 
@@ -31,7 +31,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 8,
+    marginBottom: spacing.sm,
     paddingHorizontal: 2,
     gap: 10,
   },
@@ -46,7 +46,7 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: colors.brandSurface,
-    borderRadius: 16,
+    borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: colors.brandDivider,
     overflow: 'hidden',

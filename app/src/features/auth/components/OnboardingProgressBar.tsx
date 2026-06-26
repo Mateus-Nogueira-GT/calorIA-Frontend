@@ -1,7 +1,7 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Text } from '@shared/components';
-import { colors } from '@theme';
+import { colors, spacing } from '@theme';
 
 interface Props {
   current: number;
@@ -24,8 +24,8 @@ export function OnboardingProgressBar({ current, total }: Props): React.JSX.Elem
 }
 
 const styles = StyleSheet.create({
-  container: { paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: colors.border },
-  labelRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
+  container: { paddingHorizontal: spacing.xl, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: colors.border },
+  labelRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: spacing.sm },
   track: { height: 3, backgroundColor: colors.border, borderRadius: 2 },
   fill: { height: 3, backgroundColor: colors.primary, borderRadius: 2 },
 });

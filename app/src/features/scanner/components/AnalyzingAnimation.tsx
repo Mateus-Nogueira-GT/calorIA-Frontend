@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { Animated, StyleSheet, Text, View } from 'react-native';
-import { colors, typography } from '@theme';
+import { colors, typography, spacing } from '@theme';
 
 export function AnalyzingAnimation(): React.JSX.Element {
   const scale = useRef(new Animated.Value(0.85)).current;
@@ -30,7 +30,7 @@ const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 16,
+    gap: spacing.lg,
     paddingVertical: 48,
   },
   pulse: {
@@ -43,7 +43,7 @@ const styles = StyleSheet.create({
   },
   emoji: { fontSize: 40 },
   text: {
-    fontSize: 16,
+    fontSize: typography.fontSize.md,
     color: colors.brandAnchor,
     fontFamily: typography.fontFamily.semiBold,
   },

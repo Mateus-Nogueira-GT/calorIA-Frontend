@@ -1,6 +1,6 @@
 import React, { useRef } from 'react';
 import { Animated, Pressable, StyleSheet, Text } from 'react-native';
-import { colors, typography } from '@theme';
+import { colors, typography, spacing } from '@theme';
 
 interface Props {
   liked: boolean;
@@ -31,7 +31,7 @@ export function LikeButton({ liked, count, onPress }: Props): React.JSX.Element 
       accessibilityRole='button'
       accessibilityState={{ selected: liked }}
       style={styles.row}
-      hitSlop={8}
+      hitSlop={spacing.sm}
     >
       <Animated.Text style={[styles.heart, { color: heartColor, transform: [{ scale }] }]}>
         {liked ? '♥' : '♡'}
@@ -43,6 +43,6 @@ export function LikeButton({ liked, count, onPress }: Props): React.JSX.Element 
 
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  heart: { fontSize: 20 },
-  count: { fontSize: 14, color: colors.brandTextMuted, fontFamily: typography.fontFamily.medium },
+  heart: { fontSize: typography.fontSize.lg },
+  count: { fontSize: typography.fontSize.base, color: colors.brandTextMuted, fontFamily: typography.fontFamily.medium },
 });

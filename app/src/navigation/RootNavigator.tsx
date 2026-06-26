@@ -46,7 +46,7 @@ function isAppPreviewEnabled(): boolean {
 
 function AuthNavigator(): React.JSX.Element {
   return (
-    <AuthStack.Navigator screenOptions={{ headerShown: false }}>
+    <AuthStack.Navigator screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
       <AuthStack.Screen name='Welcome' component={WelcomeScreen} />
       <AuthStack.Screen name='Register' component={RegisterScreen} />
       <AuthStack.Screen name='Login' component={LoginScreen} />
@@ -63,7 +63,7 @@ export function RootNavigator(): React.JSX.Element {
   return (
     <NavigationContainer linking={linking}>
       {showAuthenticatedApp ? (
-        <RootStack.Navigator screenOptions={{ headerShown: false }}>
+        <RootStack.Navigator screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
           <RootStack.Screen name='App' component={BrandTabNavigator} />
           <RootStack.Screen
             name='ProfileGoals'

@@ -93,8 +93,9 @@ export const useChallengesStore = create<ChallengesState>((set, get) => ({
         loadingLeaderboardId: null,
         leaderboardByChallenge: { ...s.leaderboardByChallenge, [challengeId]: entries },
       }));
-    } catch {
+    } catch (e) {
       set({ loadingLeaderboardId: null });
+      throw e;
     }
   },
 

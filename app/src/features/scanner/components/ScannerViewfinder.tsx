@@ -2,7 +2,7 @@
 import React from 'react';
 import { Alert, View, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import { Text } from '@shared/components';
-import { colors, typography } from '@theme';
+import { colors, radius, typography } from '@theme';
 
 interface Props { onPickImage: (dataUrl: string) => void; isAnalyzing: boolean }
 
@@ -90,7 +90,7 @@ const styles = StyleSheet.create({
   container: {
     backgroundColor: colors.brandAnchor,
     borderColor: colors.brandDivider,
-    borderRadius: 16,
+    borderRadius: radius.lg,
     borderWidth: 1,
     height: 220,
     alignItems: 'center',

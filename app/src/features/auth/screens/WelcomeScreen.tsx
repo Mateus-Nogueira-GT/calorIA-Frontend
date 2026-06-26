@@ -1,7 +1,7 @@
 import React from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, typography } from '@theme';
+import { colors, typography, spacing, radius } from '@theme';
 import { Button, Text } from '@shared/components';
 import type { AuthStackScreenProps } from '@navigation/types';
 
@@ -72,7 +72,7 @@ const styles = StyleSheet.create({
     maxWidth: 420,
     alignSelf: 'center',
     justifyContent: 'center',
-    paddingVertical: 32,
+    paddingVertical: spacing.xxxl,
     transform: [{ translateY: -18 }],
   },
   brandBlock: {
@@ -94,7 +94,7 @@ const styles = StyleSheet.create({
   tagline: {
     color: colors.brandText,
     fontFamily: interfaceFont,
-    fontSize: 16,
+    fontSize: typography.fontSize.md,
     lineHeight: 23,
     marginTop: 22,
     maxWidth: 320,
@@ -102,14 +102,14 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   actions: {
-    gap: 12,
+    gap: spacing.md,
     marginTop: 38,
     width: '100%',
   },
   button: {
-    borderRadius: 16,
+    borderRadius: radius.lg,
     minHeight: 52,
-    paddingHorizontal: 20,
+    paddingHorizontal: spacing.xl,
     paddingVertical: 0,
     width: '100%',
   },
@@ -124,13 +124,13 @@ const styles = StyleSheet.create({
   primaryButtonLabel: {
     color: colors.brandAnchor,
     fontFamily: interfaceSemiBoldFont,
-    fontSize: 16,
+    fontSize: typography.fontSize.md,
     fontWeight: typography.fontWeight.semiBold,
   },
   secondaryButtonLabel: {
     color: colors.brandAnchor,
     fontFamily: interfaceSemiBoldFont,
-    fontSize: 16,
+    fontSize: typography.fontSize.md,
     fontWeight: typography.fontWeight.semiBold,
   },
 });

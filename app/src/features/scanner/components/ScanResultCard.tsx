@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
 import { Text, Button } from '@shared/components';
-import { colors, typography } from '@theme';
+import { colors, radius, spacing, typography } from '@theme';
 import { ScanResult } from '@shared/services/scanner.service';
 import { ConfidenceBadge } from './ConfidenceBadge';
 
@@ -43,12 +43,12 @@ export function ScanResultCard({ result, onAdd, onReset }: Props): React.JSX.Ele
 }
 
 const styles = StyleSheet.create({
-  card: { backgroundColor: colors.brandSurface, borderRadius: 16, borderWidth: 1, borderColor: colors.brandDivider, padding: 16 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 },
+  card: { backgroundColor: colors.brandSurface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.brandDivider, padding: spacing.lg },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: spacing.lg },
   name: { fontSize: typography.fontSize.lg, fontFamily: typography.fontFamily.bold, color: colors.brandAnchor, marginBottom: 6 },
   calories: { fontSize: typography.fontSize.xxl, fontFamily: typography.fontFamily.extraBold, color: colors.brandPrimary },
   unit: { fontSize: typography.fontSize.sm, color: colors.brandText, fontFamily: typography.fontFamily.regular },
-  macros: { flexDirection: 'row', justifyContent: 'space-around', backgroundColor: colors.brandMutedSurface, borderRadius: 10, padding: 12, marginBottom: 16 },
+  macros: { flexDirection: 'row', justifyContent: 'space-around', backgroundColor: colors.brandMutedSurface, borderRadius: 10, padding: spacing.md, marginBottom: spacing.lg },
   macroItem: { alignItems: 'center' },
   macroValue: { fontSize: typography.fontSize.md, fontFamily: typography.fontFamily.bold },
   macroLabel: { fontSize: typography.fontSize.xs, color: colors.brandText, marginTop: 2 },

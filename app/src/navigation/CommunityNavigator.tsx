@@ -22,6 +22,7 @@ export function CommunityNavigator(): React.JSX.Element {
         headerStyle: { backgroundColor: colors.brandBackground },
         headerTintColor: colors.brandAnchor,
         headerShadowVisible: false,
+        animation: 'slide_from_right',
       }}
     >
       <Stack.Screen name='Feed' component={FeedScreen} options={{ headerShown: false }} />

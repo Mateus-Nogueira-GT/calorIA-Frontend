@@ -1,7 +1,7 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Text } from '@shared/components';
-import { colors, typography } from '@theme';
+import { colors, typography, spacing } from '@theme';
 import { Meal } from '@shared/services/food-log.service';
 
 interface Props { meals: Meal[] }
@@ -68,13 +68,13 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.brandDivider,
     marginTop: 2,
-    paddingTop: 8,
+    paddingTop: spacing.sm,
   },
   stat: {
     width: '50%',
-    paddingTop: 12,
+    paddingTop: spacing.md,
     paddingBottom: 10,
-    paddingRight: 12,
+    paddingRight: spacing.md,
   },
   statBottom: {
     borderTopWidth: 1,

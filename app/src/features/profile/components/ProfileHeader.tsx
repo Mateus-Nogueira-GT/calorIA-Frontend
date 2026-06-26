@@ -1,7 +1,7 @@
 import React from 'react';
 import { Image, StyleSheet, View } from 'react-native';
 import { Text } from '@shared/components';
-import { colors, typography } from '@theme';
+import { colors, spacing, typography } from '@theme';
 
 interface ProfileHeaderProps {
   name: string;
@@ -44,12 +44,12 @@ export function ProfileHeader({ name, email, avatarUri }: ProfileHeaderProps): R
 
 const styles = StyleSheet.create({
   container: {
-    paddingVertical: 8,
+    paddingVertical: spacing.sm,
   },
   identityRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
+    gap: spacing.lg,
   },
   avatar: {
     width: 72,
@@ -71,7 +71,7 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.xl,
     fontFamily: typography.fontFamily.bold,
     color: colors.brandAnchor,
-    marginBottom: 4,
+    marginBottom: spacing.xs,
   },
   email: {
     fontSize: typography.fontSize.sm,

@@ -1,7 +1,7 @@
 import React from 'react';
 import { ActivityIndicator, Alert, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Text } from '@shared/components';
-import { colors, typography } from '@theme';
+import { colors, typography, spacing } from '@theme';
 import { useDietStore } from '@features/diet/store';
 
 interface Props {
@@ -46,15 +46,15 @@ export function GenerateDietButton({ onSuccess }: Props): React.JSX.Element {
 }
 
 const styles = StyleSheet.create({
-  row: { marginBottom: 16, paddingLeft: 40, paddingRight: 8 },
+  row: { marginBottom: spacing.lg, paddingLeft: 40, paddingRight: spacing.sm },
   btn: {
     backgroundColor: colors.brandPrimary,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
     borderRadius: 14,
     alignItems: 'center',
   },
   btnDisabled: { opacity: 0.7 },
   loadingRow: { flexDirection: 'row', alignItems: 'center' },
-  btnText: { color: colors.brandAnchor, fontFamily: typography.fontFamily.bold, fontSize: 14 },
+  btnText: { color: colors.brandAnchor, fontFamily: typography.fontFamily.bold, fontSize: typography.fontSize.base },
 });

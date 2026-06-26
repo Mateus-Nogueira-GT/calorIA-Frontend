@@ -9,7 +9,7 @@ import {
   TextStyle,
   ViewStyle,
 } from 'react-native';
-import { colors, typography } from '@theme';
+import { colors, typography, spacing, radius } from '@theme';
 import { Text } from './Text';
 
 type Variant = 'primary' | 'secondary' | 'ghost';
@@ -103,7 +103,7 @@ export function Button({
 
 const styles = StyleSheet.create({
   base: {
-    borderRadius: 12,
+    borderRadius: radius.md,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
@@ -123,9 +123,9 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   ghost: { backgroundColor: colors.transparent },
-  sm: { paddingVertical: 8, paddingHorizontal: 16 },
-  md: { paddingVertical: 14, paddingHorizontal: 24 },
-  lg: { paddingVertical: 18, paddingHorizontal: 32 },
+  sm: { paddingVertical: spacing.sm, paddingHorizontal: spacing.lg },
+  md: { paddingVertical: 14, paddingHorizontal: spacing.xxl },
+  lg: { paddingVertical: 18, paddingHorizontal: spacing.xxxl },
   disabled: { opacity: 0.5 },
   label: {
     fontFamily: typography.fontFamily.semiBold,

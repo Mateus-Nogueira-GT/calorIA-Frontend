@@ -1,5 +1,5 @@
 import React from 'react';
-import { render } from '@testing-library/react-native';
+import { render, act } from '@testing-library/react-native';
 import { FoodLogScreen } from './FoodLogScreen';
 import { useFoodLogStore } from '../store';
 
@@ -20,15 +20,17 @@ jest.mock('@features/diet/store', () => ({
 beforeEach(() => useFoodLogStore.setState({ mealsByDate: {}, loadingByDate: {}, selectedDate: '2026-06-09' }));
 
 describe('FoodLogScreen', () => {
-  it('renderiza o titulo e o CTA principal', () => {
+  it('renderiza o titulo e o CTA principal', async () => {
     const { getByText } = render(<FoodLogScreen />);
     expect(getByText('Diário alimentar')).toBeTruthy();
     expect(getByText('Adicionar refeição')).toBeTruthy();
+    await act(async () => {}); // drena o load assíncrono do useFoodLog
   });
 
-  it('exibe "Hoje" como chip selecionado', () => {
+  it('exibe "Hoje" como chip selecionado', async () => {
     const { getAllByText } = render(<FoodLogScreen />);
     expect(getAllByText('Hoje').length).toBeGreaterThan(0);
+    await act(async () => {}); // drena o load assíncrono do useFoodLog
   });
 
   it('exibe refeicoes apos carregamento', async () => {

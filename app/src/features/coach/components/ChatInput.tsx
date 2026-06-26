@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, NativeSyntheticEvent, Platform, StyleSheet, TextInput, TextInputKeyPressEventData, TouchableOpacity, View } from 'react-native';
-import { colors, typography } from '@theme';
+import { colors, radius, spacing, typography } from '@theme';
 
 interface Props {
   onSend: (text: string) => Promise<boolean>;
@@ -50,7 +50,7 @@ export function ChatInput({ onSend, disabled }: Props): React.JSX.Element {
   }
 
   return (
-    <View style={[styles.container, { paddingBottom: 12 + keyboardInset }]}>
+    <View style={[styles.container, { paddingBottom: spacing.md + keyboardInset }]}>
       <TextInput
         style={styles.input}
         placeholder="Pergunte ao Coach..."
@@ -84,8 +84,8 @@ export function ChatInput({ onSend, disabled }: Props): React.JSX.Element {
 const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
-    padding: 12,
-    gap: 8,
+    padding: spacing.md,
+    gap: spacing.sm,
     borderTopWidth: 1,
     borderTopColor: colors.brandDivider,
     backgroundColor: colors.brandBackground,
@@ -98,8 +98,8 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     borderWidth: 1,
     borderColor: colors.brandDivider,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
     fontFamily: typography.fontFamily.regular,
     fontSize: typography.fontSize.base,
     color: colors.brandText,
@@ -109,7 +109,7 @@ const styles = StyleSheet.create({
   sendBtn: {
     width: 48,
     height: 48,
-    borderRadius: 16,
+    borderRadius: radius.lg,
     backgroundColor: colors.brandPrimary,
     alignItems: 'center',
     justifyContent: 'center',

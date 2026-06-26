@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, FlatList, StyleSheet, Text, View } from 'react-native';
+import { FlatList, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, typography } from '@theme';
+import { colors, typography, spacing } from '@theme';
 import { useChallengesStore } from '../store';
 import { LeaderboardRow } from '../components/LeaderboardRow';
 import { InviteButton } from '../components/InviteButton';
+import { ErrorState } from '@shared/components';
 import type { Challenge } from '@shared/services/challenges.service';
 import type { CommunityStackScreenProps } from '@navigation/types';
 
@@ -19,21 +20,28 @@ export function ChallengeLeaderboardScreen({ route }: Props): React.JSX.Element 
   const resolveInvite = useChallengesStore((s) => s.resolveInvite);
 
   const [resolvedId, setResolvedId] = useState<string | undefined>(challengeId);
+  const [hasError, setHasError] = useState(false);
 
-  useEffect(() => {
-    let active = true;
-    async function init() {
-      let id = challengeId;
+  async function init() {
+    let id = challengeId;
+    try {
       if (!id && code) {
         const challenge: Challenge = await resolveInvite(code);
         id = challenge.id;
       }
-      if (active && id) {
+      if (id) {
         setResolvedId(id);
-        loadLeaderboard(id);
+        await loadLeaderboard(id);
       }
+    } catch {
+      setHasError(true);
     }
-    init().catch(() => {});
+  }
+
+  useEffect(() => {
+    let active = true;
+    if (!active) return;
+    void init();
     return () => {
       active = false;
     };
@@ -42,6 +50,19 @@ export function ChallengeLeaderboardScreen({ route }: Props): React.JSX.Element 
   const challenge = challenges.find((c) => c.id === resolvedId);
   const entries = resolvedId ? leaderboardByChallenge[resolvedId] ?? [] : [];
   const isLoading = loadingId === resolvedId && entries.length === 0;
+
+  const reload = () => {
+    setHasError(false);
+    void init();
+  };
+
+  if (hasError) {
+    return (
+      <SafeAreaView style={styles.safe} edges={['bottom']}>
+        <ErrorState onRetry={reload} />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>
@@ -61,7 +82,7 @@ export function ChallengeLeaderboardScreen({ route }: Props): React.JSX.Element 
           </View>
         }
         renderItem={({ item }) => <LeaderboardRow entry={item} />}
-        ListEmptyComponent={isLoading ? <ActivityIndicator color={colors.brandPrimary} style={styles.loader} /> : <Text style={styles.empty}>Ranking ainda vazio.</Text>}
+        ListEmptyComponent={isLoading ? null : <Text style={styles.empty}>Ranking ainda vazio.</Text>}
       />
     </SafeAreaView>
   );
@@ -69,11 +90,10 @@ export function ChallengeLeaderboardScreen({ route }: Props): React.JSX.Element 
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.brandBackground },
-  list: { padding: 16, flexGrow: 1 },
-  header: { marginBottom: 12, gap: 4 },
+  list: { padding: spacing.lg, flexGrow: 1 },
+  header: { marginBottom: spacing.md, gap: spacing.xs },
   title: { fontSize: 22, color: colors.brandAnchor, fontFamily: typography.fontFamily.bold },
-  subtitle: { fontSize: 13, color: colors.brandTextMuted },
-  invite: { marginTop: 12 },
-  loader: { marginTop: 32 },
-  empty: { textAlign: 'center', color: colors.brandTextMuted, marginTop: 32, fontSize: 14 },
+  subtitle: { fontSize: typography.fontSize.sm, color: colors.brandTextMuted },
+  invite: { marginTop: spacing.md },
+  empty: { textAlign: 'center', color: colors.brandTextMuted, marginTop: spacing.xxxl, fontSize: typography.fontSize.base },
 });
