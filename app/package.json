@@ -97,7 +97,8 @@
     "moduleNameMapper": {
       "\\.(png|jpg|jpeg|gif|svg|webp)$": "<rootDir>/__mocks__/fileMock.js",
       "^@react-native-google-signin/google-signin$": "<rootDir>/__mocks__/@react-native-google-signin/google-signin.js",
-      "AndroidHorizontalScrollContentViewNativeComponent": "<rootDir>/__mocks__/nativeComponentMock.js"
+      "AndroidHorizontalScrollContentViewNativeComponent": "<rootDir>/__mocks__/nativeComponentMock.js",
+      "^@env$": "<rootDir>/__mocks__/@env.js"
     }
   }
 }

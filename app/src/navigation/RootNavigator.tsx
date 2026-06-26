@@ -12,10 +12,29 @@ import { ProfileCoachPersonalityScreen } from '@features/profile/screens/Profile
 import { BrandTabNavigator } from './BrandTabNavigator';
 import { ScannerNavigator } from './ScannerNavigator';
 import { useAuthStore } from '@features/auth/store';
+import type { LinkingOptions } from '@react-navigation/native';
 import type { AuthStackParamList, RootStackParamList } from './types';
 
 const RootStack = createNativeStackNavigator<RootStackParamList>();
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
+
+const linking: LinkingOptions<RootStackParamList> = {
+  prefixes: ['caloria://', 'https://caloria.app'],
+  config: {
+    screens: {
+      App: {
+        screens: {
+          Community: {
+            screens: {
+              PostComments: 'post/:postId',
+              ChallengeLeaderboard: 'challenge/:code',
+            },
+          },
+        },
+      },
+    },
+  },
+};
 
 function isAppPreviewEnabled(): boolean {
   if (Platform.OS !== 'web' || typeof window === 'undefined') {
@@ -42,7 +61,7 @@ export function RootNavigator(): React.JSX.Element {
   const showAuthenticatedApp = isAuthenticated || isAppPreviewEnabled();
 
   return (
-    <NavigationContainer>
+    <NavigationContainer linking={linking}>
       {showAuthenticatedApp ? (
         <RootStack.Navigator screenOptions={{ headerShown: false }}>
           <RootStack.Screen name='App' component={BrandTabNavigator} />

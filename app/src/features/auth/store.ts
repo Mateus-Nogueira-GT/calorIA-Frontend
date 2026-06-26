@@ -3,6 +3,9 @@ import { useDietStore } from '@features/diet/store';
 import { useFoodLogStore } from '@features/food-log/store';
 import { useScannerStore } from '@features/scanner/store';
 import { useWeightStore } from '@features/evolution/store';
+import { useFeedStore } from '@features/feed/store';
+import { useChallengesStore } from '@features/challenges/store';
+import { useNotificationsStore } from '@features/notifications/store';
 
 interface User {
   id: string;
@@ -190,6 +193,9 @@ export const useAuthStore = create<AuthState>((set) => ({
     useFoodLogStore.getState().clear();
     useScannerStore.getState().clear();
     useWeightStore.getState().clear();
+    useFeedStore.getState().clear();
+    useChallengesStore.getState().clear();
+    useNotificationsStore.getState().clear();
     clearPreviewQueryOnWeb();
     set({
       token: null,

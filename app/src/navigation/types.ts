@@ -11,12 +11,24 @@ export type AuthStackParamList = {
   ProfileSetup: undefined;
 };
 
+// Community Stack
+export type CommunityStackParamList = {
+  Feed: undefined;
+  CreatePost: undefined;
+  PostComments: { postId: string };
+  Challenges: undefined;
+  CreateChallenge: undefined;
+  ChallengeLeaderboard: { challengeId?: string; code?: string };
+  Notifications: undefined;
+};
+
 // Tab Navigator
 export type TabParamList = {
   Dashboard: undefined;
   FoodLog: undefined;
   CameraAction: undefined;
   Coach: undefined;
+  Community: NavigatorScreenParams<CommunityStackParamList>;
   Profile: undefined;
   Evolution: undefined;
 };
@@ -51,3 +63,9 @@ export type RootStackScreenProps<T extends keyof RootStackParamList> =
 
 export type ScannerStackScreenProps<T extends keyof ScannerStackParamList> =
   NativeStackScreenProps<ScannerStackParamList, T>;
+
+export type CommunityStackScreenProps<T extends keyof CommunityStackParamList> =
+  CompositeScreenProps<
+    NativeStackScreenProps<CommunityStackParamList, T>,
+    TabScreenProps<'Community'>
+  >;

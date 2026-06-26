@@ -1,0 +1,50 @@
+import React from 'react';
+import { StyleSheet, Text, View } from 'react-native';
+import { colors, typography } from '@theme';
+import { Card } from '@shared/components/Card';
+import { Button } from '@shared/components/Button';
+import { formatChipLabel } from '@shared/utils/date';
+import type { Challenge } from '@shared/services/challenges.service';
+
+interface Props {
+  challenge: Challenge;
+  onPress: () => void;
+  onJoin: () => void;
+  joining: boolean;
+}
+
+export function ChallengeCard({ challenge, onPress, onJoin, joining }: Props): React.JSX.Element {
+  return (
+    <Card onPress={onPress} style={styles.card} testID={`challenge-${challenge.id}`}>
+      <View style={styles.header}>
+        <Text style={styles.emoji}>{challenge.emoji}</Text>
+        <View style={styles.headerText}>
+          <Text style={styles.title}>{challenge.title}</Text>
+          <Text style={styles.meta}>
+            {formatChipLabel(challenge.startDate)} – {formatChipLabel(challenge.endDate)} · {challenge.participantCount} participantes
+          </Text>
+        </View>
+      </View>
+      <Text style={styles.description} numberOfLines={2}>{challenge.description}</Text>
+      {challenge.joinedByMe ? (
+        <View style={styles.joinedBadge}>
+          <Text style={styles.joinedText}>✓ Participando</Text>
+        </View>
+      ) : (
+        <Button size='sm' onPress={onJoin} loading={joining}>Participar</Button>
+      )}
+    </Card>
+  );
+}
+
+const styles = StyleSheet.create({
+  card: { marginBottom: 12, gap: 10 },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  emoji: { fontSize: 30 },
+  headerText: { flex: 1 },
+  title: { fontSize: 17, color: colors.brandAnchor, fontFamily: typography.fontFamily.bold },
+  meta: { fontSize: 12, color: colors.brandTextMuted, marginTop: 2 },
+  description: { fontSize: 14, color: colors.brandText, lineHeight: 20 },
+  joinedBadge: { alignSelf: 'flex-start', backgroundColor: colors.brandSupportSoft, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 },
+  joinedText: { fontSize: 13, color: colors.brandAnchor, fontFamily: typography.fontFamily.semiBold },
+});
