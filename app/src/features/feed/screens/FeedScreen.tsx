@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, typography, spacing } from '@theme';
+import { ScreenContainer } from '@shared/components';
 import { useFeed } from '../hooks/useFeed';
 import { useFeedStore } from '../store';
 import { PostCard } from '../components/PostCard';
@@ -27,6 +28,7 @@ export function FeedScreen({ navigation }: Props): React.JSX.Element {
     isLoadingInitial,
     isLoadingMore,
     isRefreshing,
+    hasMore,
     loadInitial,
     loadMore,
     refresh,
@@ -60,6 +62,7 @@ export function FeedScreen({ navigation }: Props): React.JSX.Element {
         </View>
       </View>
 
+      <ScreenContainer>
       {isLoadingInitial ? (
         <View style={styles.listContent}>
           {[0, 1, 2].map((i) => (
@@ -78,8 +81,9 @@ export function FeedScreen({ navigation }: Props): React.JSX.Element {
               onPressComments={(id) => navigation.navigate('PostComments', { postId: id })}
             />
           )}
+          testID='feed-list'
           onEndReachedThreshold={0.4}
-          onEndReached={() => loadMore()}
+          onEndReached={() => { if (hasMore && !isLoadingMore) loadMore(); }}
           refreshControl={
             <RefreshControl
               refreshing={isRefreshing}
@@ -109,6 +113,7 @@ export function FeedScreen({ navigation }: Props): React.JSX.Element {
           }
         />
       )}
+      </ScreenContainer>
 
       <Pressable
         style={styles.fab}

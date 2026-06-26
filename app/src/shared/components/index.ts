@@ -6,3 +6,4 @@ export { Avatar } from './Avatar';
 export { Skeleton } from './Skeleton';
 export { EmptyState } from './EmptyState';
 export { ErrorState } from './ErrorState';
+export { ScreenContainer } from './ScreenContainer';

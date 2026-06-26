@@ -9,7 +9,7 @@ import { WeightLineChart } from '../components/WeightLineChart';
 import { WeeklyCalorieChart } from '@features/profile/components/WeeklyCalorieChart';
 import { StreakBadge } from '@features/profile/components/StreakBadge';
 import { useProfile } from '@features/profile/hooks/useProfile';
-import { ErrorState } from '@shared/components';
+import { ErrorState, ScreenContainer } from '@shared/components';
 
 export function EvolutionScreen(): React.JSX.Element {
   const { entries, isSaving, addEntry, currentWeight, delta, hasError, reload } = useEvolution();
@@ -25,6 +25,7 @@ export function EvolutionScreen(): React.JSX.Element {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
+      <ScreenContainer>
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.title}>Evolução</Text>
 
@@ -42,6 +43,7 @@ export function EvolutionScreen(): React.JSX.Element {
         <Text style={styles.section}>Sequência</Text>
         {streak > 0 ? <StreakBadge days={streak} /> : <Text style={styles.summary}>Sem sequência ativa.</Text>}
       </ScrollView>
+      </ScreenContainer>
     </SafeAreaView>
   );
 }

@@ -35,6 +35,7 @@ export function PostCard({ post, onPressComments, onToggleLike }: Props): React.
           onPress={() => onPressComments(post.id)}
           style={styles.commentBtn}
           accessibilityRole='button'
+          accessibilityLabel={`${post.commentCount} comentários`}
           hitSlop={spacing.sm}
         >
           <Text style={styles.commentIcon}>💬</Text>

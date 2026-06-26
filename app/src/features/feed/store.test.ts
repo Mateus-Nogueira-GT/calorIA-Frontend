@@ -107,6 +107,21 @@ describe('useFeedStore', () => {
     expect(result.current.commentsByPost.p1.at(-1)?.id).toBe('real');
   });
 
+  it('addComment em erro remove comentário otimista e reverte commentCount', async () => {
+    useFeedStore.setState({ posts: [post('p1', { commentCount: 0 })], commentsByPost: { p1: [] } });
+    feedService.addComment.mockRejectedValue(new Error('fail'));
+    const { result } = renderHook(() => useFeedStore());
+    await act(async () => {
+      try {
+        await result.current.addComment('p1', 'c');
+      } catch {
+        /* expected */
+      }
+    });
+    expect(result.current.posts[0].commentCount).toBe(0);
+    expect(result.current.commentsByPost.p1).toHaveLength(0);
+  });
+
   it('clear zera o estado', () => {
     useFeedStore.setState({ posts: [post('p1')], nextCursor: 'c1' });
     useFeedStore.getState().clear();

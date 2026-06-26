@@ -6,7 +6,7 @@ import { useChallengesStore } from '../store';
 import { ChallengeCard } from '../components/ChallengeCard';
 import { EmptyChallengesState } from '../components/EmptyChallengesState';
 import { MealCardSkeleton } from '@features/diet/components/MealCardSkeleton';
-import { ErrorState } from '@shared/components';
+import { ErrorState, ScreenContainer } from '@shared/components';
 import type { CommunityStackScreenProps } from '@navigation/types';
 
 type Props = CommunityStackScreenProps<'Challenges'>;
@@ -36,6 +36,7 @@ export function ChallengesScreen({ navigation }: Props): React.JSX.Element {
         <Text style={styles.title}>Desafios</Text>
       </View>
 
+      <ScreenContainer>
       {isLoading && challenges.length === 0 ? (
         <View style={styles.listContent}>
           {[0, 1].map((i) => (
@@ -60,6 +61,7 @@ export function ChallengesScreen({ navigation }: Props): React.JSX.Element {
           ListEmptyComponent={<EmptyChallengesState onCreate={goCreate} />}
         />
       )}
+      </ScreenContainer>
 
       <Pressable style={styles.fab} onPress={goCreate} accessibilityRole='button' accessibilityLabel='Criar desafio'>
         <Text style={styles.fabIcon}>＋</Text>

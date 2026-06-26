@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
-import { Text, ErrorState } from '@shared/components';
+import { Text, ErrorState, ScreenContainer } from '@shared/components';
 import { colors, typography, spacing, radius } from '@theme';
 import { useFoodLog } from '../hooks/useFoodLog';
 import { DateChip } from '../components/DateChip';
@@ -61,15 +61,15 @@ export function FoodLogScreen(): React.JSX.Element {
 
   return (
     <View style={styles.container}>
-      <View style={styles.shell}>
-        <View style={styles.header}>
-          <Text style={styles.title}>Diário alimentar</Text>
-          <TouchableOpacity onPress={openAddMealFlow} style={styles.addBtn} accessibilityRole='button' testID='food-log-add-button'>
-            <AddMealGlyph />
-            <Text style={styles.addBtnText}>{addMealLabel}</Text>
-          </TouchableOpacity>
-        </View>
+      <View style={styles.header}>
+        <Text style={styles.title}>Diário alimentar</Text>
+        <TouchableOpacity onPress={openAddMealFlow} style={styles.addBtn} accessibilityRole='button' testID='food-log-add-button'>
+          <AddMealGlyph />
+          <Text style={styles.addBtnText}>{addMealLabel}</Text>
+        </TouchableOpacity>
+      </View>
 
+      <ScreenContainer>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -115,7 +115,7 @@ export function FoodLogScreen(): React.JSX.Element {
             )}
           </ScrollView>
         )}
-      </View>
+      </ScreenContainer>
 
       <AddMealModal visible={modalVisible} onClose={() => setModalVisible(false)} onSubmit={handleAddMeal} />
     </View>

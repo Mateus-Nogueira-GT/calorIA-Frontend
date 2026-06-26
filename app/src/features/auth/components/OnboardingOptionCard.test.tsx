@@ -45,7 +45,7 @@ describe('OnboardingOptionCard', () => {
     );
     const el = getByTestId('card');
     expect(el.props.style).toEqual(
-      expect.arrayContaining([expect.objectContaining({ borderColor: '#3DDC84' })]),
+      expect.objectContaining({ borderColor: '#3DDC84' }),
     );
   });
 });

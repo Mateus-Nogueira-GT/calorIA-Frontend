@@ -145,6 +145,7 @@ export function BrandTabNavigator(): React.JSX.Element {
       <Tab.Screen
         name='CameraAction'
         component={DashboardScreen}
+        listeners={{ tabPress: (e) => e.preventDefault() }}
         options={{
           tabBarButton: () => (
             <CameraTabButton onPress={() => rootNavigation.navigate('Scanner')} />

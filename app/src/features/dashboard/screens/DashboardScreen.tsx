@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
-import { Text } from '@shared/components';
+import { Text, ScreenContainer } from '@shared/components';
 import { colors, typography, spacing, radius } from '@theme';
 import { useAuthStore } from '@features/auth/store';
 import { useFoodLogStore } from '@features/food-log/store';
@@ -100,11 +100,12 @@ export function DashboardScreen(): React.JSX.Element {
   const proteinGoal = plan?.totalProtein ?? DEFAULT_PROTEIN_GOAL;
   const carbsGoal = plan?.totalCarbs ?? DEFAULT_CARBS_GOAL;
   const fatGoal = plan?.totalFat ?? DEFAULT_FAT_GOAL;
-  const greetingLabel = user?.name ? `Ola, ${user.name}` : 'Seu resumo de hoje';
+  const greetingLabel = user?.name ? `Olá, ${user.name}` : 'Seu resumo de hoje';
   const percentLabel = calorieGoal > 0 ? Math.round((totals.calories / calorieGoal) * 100) : 0;
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScreenContainer>
+      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.shell}>
         <View style={styles.headerRow}>
           <Text style={styles.date}>{todayLabel()}</Text>
@@ -141,7 +142,7 @@ export function DashboardScreen(): React.JSX.Element {
         <DietPlanSection />
 
         <View style={[styles.sectionHeader, styles.freeDiaryHeader]}>
-          <Text style={styles.sectionTitle}>Diario alimentar</Text>
+          <Text style={styles.sectionTitle}>Diário alimentar</Text>
           <Text style={styles.sectionSubtitle}>Registros adicionados fora do plano do dia.</Text>
         </View>
 
@@ -165,7 +166,8 @@ export function DashboardScreen(): React.JSX.Element {
           </View>
         )}
       </View>
-    </ScrollView>
+      </ScrollView>
+    </ScreenContainer>
   );
 }
 

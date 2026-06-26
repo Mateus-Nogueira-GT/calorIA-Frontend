@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, typography, spacing } from '@theme';
-import { Button, ErrorState } from '@shared/components';
+import { Button, ErrorState, ScreenContainer } from '@shared/components';
 import { ScanResultList } from '../components/ScanResultList';
 import { useScannerStore } from '../store';
 import type { ScannerStackScreenProps } from '@navigation/types';
@@ -44,6 +44,7 @@ export function ScanResultScreen({ navigation }: Props): React.JSX.Element {
 
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>
+      <ScreenContainer>
       <ScrollView contentContainerStyle={styles.content}>
         {items.length === 0 ? (
           <Text style={styles.empty}>Não detectei alimentos. Adicione manualmente.</Text>
@@ -60,6 +61,7 @@ export function ScanResultScreen({ navigation }: Props): React.JSX.Element {
           Confirmar e adicionar ao diário
         </Button>
       </View>
+      </ScreenContainer>
     </SafeAreaView>
   );
 }

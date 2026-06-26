@@ -62,7 +62,7 @@ export type RootStackScreenProps<T extends keyof RootStackParamList> =
   NativeStackScreenProps<RootStackParamList, T>;
 
 export type ScannerStackScreenProps<T extends keyof ScannerStackParamList> =
-  NativeStackScreenProps<ScannerStackParamList, T>;
+  CompositeScreenProps<NativeStackScreenProps<ScannerStackParamList, T>, RootStackScreenProps<keyof RootStackParamList>>;
 
 export type CommunityStackScreenProps<T extends keyof CommunityStackParamList> =
   CompositeScreenProps<

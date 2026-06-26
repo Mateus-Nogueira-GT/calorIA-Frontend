@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, waitFor } from '@testing-library/react-native';
+import { render, waitFor, fireEvent } from '@testing-library/react-native';
 import { FeedScreen } from './FeedScreen';
 import { useFeedStore } from '../store';
 import type { Post } from '@shared/services/feed.service';
@@ -51,5 +51,15 @@ describe('FeedScreen', () => {
       <FeedScreen navigation={navigation} route={{ key: 'k', name: 'Feed' }} />,
     );
     await waitFor(() => expect(getByText('Ainda não há posts')).toBeTruthy());
+  });
+
+  it('não pagina quando não há próxima página', async () => {
+    feedService.getFeed.mockResolvedValue({ posts: [post], nextCursor: null });
+    const { getByTestId } = render(
+      <FeedScreen navigation={navigation} route={{ key: 'k', name: 'Feed' } as never} />,
+    );
+    await waitFor(() => expect(feedService.getFeed).toHaveBeenCalledTimes(1));
+    fireEvent(getByTestId('feed-list'), 'endReached');
+    expect(feedService.getFeed).toHaveBeenCalledTimes(1);
   });
 });

@@ -27,8 +27,8 @@ jest.mock('@react-navigation/native', () => ({
 }));
 jest.mock('@shared/services/auth.service', () => ({
   authService: {
-    register: mockRegister,
-    loginWithApple: mockLoginWithApple,
+    register: (...args: unknown[]) => mockRegister(...args),
+    loginWithApple: (...args: unknown[]) => mockLoginWithApple(...args),
   },
 }));
 jest.mock('@features/auth/store', () => ({
@@ -55,6 +55,15 @@ describe('RegisterScreen', () => {
     mockReplace.mockClear();
     mockGoogleSignInAvailable = true;
     mockAppleSignInAvailable = true;
+    mockGetAppleSignInPayload.mockResolvedValue({
+      identityToken: 'apple-token',
+      fullName: 'João Teste',
+    });
+    mockLoginWithApple.mockResolvedValue({
+      token: 'tok',
+      refreshToken: 'refresh-tok',
+      user: { id: '1', name: 'João', email: 'joao@test.com' },
+    });
   });
 
   it('renderiza os campos de nome, email e senha', () => {

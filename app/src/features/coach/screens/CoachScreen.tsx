@@ -9,7 +9,7 @@ import { ChatBubble } from '../components/ChatBubble';
 import { ChatInput } from '../components/ChatInput';
 import { TypingIndicator } from '../components/TypingIndicator';
 import { GenerateDietButton } from '../components/GenerateDietButton';
-import { Text } from '@shared/components';
+import { Text, ScreenContainer } from '@shared/components';
 import { colors, typography, spacing, radius } from '@theme';
 import { CoachMark } from '../components/CoachMark';
 
@@ -74,6 +74,7 @@ export function CoachScreen(): React.JSX.Element {
         </View>
       </View>
 
+      <ScreenContainer>
       <FlatList
         ref={listRef}
         data={messages}
@@ -134,6 +135,7 @@ export function CoachScreen(): React.JSX.Element {
       ) : null}
 
       <ChatInput onSend={sendMessage} disabled={isLoading} />
+      </ScreenContainer>
     </KeyboardAvoidingView>
   );
 }

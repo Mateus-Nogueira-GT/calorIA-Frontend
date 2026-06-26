@@ -67,4 +67,28 @@ describe('useNotificationsStore', () => {
     expect(useNotificationsStore.getState().items).toEqual([]);
     expect(useNotificationsStore.getState().unreadCount).toBe(0);
   });
+
+  it('markAllRead reverte em erro', async () => {
+    useNotificationsStore.setState({ items: [notif('n1'), notif('n2')], unreadCount: 2 });
+    notificationsService.markRead.mockRejectedValue(new Error('fail'));
+    const { result } = renderHook(() => useNotificationsStore());
+    await act(async () => {
+      await result.current.markAllRead();
+    });
+    // Deve reverter ao estado original
+    expect(result.current.unreadCount).toBe(2);
+    expect(result.current.items.some((n) => !n.read)).toBe(true);
+  });
+
+  it('markRead reverte em erro', async () => {
+    useNotificationsStore.setState({ items: [notif('n1'), notif('n2')], unreadCount: 2 });
+    notificationsService.markRead.mockRejectedValue(new Error('fail'));
+    const { result } = renderHook(() => useNotificationsStore());
+    await act(async () => {
+      await result.current.markRead('n1');
+    });
+    // Deve reverter: n1 ainda não lido
+    expect(result.current.items.find((n) => n.id === 'n1')?.read).toBe(false);
+    expect(result.current.unreadCount).toBe(2);
+  });
 });

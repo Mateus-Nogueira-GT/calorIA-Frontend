@@ -35,6 +35,13 @@ describe('PostCard', () => {
     expect(getByText('Sequência de 7 dias')).toBeTruthy();
   });
 
+  it('botão de comentários é acessível por rótulo', () => {
+    const { getByLabelText } = render(
+      <PostCard post={basePost} onPressComments={() => {}} onToggleLike={() => {}} />,
+    );
+    expect(getByLabelText(/coment/i)).toBeTruthy();
+  });
+
   it('aciona onPressComments e onToggleLike', () => {
     jest.useFakeTimers();
     const onComments = jest.fn();

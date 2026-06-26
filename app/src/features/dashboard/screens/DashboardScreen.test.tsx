@@ -1,9 +1,13 @@
 import React from 'react';
-import { render } from '@testing-library/react-native';
+import { render, act } from '@testing-library/react-native';
 import { DashboardScreen } from './DashboardScreen';
 import { useFoodLogStore } from '@features/food-log/store';
 import { useAuthStore } from '@features/auth/store';
 import { useDietStore } from '@features/diet/store';
+
+jest.mock('@react-navigation/native', () => ({
+  useNavigation: () => ({ navigate: jest.fn() }),
+}));
 
 jest.mock('@shared/services/food-log.service', () => ({
   foodLogService: {
@@ -20,9 +24,10 @@ beforeEach(() => {
 });
 
 describe('DashboardScreen', () => {
-  it('renderiza saudacao com o nome do usuario', () => {
+  it('renderiza saudacao com o nome do usuario', async () => {
     const { getByText } = render(<DashboardScreen />);
     expect(getByText(/Joao/)).toBeTruthy();
+    await act(async () => {});
   });
 
   it('exibe refeicoes do dia apos carregamento', async () => {
@@ -30,8 +35,9 @@ describe('DashboardScreen', () => {
     expect(await findByText('Frango')).toBeTruthy();
   });
 
-  it('exibe a secao de diario alimentar', () => {
+  it('exibe a secao de diario alimentar', async () => {
     const { getByText } = render(<DashboardScreen />);
-    expect(getByText('Diario alimentar')).toBeTruthy();
+    expect(getByText('Diário alimentar')).toBeTruthy();
+    await act(async () => {});
   });
 });

@@ -62,4 +62,34 @@ describe('useScannerStore', () => {
     expect(useScannerStore.getState().items).toEqual([]);
     expect(useScannerStore.getState().image).toBeNull();
   });
+
+  it('analyze em erro seta error e isAnalyzing=false', async () => {
+    scannerService.analyzePhoto.mockRejectedValue(new Error('network'));
+    const { result } = renderHook(() => useScannerStore());
+    await act(async () => {
+      await result.current.analyze('data:image/jpeg;base64,AAA');
+    });
+    expect(result.current.isAnalyzing).toBe(false);
+    expect(result.current.error).toBe('Não foi possível analisar a imagem.');
+  });
+
+  it('confirm em erro relança e mantém items', async () => {
+    foodLogService.addMeal.mockRejectedValue(new Error('server'));
+    useScannerStore.setState({ items: [item('1')] });
+    const { result } = renderHook(() => useScannerStore());
+    await act(async () => {
+      await expect(result.current.confirm()).rejects.toThrow();
+    });
+    expect(useScannerStore.getState().items).toHaveLength(1);
+  });
+
+  it('addManualItem gera ids sequenciais determinísticos após clear', () => {
+    useScannerStore.getState().clear();
+    useScannerStore.getState().addManualItem();
+    useScannerStore.getState().addManualItem();
+    const ids = useScannerStore.getState().items.map((i) => i.id);
+    // After clear, seq resets; first two items should have consistent ids
+    expect(ids[0]).toBe('manual-0');
+    expect(ids[1]).toBe('manual-1');
+  });
 });

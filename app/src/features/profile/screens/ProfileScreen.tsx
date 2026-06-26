@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, ScrollView, StyleSheet, Alert } from 'react-native';
 import { colors, radius, spacing } from '@theme';
+import { ScreenContainer } from '@shared/components';
 import type { TabScreenProps } from '@navigation/types';
 import { useProfile } from '../hooks/useProfile';
 import { ProfileHeader } from '../components/ProfileHeader';
@@ -35,6 +36,7 @@ export function ProfileScreen({ navigation }: TabScreenProps<'Profile'>): React.
   }
 
   return (
+    <ScreenContainer>
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <ProfileHeader name={user?.name ?? ''} email={user?.email ?? ''} />
       {streak > 0 && <StreakBadge days={streak} />}
@@ -57,6 +59,7 @@ export function ProfileScreen({ navigation }: TabScreenProps<'Profile'>): React.
         <ProfileMenuItem label="🚪 Sair" onPress={confirmLogout} destructive testID="logout-btn" />
       </View>
     </ScrollView>
+    </ScreenContainer>
   );
 }
 
