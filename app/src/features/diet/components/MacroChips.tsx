@@ -1,7 +1,7 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Text } from '@shared/components';
-import { colors, typography } from '@theme';
+import { colors, radius, spacing, typography } from '@theme';
 
 interface Props {
   kcal: number;
@@ -30,8 +30,8 @@ export function MacroChips({ kcal, protein, carbs, fat }: Props): React.JSX.Elem
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 },
-  chip: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999 },
+  row: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: spacing.md },
+  chip: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: radius.pill },
   chipText: { fontSize: typography.fontSize.xs, fontFamily: typography.fontFamily.semiBold },
   chipNeutral: { backgroundColor: colors.brandMutedSurface },
   textNeutral: { color: colors.brandAnchor },

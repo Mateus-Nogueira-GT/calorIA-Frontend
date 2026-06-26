@@ -1,7 +1,7 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Text } from '@shared/components';
-import { colors, typography } from '@theme';
+import { colors, spacing, typography } from '@theme';
 import type { MealItem } from '@shared/services/diet.service';
 
 interface Props {
@@ -26,8 +26,8 @@ export function MealItemRow({ item }: Props): React.JSX.Element {
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, gap: 8 },
-  left: { flexShrink: 1, paddingRight: 8 },
+  row: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, gap: spacing.sm },
+  left: { flexShrink: 1, paddingRight: spacing.sm },
   name: { fontSize: typography.fontSize.sm, color: colors.brandText, fontFamily: typography.fontFamily.medium },
   qty: { fontSize: typography.fontSize.xs, color: colors.brandTextMuted, marginTop: 2 },
   kcal: { fontSize: typography.fontSize.xs, color: colors.brandAnchor, fontFamily: typography.fontFamily.semiBold },

@@ -1,11 +1,11 @@
 import React from 'react';
 import { StyleSheet, View, Text } from 'react-native';
-import { colors } from '@theme';
+import { colors, typography } from '@theme';
 
 type Size = 'sm' | 'md' | 'lg';
 
 const SIZE_MAP: Record<Size, number> = { sm: 28, md: 36, lg: 48 };
-const FONT_MAP: Record<Size, number> = { sm: 14, md: 18, lg: 24 };
+const FONT_MAP: Record<Size, number> = { sm: typography.fontSize.base, md: 18, lg: typography.fontSize.xl };
 
 interface Props {
   size?: Size;

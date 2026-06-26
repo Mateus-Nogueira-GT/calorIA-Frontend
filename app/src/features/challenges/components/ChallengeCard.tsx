@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { colors, typography } from '@theme';
+import { colors, typography, spacing, radius } from '@theme';
 import { Card } from '@shared/components/Card';
 import { Button } from '@shared/components/Button';
 import { formatChipLabel } from '@shared/utils/date';
@@ -38,13 +38,13 @@ export function ChallengeCard({ challenge, onPress, onJoin, joining }: Props): R
 }
 
 const styles = StyleSheet.create({
-  card: { marginBottom: 12, gap: 10 },
-  header: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  emoji: { fontSize: 30 },
+  card: { marginBottom: spacing.md, gap: 10 },
+  header: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  emoji: { fontSize: typography.fontSize.xxl },
   headerText: { flex: 1 },
-  title: { fontSize: 17, color: colors.brandAnchor, fontFamily: typography.fontFamily.bold },
+  title: { fontSize: typography.fontSize.md, color: colors.brandAnchor, fontFamily: typography.fontFamily.bold },
   meta: { fontSize: 12, color: colors.brandTextMuted, marginTop: 2 },
-  description: { fontSize: 14, color: colors.brandText, lineHeight: 20 },
-  joinedBadge: { alignSelf: 'flex-start', backgroundColor: colors.brandSupportSoft, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 },
-  joinedText: { fontSize: 13, color: colors.brandAnchor, fontFamily: typography.fontFamily.semiBold },
+  description: { fontSize: typography.fontSize.base, color: colors.brandText, lineHeight: 20 },
+  joinedBadge: { alignSelf: 'flex-start', backgroundColor: colors.brandSupportSoft, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: 6 },
+  joinedText: { fontSize: typography.fontSize.sm, color: colors.brandAnchor, fontFamily: typography.fontFamily.semiBold },
 });

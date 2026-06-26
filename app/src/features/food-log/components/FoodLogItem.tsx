@@ -1,7 +1,7 @@
 import React from 'react';
 import { StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Text } from '@shared/components';
-import { colors, typography } from '@theme';
+import { colors, typography, spacing, radius } from '@theme';
 import { Meal } from '@shared/services/food-log.service';
 
 interface Props { meal: Meal; onDelete: (id: string) => void | Promise<void>; hideBorder?: boolean }
@@ -46,23 +46,23 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: 14,
-    paddingHorizontal: 16,
+    paddingHorizontal: spacing.lg,
     borderBottomWidth: 1,
     borderBottomColor: colors.brandDivider,
-    gap: 12,
+    gap: spacing.md,
   },
   containerLast: { borderBottomWidth: 0 },
   info: { flex: 1 },
-  titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 },
+  titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', gap: spacing.sm },
   name: { fontSize: typography.fontSize.sm, fontFamily: typography.fontFamily.semiBold, color: colors.brandAnchor, flex: 1 },
   time: { fontSize: typography.fontSize.xs, color: colors.brandTextMuted },
   macros: { fontSize: typography.fontSize.xs, color: colors.brandText, marginTop: 6 },
-  right: { alignItems: 'flex-end', gap: 8 },
+  right: { alignItems: 'flex-end', gap: spacing.sm },
   calories: { fontSize: typography.fontSize.sm, fontFamily: typography.fontFamily.bold, color: colors.brandPrimary },
   deleteBtn: {
     width: 32,
     height: 32,
-    borderRadius: 999,
+    borderRadius: radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.brandMutedSurface,
@@ -77,7 +77,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     width: 12,
     height: 1.8,
-    borderRadius: 999,
+    borderRadius: radius.pill,
     backgroundColor: colors.brandPrimary,
   },
   deleteStrokeA: { transform: [{ rotate: '45deg' }] },

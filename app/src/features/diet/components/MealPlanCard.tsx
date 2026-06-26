@@ -1,7 +1,7 @@
 import React from 'react';
 import { StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Text } from '@shared/components';
-import { colors, typography } from '@theme';
+import { colors, radius, spacing, typography } from '@theme';
 import type { MealType, PlannedMeal } from '@shared/services/diet.service';
 import { MacroChips } from './MacroChips';
 import { MealItemRow } from './MealItemRow';
@@ -64,27 +64,27 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     borderWidth: 1,
     borderColor: colors.brandDivider,
-    padding: 16,
-    marginBottom: 12,
+    padding: spacing.lg,
+    marginBottom: spacing.md,
   },
   cardDone: { borderColor: colors.brandPrimary, backgroundColor: colors.brandMutedSurface },
-  header: { marginBottom: 12 },
+  header: { marginBottom: spacing.md },
   headerText: { flex: 1 },
-  metaRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginBottom: 8 },
+  metaRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginBottom: spacing.sm },
   typeBadge: {
     backgroundColor: colors.brandMutedSurface,
-    borderRadius: 999,
+    borderRadius: radius.pill,
     paddingHorizontal: 10,
     paddingVertical: 5,
   },
   typeBadgeText: { fontSize: typography.fontSize.xs, color: colors.brandAnchor, fontFamily: typography.fontFamily.semiBold },
   title: { fontSize: typography.fontSize.base, fontFamily: typography.fontFamily.bold, color: colors.brandAnchor },
   time: { fontSize: typography.fontSize.xs, color: colors.brandTextMuted },
-  items: { borderTopWidth: 1, borderTopColor: colors.brandDivider, paddingTop: 10, marginBottom: 12 },
+  items: { borderTopWidth: 1, borderTopColor: colors.brandDivider, paddingTop: 10, marginBottom: spacing.md },
   btn: {
     minHeight: 44,
     paddingVertical: 10,
-    borderRadius: 12,
+    borderRadius: radius.md,
     backgroundColor: colors.transparent,
     borderWidth: 1,
     borderColor: colors.brandDividerStrong,

@@ -8,7 +8,7 @@ import { DashboardScreen } from '@features/dashboard/screens/DashboardScreen';
 import { FoodLogScreen } from '@features/food-log/screens/FoodLogScreen';
 import { CoachScreen } from '@features/coach/screens/CoachScreen';
 import { ProfileScreen } from '@features/profile/screens/ProfileScreen';
-import { colors } from '@theme';
+import { colors, typography } from '@theme';
 import type { TabParamList } from './types';
 
 const Tab = createBottomTabNavigator<TabParamList>();
@@ -56,6 +56,6 @@ export function TabNavigator(): React.JSX.Element {
 
 const styles = {
   tabIcon: {
-    fontSize: 20,
+    fontSize: typography.fontSize.lg,
   },
 };

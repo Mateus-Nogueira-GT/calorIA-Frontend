@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { colors, typography } from '@theme';
+import { colors, typography, spacing, radius } from '@theme';
 import { Avatar } from '@shared/components/Avatar';
 import type { LeaderboardEntry } from '@shared/services/challenges.service';
 
@@ -23,12 +23,12 @@ export function LeaderboardRow({ entry }: { entry: LeaderboardEntry }): React.JS
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 12 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: 10, paddingHorizontal: spacing.md, borderRadius: radius.md },
   rowMe: { backgroundColor: colors.brandSupportSoft },
   rankBadge: { width: 26, height: 26, borderRadius: 13, backgroundColor: colors.brandMutedSurface, alignItems: 'center', justifyContent: 'center' },
   rankBadgeTop: { backgroundColor: colors.brandSupport },
-  rankText: { fontSize: 13, color: colors.brandTextMuted, fontFamily: typography.fontFamily.bold },
+  rankText: { fontSize: typography.fontSize.sm, color: colors.brandTextMuted, fontFamily: typography.fontFamily.bold },
   rankTextTop: { color: colors.brandAnchor },
-  name: { flex: 1, fontSize: 15, color: colors.brandAnchor, fontFamily: typography.fontFamily.semiBold },
-  streak: { fontSize: 14, color: colors.brandText, fontFamily: typography.fontFamily.medium },
+  name: { flex: 1, fontSize: typography.fontSize.base, color: colors.brandAnchor, fontFamily: typography.fontFamily.semiBold },
+  streak: { fontSize: typography.fontSize.base, color: colors.brandText, fontFamily: typography.fontFamily.medium },
 });

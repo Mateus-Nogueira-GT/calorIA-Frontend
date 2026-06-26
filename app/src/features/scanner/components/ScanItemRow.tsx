@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { colors, typography } from '@theme';
+import { colors, typography, spacing, radius } from '@theme';
 import { ConfidenceBadge } from './ConfidenceBadge';
 import type { ScanItem } from '@shared/services/scanner.service';
 
@@ -76,31 +76,31 @@ export function ScanItemRow({ item, onChange, onRemove }: Props): React.JSX.Elem
 const styles = StyleSheet.create({
   card: {
     backgroundColor: colors.white,
-    borderRadius: 16,
+    borderRadius: radius.lg,
     padding: 14,
-    marginBottom: 12,
+    marginBottom: spacing.md,
     gap: 10,
   },
   headerRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   nameInput: {
     flex: 1,
-    fontSize: 16,
+    fontSize: typography.fontSize.md,
     color: colors.brandAnchor,
     fontFamily: typography.fontFamily.semiBold,
     borderBottomWidth: 1,
     borderBottomColor: colors.brandDivider,
-    paddingVertical: 4,
+    paddingVertical: spacing.xs,
   },
-  remove: { fontSize: 16, color: colors.brandTextMuted, paddingHorizontal: 4 },
-  macrosRow: { flexDirection: 'row', gap: 8 },
+  remove: { fontSize: typography.fontSize.md, color: colors.brandTextMuted, paddingHorizontal: spacing.xs },
+  macrosRow: { flexDirection: 'row', gap: spacing.sm },
   macroField: { flex: 1 },
-  macroLabel: { fontSize: 11, color: colors.brandTextMuted, marginBottom: 2 },
+  macroLabel: { fontSize: typography.fontSize.xs, color: colors.brandTextMuted, marginBottom: 2 },
   macroInput: {
     backgroundColor: colors.brandMutedSurface,
-    borderRadius: 8,
-    paddingHorizontal: 8,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.sm,
     paddingVertical: 6,
-    fontSize: 14,
+    fontSize: typography.fontSize.base,
     color: colors.brandText,
   },
 });

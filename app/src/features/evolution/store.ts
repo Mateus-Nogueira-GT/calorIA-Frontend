@@ -27,8 +27,9 @@ export const useWeightStore = create<WeightState>((set, get) => ({
     try {
       const entries = await weightService.getHistory();
       set({ entries: [...entries].sort((a, b) => a.date.localeCompare(b.date)), isLoading: false });
-    } catch {
+    } catch (e) {
       set({ isLoading: false });
+      throw e;
     }
   },
 

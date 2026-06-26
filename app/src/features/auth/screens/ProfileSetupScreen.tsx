@@ -15,7 +15,7 @@ import { Text } from '@shared/components';
 import { OnboardingChatBubble } from '../components/OnboardingChatBubble';
 import { OnboardingOptionCard } from '../components/OnboardingOptionCard';
 import { OnboardingProgressBar } from '../components/OnboardingProgressBar';
-import { colors, typography } from '@theme';
+import { colors, typography, spacing } from '@theme';
 import type { AuthStackScreenProps } from '@navigation/types';
 
 type Step = 'name' | 'bodyType' | 'height' | 'weight' | 'goal' | 'personality' | 'gender';
@@ -202,12 +202,12 @@ export function ProfileSetupScreen({ navigation }: AuthStackScreenProps<'Profile
 
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: colors.background },
-  chatContent: { padding: 16 },
-  options: { paddingHorizontal: 16, paddingBottom: 8 },
+  chatContent: { padding: spacing.lg },
+  options: { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
   inputRow: {
     flexDirection: 'row',
-    padding: 12,
-    gap: 8,
+    padding: spacing.md,
+    gap: spacing.sm,
     borderTopWidth: 1,
     borderTopColor: colors.border,
     alignItems: 'center',
@@ -216,7 +216,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.surface,
     borderRadius: 20,
-    paddingHorizontal: 16,
+    paddingHorizontal: spacing.lg,
     paddingVertical: 10,
     fontFamily: typography.fontFamily.regular,
     fontSize: typography.fontSize.base,

@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { colors, typography } from '@theme';
+import { colors, radius, spacing, typography } from '@theme';
 import type { WeightEntry } from '@shared/services/weight.service';
 
 export function WeightLineChart({ entries }: { entries: WeightEntry[] }): React.JSX.Element {
@@ -31,11 +31,11 @@ export function WeightLineChart({ entries }: { entries: WeightEntry[] }): React.
 }
 
 const styles = StyleSheet.create({
-  container: { backgroundColor: colors.white, borderRadius: 16, padding: 16 },
+  container: { backgroundColor: colors.white, borderRadius: radius.lg, padding: spacing.lg },
   bars: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 6 },
-  barCol: { alignItems: 'center', flex: 1, gap: 4 },
+  barCol: { alignItems: 'center', flex: 1, gap: spacing.xs },
   value: { fontSize: typography.fontSize.xs, color: colors.brandTextMuted },
-  bar: { width: 14, borderRadius: 999, backgroundColor: colors.brandPrimary },
+  bar: { width: 14, borderRadius: radius.pill, backgroundColor: colors.brandPrimary },
   day: { fontSize: typography.fontSize.xs, color: colors.brandTextMuted },
-  empty: { textAlign: 'center', color: colors.brandTextMuted, fontSize: typography.fontSize.base, paddingVertical: 24 },
+  empty: { textAlign: 'center', color: colors.brandTextMuted, fontSize: typography.fontSize.base, paddingVertical: spacing.xxl },
 });

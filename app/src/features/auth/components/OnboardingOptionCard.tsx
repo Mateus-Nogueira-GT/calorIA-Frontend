@@ -1,7 +1,7 @@
 import React from 'react';
 import { StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Text } from '@shared/components';
-import { colors, typography } from '@theme';
+import { colors, typography, spacing, radius } from '@theme';
 
 interface Props {
   emoji: string;
@@ -42,16 +42,16 @@ const styles = StyleSheet.create({
   card: {
     borderWidth: 1.5,
     borderColor: colors.border,
-    borderRadius: 12,
+    borderRadius: radius.md,
     padding: 14,
-    marginBottom: 8,
+    marginBottom: spacing.sm,
     backgroundColor: colors.white,
   },
   selected: {
     borderColor: colors.primary,
-    backgroundColor: '#F0FDF4',
+    backgroundColor: colors.successSoft,
   },
-  content: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  content: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   emoji: { fontSize: 22 },
   text: { flex: 1 },
   title: { fontFamily: typography.fontFamily.semiBold },

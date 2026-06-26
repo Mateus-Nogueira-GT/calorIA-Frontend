@@ -15,6 +15,7 @@ export function ScannerNavigator(): React.JSX.Element {
         headerStyle: { backgroundColor: colors.brandBackground },
         headerTintColor: colors.brandAnchor,
         headerShadowVisible: false,
+        animation: 'slide_from_right',
       }}
     >
       <Stack.Screen name='Capture' component={CaptureScreen} options={{ title: 'Escanear' }} />

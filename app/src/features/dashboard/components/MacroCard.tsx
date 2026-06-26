@@ -1,7 +1,7 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Text } from '@shared/components';
-import { colors, typography } from '@theme';
+import { colors, typography, spacing, radius } from '@theme';
 
 interface Props { label: string; current: number; goal: number; unit?: string; color: string }
 
@@ -34,11 +34,11 @@ const styles = StyleSheet.create({
     borderColor: colors.brandDivider,
     padding: 14,
   },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: spacing.sm },
   label: { flex: 1, fontSize: typography.fontSize.xs, color: colors.brandTextMuted, fontFamily: typography.fontFamily.semiBold },
   percent: { fontSize: typography.fontSize.xs, fontFamily: typography.fontFamily.bold },
   value: { fontSize: typography.fontSize.lg, fontFamily: typography.fontFamily.extraBold, marginTop: 10 },
-  goal: { fontSize: typography.fontSize.xs, color: colors.brandTextMuted, marginTop: 2, marginBottom: 12 },
-  track: { height: 6, backgroundColor: colors.brandTrack, borderRadius: 999, overflow: 'hidden' },
-  fill: { height: 6, borderRadius: 999 },
+  goal: { fontSize: typography.fontSize.xs, color: colors.brandTextMuted, marginTop: 2, marginBottom: spacing.md },
+  track: { height: 6, backgroundColor: colors.brandTrack, borderRadius: radius.pill, overflow: 'hidden' },
+  fill: { height: 6, borderRadius: radius.pill },
 });

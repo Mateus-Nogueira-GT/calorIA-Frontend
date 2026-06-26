@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors } from '@theme';
+import { colors, spacing } from '@theme';
 import { Input } from '@shared/components/Input';
 import { Button } from '@shared/components/Button';
 import { useChallengesStore } from '../store';
@@ -54,6 +54,6 @@ export function CreateChallengeScreen({ navigation }: Props): React.JSX.Element 
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.brandBackground },
-  content: { padding: 20, gap: 16 },
-  footer: { padding: 20, borderTopWidth: 1, borderTopColor: colors.brandDivider },
+  content: { padding: spacing.xl, gap: spacing.lg },
+  footer: { padding: spacing.xl, borderTopWidth: 1, borderTopColor: colors.brandDivider },
 });

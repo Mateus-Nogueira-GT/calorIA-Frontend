@@ -1,11 +1,12 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, typography } from '@theme';
+import { colors, typography, spacing } from '@theme';
 import { useChallengesStore } from '../store';
 import { ChallengeCard } from '../components/ChallengeCard';
 import { EmptyChallengesState } from '../components/EmptyChallengesState';
 import { MealCardSkeleton } from '@features/diet/components/MealCardSkeleton';
+import { ErrorState } from '@shared/components';
 import type { CommunityStackScreenProps } from '@navigation/types';
 
 type Props = CommunityStackScreenProps<'Challenges'>;
@@ -16,12 +17,18 @@ export function ChallengesScreen({ navigation }: Props): React.JSX.Element {
   const joiningId = useChallengesStore((s) => s.joiningId);
   const load = useChallengesStore((s) => s.load);
   const join = useChallengesStore((s) => s.join);
+  const [hasError, setHasError] = useState(false);
 
   useEffect(() => {
-    load().catch(() => {});
+    load().catch(() => { setHasError(true); });
   }, [load]);
 
   const goCreate = () => navigation.navigate('CreateChallenge');
+
+  const reload = () => {
+    setHasError(false);
+    load().catch(() => { setHasError(true); });
+  };
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -35,6 +42,8 @@ export function ChallengesScreen({ navigation }: Props): React.JSX.Element {
             <MealCardSkeleton key={i} />
           ))}
         </View>
+      ) : hasError ? (
+        <ErrorState onRetry={reload} />
       ) : (
         <FlatList
           data={challenges}
@@ -61,11 +70,11 @@ export function ChallengesScreen({ navigation }: Props): React.JSX.Element {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.brandBackground },
-  header: { paddingHorizontal: 20, paddingVertical: 12 },
-  title: { fontSize: 24, color: colors.brandAnchor, fontFamily: typography.fontFamily.bold },
-  listContent: { paddingHorizontal: 16, paddingBottom: 96, flexGrow: 1 },
+  header: { paddingHorizontal: spacing.xl, paddingVertical: spacing.md },
+  title: { fontSize: typography.fontSize.xl, color: colors.brandAnchor, fontFamily: typography.fontFamily.bold },
+  listContent: { paddingHorizontal: spacing.lg, paddingBottom: 96, flexGrow: 1 },
   fab: {
-    position: 'absolute', right: 20, bottom: 24, width: 56, height: 56, borderRadius: 28,
+    position: 'absolute', right: spacing.xl, bottom: spacing.xxl, width: 56, height: 56, borderRadius: 28,
     backgroundColor: colors.brandPrimary, alignItems: 'center', justifyContent: 'center',
     shadowColor: colors.black, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 5,
   },

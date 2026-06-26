@@ -1,7 +1,7 @@
 import React from 'react';
 import { Alert, Platform, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, typography } from '@theme';
+import { colors, typography, spacing } from '@theme';
 import { Button } from '@shared/components/Button';
 import { pickImage } from '@shared/services/image-picker.service';
 import { ScannerViewfinder } from '../components/ScannerViewfinder';
@@ -42,12 +42,12 @@ export function CaptureScreen({ navigation }: Props): React.JSX.Element {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.brandBackground },
-  content: { flex: 1, padding: 24, gap: 24, justifyContent: 'center' },
+  content: { flex: 1, padding: spacing.xxl, gap: spacing.xxl, justifyContent: 'center' },
   title: {
     fontSize: 22,
     color: colors.brandAnchor,
     fontFamily: typography.fontFamily.bold,
     textAlign: 'center',
   },
-  actions: { gap: 12 },
+  actions: { gap: spacing.md },
 });

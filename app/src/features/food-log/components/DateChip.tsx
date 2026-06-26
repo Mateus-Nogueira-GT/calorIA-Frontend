@@ -1,7 +1,7 @@
 import React from 'react';
 import { Platform, Pressable, StyleSheet, ViewStyle } from 'react-native';
 import { Text } from '@shared/components';
-import { colors, typography } from '@theme';
+import { colors, typography, spacing, radius } from '@theme';
 
 interface Props {
   label: string;
@@ -32,8 +32,8 @@ const styles = StyleSheet.create({
   chip: {
     minHeight: 44,
     paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 999,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.pill,
     backgroundColor: colors.brandSurface,
     borderWidth: 1,
     borderColor: colors.brandDividerStrong,

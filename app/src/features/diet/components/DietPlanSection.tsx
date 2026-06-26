@@ -1,5 +1,6 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
+import { spacing } from '@theme';
 import { useNavigation } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { TabParamList } from '@navigation/types';
@@ -44,6 +45,6 @@ export function DietPlanSection(): React.JSX.Element {
 }
 
 const styles = StyleSheet.create({
-  container: { marginTop: 8 },
-  stateBlock: { marginTop: 8 },
+  container: { marginTop: spacing.sm },
+  stateBlock: { marginTop: spacing.sm },
 });

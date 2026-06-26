@@ -1,24 +1,19 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Button, Text } from '@shared/components';
-import { colors, typography } from '@theme';
+import { colors, radius, spacing, typography } from '@theme';
 
 interface Props {
   errorMode?: boolean;
   onAction: () => void;
 }
 
-const errorTitle = 'Nao foi possivel carregar sua dieta';
-const emptyTitle = 'Sua dieta do dia ainda nao apareceu';
-const errorSubtitle = 'Tente novamente em instantes.';
-const emptySubtitle = 'Converse com o Coach para gerar um plano personalizado.';
-const retryLabel = 'Tentar novamente';
-const coachLabel = 'Falar com o Coach';
-
 export function EmptyDietState({ errorMode, onAction }: Props): React.JSX.Element {
-  const title = errorMode ? errorTitle : emptyTitle;
-  const subtitle = errorMode ? errorSubtitle : emptySubtitle;
-  const cta = errorMode ? retryLabel : coachLabel;
+  const title = errorMode ? 'Não foi possível carregar sua dieta' : 'Você ainda não tem uma dieta';
+  const subtitle = errorMode
+    ? 'Tente novamente em instantes.'
+    : 'Converse com o Coach para gerar um plano personalizado.';
+  const cta = errorMode ? 'Tentar novamente' : 'Falar com o Coach';
 
   return (
     <View style={styles.card}>
@@ -36,14 +31,14 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     borderWidth: 1,
     borderColor: colors.brandDivider,
-    padding: 20,
+    padding: spacing.xl,
     alignItems: 'flex-start',
-    marginTop: 8,
+    marginTop: spacing.sm,
   },
   marker: {
     width: 40,
     height: 6,
-    borderRadius: 999,
+    borderRadius: radius.pill,
     backgroundColor: colors.brandSupport,
     marginBottom: 14,
   },

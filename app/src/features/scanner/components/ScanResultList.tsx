@@ -1,6 +1,6 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { colors, typography } from '@theme';
+import { colors, typography, spacing } from '@theme';
 import { ScanItemRow } from './ScanItemRow';
 import type { ScanItem } from '@shared/services/scanner.service';
 
@@ -27,17 +27,17 @@ export function ScanResultList({ items, onChange, onRemove, onAddManual }: Props
 }
 
 const styles = StyleSheet.create({
-  add: { paddingVertical: 12, alignItems: 'center' },
+  add: { paddingVertical: spacing.md, alignItems: 'center' },
   addText: {
-    fontSize: 14,
+    fontSize: typography.fontSize.base,
     color: colors.brandPrimary,
     fontFamily: typography.fontFamily.semiBold,
   },
   total: {
-    fontSize: 15,
+    fontSize: typography.fontSize.base,
     color: colors.brandAnchor,
     fontFamily: typography.fontFamily.bold,
     textAlign: 'right',
-    marginTop: 4,
+    marginTop: spacing.xs,
   },
 });

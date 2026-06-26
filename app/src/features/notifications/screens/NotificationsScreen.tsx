@@ -1,9 +1,10 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, typography } from '@theme';
+import { colors, typography, spacing } from '@theme';
 import { useNotificationsStore } from '../store';
 import { NotificationRow } from '../components/NotificationRow';
+import { ErrorState } from '@shared/components';
 import type { AppNotification } from '@shared/services/notifications.service';
 import type { CommunityStackScreenProps } from '@navigation/types';
 
@@ -24,10 +25,16 @@ export function NotificationsScreen({ navigation }: Props): React.JSX.Element {
   const load = useNotificationsStore((s) => s.load);
   const markRead = useNotificationsStore((s) => s.markRead);
   const markAllRead = useNotificationsStore((s) => s.markAllRead);
+  const [hasError, setHasError] = useState(false);
 
   useEffect(() => {
-    load();
+    load().catch(() => setHasError(true));
   }, [load]);
+
+  const reload = () => {
+    setHasError(false);
+    load().catch(() => setHasError(true));
+  };
 
   const onPressItem = (n: AppNotification) => {
     markRead(n.id);
@@ -48,6 +55,8 @@ export function NotificationsScreen({ navigation }: Props): React.JSX.Element {
 
       {isLoading && items.length === 0 ? (
         <ActivityIndicator color={colors.brandPrimary} style={styles.loader} />
+      ) : hasError ? (
+        <ErrorState onRetry={reload} />
       ) : (
         <FlatList
           data={items}
@@ -63,10 +72,10 @@ export function NotificationsScreen({ navigation }: Props): React.JSX.Element {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.brandBackground },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12 },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.lg, paddingVertical: spacing.md },
   title: { fontSize: 22, color: colors.brandAnchor, fontFamily: typography.fontFamily.bold },
-  action: { fontSize: 13, color: colors.brandPrimary, fontFamily: typography.fontFamily.semiBold },
-  loader: { marginTop: 32 },
-  separator: { height: 1, backgroundColor: colors.brandDivider, marginLeft: 16 },
-  empty: { textAlign: 'center', color: colors.brandTextMuted, marginTop: 48, fontSize: 14 },
+  action: { fontSize: typography.fontSize.sm, color: colors.brandPrimary, fontFamily: typography.fontFamily.semiBold },
+  loader: { marginTop: spacing.xxxl },
+  separator: { height: 1, backgroundColor: colors.brandDivider, marginLeft: spacing.lg },
+  empty: { textAlign: 'center', color: colors.brandTextMuted, marginTop: 48, fontSize: typography.fontSize.base },
 });

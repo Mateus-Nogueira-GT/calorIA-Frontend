@@ -5,7 +5,7 @@ import {
   View,
   ViewProps,
 } from 'react-native';
-import { colors } from '@theme';
+import { colors, spacing, radius } from '@theme';
 
 interface Props extends ViewProps {
   onPress?: () => void;
@@ -37,8 +37,8 @@ export function Card({ onPress, children, style, testID, ...rest }: Props): Reac
 const styles = StyleSheet.create({
   card: {
     backgroundColor: colors.white,
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
     shadowColor: colors.black,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.06,

@@ -12,7 +12,7 @@ import { getAppleSignInPayload, isAppleSignInAvailable } from '@shared/services/
 import { getGoogleIdToken, isGoogleSignInAvailable } from '@shared/services/google-signin.service';
 import { useAuthStore } from '@features/auth/store';
 import { Button, Input, Text } from '@shared/components';
-import { colors, typography } from '@theme';
+import { colors, typography, spacing, radius } from '@theme';
 import type { AuthStackScreenProps } from '@navigation/types';
 
 function isValidEmail(email: string): boolean {
@@ -203,7 +203,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.brandBackground,
     flexGrow: 1,
     maxWidth: 420,
-    padding: 24,
+    padding: spacing.xxl,
     paddingTop: 54,
     width: '100%',
   },
@@ -234,14 +234,14 @@ const styles = StyleSheet.create({
     maxWidth: 310,
     textAlign: 'center',
   },
-  forgotLink: { alignSelf: 'flex-end', marginBottom: 24, marginTop: -8 },
+  forgotLink: { alignSelf: 'flex-end', marginBottom: spacing.xxl, marginTop: -8 },
   linkText: { color: colors.brandPrimary, fontFamily: interfaceFont },
-  btn: { borderRadius: 16, marginBottom: 12, minHeight: 52, paddingVertical: 0 },
+  btn: { borderRadius: radius.lg, marginBottom: spacing.md, minHeight: 52, paddingVertical: 0 },
   primaryButton: { backgroundColor: colors.brandPrimary },
   primaryButtonLabel: {
     color: colors.brandAnchor,
     fontFamily: interfaceSemiBoldFont,
-    fontSize: 16,
+    fontSize: typography.fontSize.md,
     fontWeight: typography.fontWeight.semiBold,
   },
   secondaryButton: {
@@ -252,12 +252,12 @@ const styles = StyleSheet.create({
   secondaryButtonLabel: {
     color: colors.brandAnchor,
     fontFamily: interfaceSemiBoldFont,
-    fontSize: 16,
+    fontSize: typography.fontSize.md,
     fontWeight: typography.fontWeight.semiBold,
   },
-  divider: { flexDirection: 'row', alignItems: 'center', marginVertical: 16, gap: 12 },
+  divider: { flexDirection: 'row', alignItems: 'center', marginVertical: spacing.lg, gap: spacing.md },
   line: { flex: 1, height: 1, backgroundColor: colors.brandDivider },
   orText: { color: colors.brandText, fontFamily: interfaceFont },
-  footerButton: { marginTop: 10, minHeight: 44, paddingHorizontal: 16 },
-  footerButtonLabel: { color: colors.brandPrimary, fontFamily: interfaceSemiBoldFont, fontSize: 13 },
+  footerButton: { marginTop: 10, minHeight: 44, paddingHorizontal: spacing.lg },
+  footerButtonLabel: { color: colors.brandPrimary, fontFamily: interfaceSemiBoldFont, fontSize: typography.fontSize.sm },
 });

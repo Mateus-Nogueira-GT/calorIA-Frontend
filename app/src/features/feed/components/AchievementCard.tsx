@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { colors, typography } from '@theme';
+import { colors, typography, spacing, radius } from '@theme';
 import type { PostAchievement } from '@shared/services/feed.service';
 
 export function AchievementCard({ achievement }: { achievement: PostAchievement }): React.JSX.Element {
@@ -19,14 +19,14 @@ const styles = StyleSheet.create({
   card: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: spacing.md,
     backgroundColor: colors.brandSupportSoft,
-    borderRadius: 12,
-    padding: 12,
+    borderRadius: radius.md,
+    padding: spacing.md,
     marginTop: 10,
   },
   emoji: { fontSize: 26 },
   texts: { flex: 1 },
-  title: { fontSize: 15, color: colors.brandAnchor, fontFamily: typography.fontFamily.semiBold },
-  subtitle: { fontSize: 13, color: colors.brandTextMuted, marginTop: 2, fontFamily: typography.fontFamily.regular },
+  title: { fontSize: typography.fontSize.base, color: colors.brandAnchor, fontFamily: typography.fontFamily.semiBold },
+  subtitle: { fontSize: typography.fontSize.sm, color: colors.brandTextMuted, marginTop: 2, fontFamily: typography.fontFamily.regular },
 });

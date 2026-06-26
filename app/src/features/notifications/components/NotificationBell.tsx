@@ -1,6 +1,6 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { colors, typography } from '@theme';
+import { colors, typography, radius } from '@theme';
 
 interface Props {
   count: number;
@@ -28,11 +28,11 @@ const styles = StyleSheet.create({
     right: -6,
     minWidth: 16,
     height: 16,
-    borderRadius: 8,
+    borderRadius: radius.sm,
     paddingHorizontal: 3,
     backgroundColor: colors.brandPrimary,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  badgeText: { color: colors.white, fontSize: 10, fontFamily: typography.fontFamily.bold },
+  badgeText: { color: colors.white, fontSize: typography.fontSize.xs, fontFamily: typography.fontFamily.bold },
 });

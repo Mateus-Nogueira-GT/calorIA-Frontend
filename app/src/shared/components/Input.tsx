@@ -5,7 +5,7 @@ import {
   TextInputProps,
   View,
 } from 'react-native';
-import { colors, typography } from '@theme';
+import { colors, typography, spacing, radius } from '@theme';
 import { Text } from './Text';
 
 interface Props extends TextInputProps {
@@ -48,16 +48,16 @@ export function Input({ label, error, rightIcon, style, ...rest }: Props): React
 }
 
 const styles = StyleSheet.create({
-  wrapper: { marginBottom: 16 },
+  wrapper: { marginBottom: spacing.lg },
   label: { marginBottom: 6 },
   container: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.surface,
-    borderRadius: 12,
+    borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.border,
-    paddingHorizontal: 16,
+    paddingHorizontal: spacing.lg,
   },
   containerFocused: { borderColor: colors.primary },
   containerError: { borderColor: colors.error },
@@ -68,6 +68,6 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.base,
     color: colors.textPrimary,
   },
-  icon: { paddingLeft: 8 },
-  error: { marginTop: 4 },
+  icon: { paddingLeft: spacing.sm },
+  error: { marginTop: spacing.xs },
 });

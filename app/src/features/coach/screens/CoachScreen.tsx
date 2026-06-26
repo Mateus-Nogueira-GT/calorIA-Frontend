@@ -10,7 +10,7 @@ import { ChatInput } from '../components/ChatInput';
 import { TypingIndicator } from '../components/TypingIndicator';
 import { GenerateDietButton } from '../components/GenerateDietButton';
 import { Text } from '@shared/components';
-import { colors, typography } from '@theme';
+import { colors, typography, spacing, radius } from '@theme';
 import { CoachMark } from '../components/CoachMark';
 
 const conversationSuggestions = [
@@ -61,9 +61,9 @@ export function CoachScreen(): React.JSX.Element {
     <KeyboardAvoidingView
       style={styles.container}
       behavior={Platform.select({ ios: 'padding', android: 'height', default: undefined })}
-      keyboardVerticalOffset={Platform.select({ ios: 12, android: 0, default: 0 })}
+      keyboardVerticalOffset={Platform.select({ ios: spacing.md, android: 0, default: 0 })}
     >
-      <View style={[styles.header, { paddingTop: Math.max(insets.top, 20) + 12 }]}>
+      <View style={[styles.header, { paddingTop: Math.max(insets.top, spacing.xl) + spacing.md }]}>
         <CoachMark size='md' />
         <View style={styles.headerCopy}>
           <Text style={styles.headerTitle}>Coach IA</Text>
@@ -143,8 +143,8 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 16,
+    gap: spacing.md,
+    paddingHorizontal: spacing.lg,
     paddingBottom: 14,
     borderBottomWidth: 1,
     borderBottomColor: colors.brandDivider,
@@ -156,11 +156,11 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontFamily.bold,
     fontSize: typography.fontSize.xl,
   },
-  statusRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
+  statusRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: spacing.xs },
   statusDot: {
     width: 8,
     height: 8,
-    borderRadius: 999,
+    borderRadius: radius.pill,
     backgroundColor: colors.brandPrimary,
   },
   headerStatus: {
@@ -171,16 +171,16 @@ const styles = StyleSheet.create({
   list: { flex: 1 },
   chatContent: {
     flexGrow: 1,
-    paddingHorizontal: 16,
+    paddingHorizontal: spacing.lg,
     paddingTop: 18,
-    paddingBottom: 8,
+    paddingBottom: spacing.sm,
   },
   emptyState: {
     flex: 1,
     minHeight: 420,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 20,
+    paddingHorizontal: spacing.xl,
     paddingBottom: 36,
   },
   loadingState: {
@@ -188,7 +188,7 @@ const styles = StyleSheet.create({
     minHeight: 420,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 20,
+    paddingHorizontal: spacing.xl,
     paddingBottom: 36,
   },
   loadingTitle: {
@@ -223,15 +223,15 @@ const styles = StyleSheet.create({
     lineHeight: typography.fontSize.base * 1.5,
     textAlign: 'center',
   },
-  suggestions: { width: '100%', marginTop: 24, gap: 10 },
+  suggestions: { width: '100%', marginTop: spacing.xxl, gap: 10 },
   suggestionButton: {
     minHeight: 44,
     backgroundColor: colors.brandSurface,
-    borderRadius: 16,
+    borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: colors.brandDivider,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
   },
   suggestionButtonPressed: { opacity: 0.9 },
   suggestionText: {
@@ -243,8 +243,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 12,
-    paddingHorizontal: 16,
+    gap: spacing.md,
+    paddingHorizontal: spacing.lg,
     paddingVertical: 10,
     borderTopWidth: 1,
     borderTopColor: colors.brandDivider,
@@ -258,8 +258,8 @@ const styles = StyleSheet.create({
   },
   errorAction: {
     minHeight: 44,
-    borderRadius: 12,
-    paddingHorizontal: 12,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.brandPrimarySoft,

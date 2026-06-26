@@ -12,7 +12,8 @@ export function useNotificationPolling(): void {
     if (!isAuthenticated) return;
 
     const fetchNow = () => {
-      void useNotificationsStore.getState().load();
+      // load() relança em erro; o polling falha em silêncio (evita unhandled rejection).
+      useNotificationsStore.getState().load().catch(() => {});
     };
 
     fetchNow();
