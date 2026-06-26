@@ -26,10 +26,18 @@ export type CommunityStackParamList = {
 export type TabParamList = {
   Dashboard: undefined;
   FoodLog: undefined;
-  Scanner: undefined;
+  CameraAction: undefined;
   Coach: undefined;
   Community: NavigatorScreenParams<CommunityStackParamList>;
   Profile: undefined;
+  Evolution: undefined;
+};
+
+// Scanner Stack
+export type ScannerStackParamList = {
+  Capture: undefined;
+  Analyzing: { image: string };
+  ScanResult: undefined;
 };
 
 // Root Stack
@@ -38,6 +46,7 @@ export type RootStackParamList = {
   App: undefined;
   ProfileGoals: undefined;
   ProfileCoachPersonality: undefined;
+  Scanner: NavigatorScreenParams<ScannerStackParamList>;
 };
 
 // Screen props helpers
@@ -51,6 +60,9 @@ export type TabScreenProps<T extends keyof TabParamList> = CompositeScreenProps<
 
 export type RootStackScreenProps<T extends keyof RootStackParamList> =
   NativeStackScreenProps<RootStackParamList, T>;
+
+export type ScannerStackScreenProps<T extends keyof ScannerStackParamList> =
+  NativeStackScreenProps<ScannerStackParamList, T>;
 
 export type CommunityStackScreenProps<T extends keyof CommunityStackParamList> =
   CompositeScreenProps<

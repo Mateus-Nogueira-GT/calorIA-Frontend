@@ -13,6 +13,10 @@ jest.mock('@shared/services/food-log.service', () => ({
   },
 }));
 
+jest.mock('@features/diet/store', () => ({
+  useDietStore: (selector: (s: { plan: null }) => unknown) => selector({ plan: null }),
+}));
+
 beforeEach(() => useFoodLogStore.setState({ mealsByDate: {}, loadingByDate: {}, selectedDate: '2026-06-09' }));
 
 describe('FoodLogScreen', () => {
