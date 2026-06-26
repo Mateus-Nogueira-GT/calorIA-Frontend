@@ -9,6 +9,7 @@ import { DashboardScreen } from '@features/dashboard/screens/DashboardScreen';
 import { FoodLogScreen } from '@features/food-log/screens/FoodLogScreen';
 import { CoachScreen } from '@features/coach/screens/CoachScreen';
 import { ProfileScreen } from '@features/profile/screens/ProfileScreen';
+import { EvolutionScreen } from '@features/evolution/screens/EvolutionScreen';
 import { colors, typography } from '@theme';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList, TabParamList } from './types';
@@ -79,6 +80,18 @@ function TabIcon({ routeName, color, focused }: { routeName: keyof TabParamList;
     );
   }
 
+  if (routeName === 'Evolution') {
+    return (
+      <View style={styles.iconFrame}>
+        <View style={styles.evolutionBars}>
+          {[0.4, 0.7, 0.55, 1.0, 0.8].map((h, i) => (
+            <View key={i} style={[styles.evolutionBar, { height: 14 * h, backgroundColor: tint }]} />
+          ))}
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.iconFrame}>
       <View style={[styles.profileHead, { borderColor: tint }]} />
@@ -127,6 +140,7 @@ export function BrandTabNavigator(): React.JSX.Element {
       />
       <Tab.Screen name='Coach' component={CoachScreen} options={{ title: 'Coach' }} />
       <Tab.Screen name='Profile' component={ProfileScreen} options={{ title: 'Perfil' }} />
+      <Tab.Screen name='Evolution' component={EvolutionScreen} options={{ title: 'Evolução' }} />
     </Tab.Navigator>
   );
 }
@@ -150,6 +164,8 @@ const styles = StyleSheet.create({
   dot: { width: 2.5, height: 2.5, borderRadius: 999 },
   profileHead: { width: 8, height: 8, borderRadius: 999, borderWidth: 1.5, marginBottom: 1.5 },
   profileBody: { width: 14, height: 7, borderTopLeftRadius: 8, borderTopRightRadius: 8, borderWidth: 1.5, borderBottomWidth: 0 },
+  evolutionBars: { flexDirection: 'row', alignItems: 'flex-end', gap: 2 },
+  evolutionBar: { width: 3, borderRadius: 2 },
   // Botão central de câmera
   cameraButton: {
     flex: 1,

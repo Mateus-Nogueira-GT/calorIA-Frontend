@@ -7,7 +7,10 @@ import { DateChip } from '../components/DateChip';
 import { DayMacroSummary } from '../components/DayMacroSummary';
 import { MealSection } from '../components/MealSection';
 import { AddMealModal } from '../components/AddMealModal';
+import { CalorieProgressBar } from '../components/CalorieProgressBar';
 import { formatChipLabel, getMealGroup, last7Days } from '@shared/utils/date';
+import { getDailyCalorieGoal, sumCalories } from '@shared/utils/calories';
+import { useDietStore } from '@features/diet/store';
 
 const GROUPS = ['Café da manhã', 'Almoço', 'Lanche', 'Jantar'] as const;
 const addMealLabel = 'Adicionar refeição';
@@ -36,8 +39,12 @@ function DiaryEmptyIcon(): React.JSX.Element {
 
 export function FoodLogScreen(): React.JSX.Element {
   const { meals, isLoading, selectedDate, setSelectedDate, handleAddMeal, handleDeleteMeal } = useFoodLog();
+  const plan = useDietStore((s) => s.plan);
   const [modalVisible, setModalVisible] = useState(false);
   const dates = last7Days();
+
+  const consumed = sumCalories(meals);
+  const goal = getDailyCalorieGoal(plan);
 
   const grouped = useMemo(
     () =>
@@ -85,6 +92,7 @@ export function FoodLogScreen(): React.JSX.Element {
           </View>
         ) : (
           <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
+            <CalorieProgressBar consumed={consumed} goal={goal} />
             <DayMacroSummary meals={meals} />
             {meals.length === 0 ? (
               <View style={styles.emptyState}>

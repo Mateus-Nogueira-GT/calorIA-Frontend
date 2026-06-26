@@ -7,12 +7,12 @@ import { useFoodLogStore } from '@features/food-log/store';
 import { foodLogService } from '@shared/services/food-log.service';
 import { useDietStore } from '@features/diet/store';
 import { todayString } from '@shared/utils/date';
+import { getDailyCalorieGoal } from '@shared/utils/calories';
 import { CalorieRing } from '../components/CalorieRing';
 import { MacroCard } from '../components/MacroCard';
 import { MealListItem } from '../components/MealListItem';
 import { DietPlanSection } from '@features/diet/components/DietPlanSection';
 
-const DEFAULT_CALORIE_GOAL = 2000;
 const DEFAULT_PROTEIN_GOAL = 150;
 const DEFAULT_CARBS_GOAL = 250;
 const DEFAULT_FAT_GOAL = 65;
@@ -96,7 +96,7 @@ export function DashboardScreen(): React.JSX.Element {
         { calories: 0, protein: 0, carbs: 0, fat: 0 },
       );
 
-  const calorieGoal = plan?.totalCalories ?? DEFAULT_CALORIE_GOAL;
+  const calorieGoal = getDailyCalorieGoal(plan);
   const proteinGoal = plan?.totalProtein ?? DEFAULT_PROTEIN_GOAL;
   const carbsGoal = plan?.totalCarbs ?? DEFAULT_CARBS_GOAL;
   const fatGoal = plan?.totalFat ?? DEFAULT_FAT_GOAL;

@@ -18,6 +18,7 @@ export type TabParamList = {
   CameraAction: undefined;
   Coach: undefined;
   Profile: undefined;
+  Evolution: undefined;
 };
 
 // Scanner Stack
