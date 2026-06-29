@@ -2,18 +2,21 @@ import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { z } from 'zod'
 import type { JwtPayload } from '../../shared/types.js'
 import {
-  feedPostSchema,
+  postSchema,
+  feedPageSchema,
   commentSchema,
+  likeResultSchema,
   createPostBodySchema,
   createCommentBodySchema,
   feedQuerySchema,
   errorSchema,
 } from './feed.schemas.js'
 import {
-  createPost,
+  createUserPost,
   getFeed,
   deletePost,
-  toggleLike,
+  likePost,
+  unlikePost,
   addComment,
   getComments,
 } from './feed.service.js'
@@ -29,26 +32,26 @@ const feedRoutes: FastifyPluginAsyncZod = async (fastify) => {
     }
   })
 
-  /** GET /feed — feed social (próprios posts + amigos) */
+  /** GET /feed — feed social paginado (keyset por createdAt). */
   fastify.get(
-    '/',
+    '/feed',
     {
       schema: {
         tags: ['Feed'],
         summary: 'Feed social',
         security: [{ bearerAuth: [] }],
         querystring: feedQuerySchema,
-        response: { 200: z.array(feedPostSchema), 401: errorSchema },
+        response: { 200: feedPageSchema, 401: errorSchema },
       },
     },
     async (request, reply) => {
       const { sub: userId } = request.user as JwtPayload
-      const { limit, before } = request.query
-      return reply.send(await getFeed(fastify, userId, limit, before))
+      const { limit, cursor } = request.query
+      return reply.send(await getFeed(fastify, userId, limit, cursor))
     },
   )
 
-  /** POST /feed/posts — criar post */
+  /** POST /posts — criar post (retorna o post completo). */
   fastify.post(
     '/posts',
     {
@@ -57,17 +60,22 @@ const feedRoutes: FastifyPluginAsyncZod = async (fastify) => {
         summary: 'Criar post',
         security: [{ bearerAuth: [] }],
         body: createPostBodySchema,
-        response: { 201: z.object({ id: z.string().uuid() }), 401: errorSchema },
+        response: { 201: postSchema, 401: errorSchema },
       },
     },
     async (request, reply) => {
       const { sub: userId } = request.user as JwtPayload
-      const created = await createPost(fastify, userId, request.body.content)
-      return reply.status(201).send(created)
+      const post = await createUserPost(
+        fastify,
+        userId,
+        request.body.content,
+        request.body.achievement,
+      )
+      return reply.status(201).send(post)
     },
   )
 
-  /** DELETE /feed/posts/:id — remover post próprio */
+  /** DELETE /posts/:id — remover post próprio. */
   fastify.delete(
     '/posts/:id',
     {
@@ -86,25 +94,43 @@ const feedRoutes: FastifyPluginAsyncZod = async (fastify) => {
     },
   )
 
-  /** POST /feed/posts/:id/like — curtir/descurtir post */
+  /** POST /posts/:id/like — curtir (idempotente). */
   fastify.post(
     '/posts/:id/like',
     {
       schema: {
         tags: ['Feed'],
-        summary: 'Curtir/descurtir post',
+        summary: 'Curtir post',
         security: [{ bearerAuth: [] }],
         params: z.object({ id: z.string().uuid() }),
-        response: { 200: z.object({ liked: z.boolean() }), 401: errorSchema, 404: errorSchema },
+        response: { 200: likeResultSchema, 401: errorSchema, 404: errorSchema },
       },
     },
     async (request, reply) => {
       const { sub: userId } = request.user as JwtPayload
-      return reply.send(await toggleLike(fastify, userId, request.params.id))
+      return reply.send(await likePost(fastify, userId, request.params.id))
     },
   )
 
-  /** GET /feed/posts/:id/comments — listar comentários */
+  /** DELETE /posts/:id/like — descurtir (idempotente). */
+  fastify.delete(
+    '/posts/:id/like',
+    {
+      schema: {
+        tags: ['Feed'],
+        summary: 'Descurtir post',
+        security: [{ bearerAuth: [] }],
+        params: z.object({ id: z.string().uuid() }),
+        response: { 200: likeResultSchema, 401: errorSchema, 404: errorSchema },
+      },
+    },
+    async (request, reply) => {
+      const { sub: userId } = request.user as JwtPayload
+      return reply.send(await unlikePost(fastify, userId, request.params.id))
+    },
+  )
+
+  /** GET /posts/:id/comments — listar comentários. */
   fastify.get(
     '/posts/:id/comments',
     {
@@ -122,7 +148,7 @@ const feedRoutes: FastifyPluginAsyncZod = async (fastify) => {
     },
   )
 
-  /** POST /feed/posts/:id/comments — comentar post */
+  /** POST /posts/:id/comments — comentar (retorna o comentário completo). */
   fastify.post(
     '/posts/:id/comments',
     {
@@ -132,13 +158,13 @@ const feedRoutes: FastifyPluginAsyncZod = async (fastify) => {
         security: [{ bearerAuth: [] }],
         params: z.object({ id: z.string().uuid() }),
         body: createCommentBodySchema,
-        response: { 201: z.object({ id: z.string().uuid() }), 401: errorSchema, 404: errorSchema },
+        response: { 201: commentSchema, 401: errorSchema, 404: errorSchema },
       },
     },
     async (request, reply) => {
       const { sub: userId } = request.user as JwtPayload
-      const created = await addComment(fastify, userId, request.params.id, request.body.content)
-      return reply.status(201).send(created)
+      const comment = await addComment(fastify, userId, request.params.id, request.body.content)
+      return reply.status(201).send(comment)
     },
   )
 }

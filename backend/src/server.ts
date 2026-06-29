@@ -186,7 +186,8 @@ export async function buildApp() {
   await app.register(chatRoutes, { prefix: '/chat' })
   await app.register(dietsRoutes, { prefix: '/diets' })
   await app.register(friendsRoutes, { prefix: '/friends' })
-  await app.register(feedRoutes, { prefix: '/feed' })
+  // Sem prefixo: o front usa GET /feed (lista) e /posts/* (criar/curtir/comentar).
+  await app.register(feedRoutes)
   await app.register(challengesRoutes, { prefix: '/challenges' })
   await app.register(foodLogRoutes, { prefix: '/food-log' })
   await app.register(scannerRoutes, { prefix: '/scanner' })
