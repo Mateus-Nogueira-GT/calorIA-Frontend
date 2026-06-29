@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 import { AppError } from '../../shared/errors.js'
+import { createNotification } from '../notifications/notifications.service.js'
 import type { Comment, FeedPost, PostType } from './feed.schemas.js'
 
 interface DbAuthor {
@@ -106,7 +107,7 @@ export async function toggleLike(
   userId: string,
   postId: string,
 ): Promise<{ liked: boolean }> {
-  await assertPostVisible(fastify, userId, postId)
+  const post = await assertPostVisible(fastify, userId, postId)
 
   const [existing] = await fastify.db<{ id: string }[]>`
     SELECT id FROM post_likes WHERE post_id = ${postId} AND user_id = ${userId}
@@ -118,6 +119,20 @@ export async function toggleLike(
   }
 
   await fastify.db`INSERT INTO post_likes (post_id, user_id) VALUES (${postId}, ${userId})`
+
+  // Notifica o dono do post (best-effort — não derruba a curtida).
+  try {
+    await createNotification(fastify, {
+      userId: post.user_id,
+      actorId: userId,
+      type: 'like',
+      message: 'curtiu sua publicação',
+      targetId: postId,
+    })
+  } catch (err) {
+    fastify.log.warn(err, 'Falha ao criar notificação de like')
+  }
+
   return { liked: true }
 }
 
@@ -129,13 +144,27 @@ export async function addComment(
   postId: string,
   content: string,
 ): Promise<{ id: string }> {
-  await assertPostVisible(fastify, userId, postId)
+  const post = await assertPostVisible(fastify, userId, postId)
 
   const [created] = await fastify.db<{ id: string }[]>`
     INSERT INTO post_comments (post_id, user_id, content)
     VALUES (${postId}, ${userId}, ${content})
     RETURNING id
   `
+
+  // Notifica o dono do post (best-effort — não derruba o comentário).
+  try {
+    await createNotification(fastify, {
+      userId: post.user_id,
+      actorId: userId,
+      type: 'comment',
+      message: 'comentou na sua publicação',
+      targetId: postId,
+    })
+  } catch (err) {
+    fastify.log.warn(err, 'Falha ao criar notificação de comentário')
+  }
+
   return created
 }
 

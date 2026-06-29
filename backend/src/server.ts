@@ -25,6 +25,8 @@ import feedRoutes from './modules/feed/feed.routes.js'
 import challengesRoutes from './modules/challenges/challenges.routes.js'
 import foodLogRoutes from './modules/food-log/food-log.routes.js'
 import scannerRoutes from './modules/scanner/scanner.routes.js'
+import notificationsRoutes from './modules/notifications/notifications.routes.js'
+import weightRoutes from './modules/weight/weight.routes.js'
 
 import { env } from './shared/env.js'
 import { AppError } from './shared/errors.js'
@@ -114,6 +116,8 @@ export async function buildApp() {
           { name: 'Challenges', description: 'Desafios entre amigos' },
           { name: 'FoodLog', description: 'Diário alimentar livre (fora do plano)' },
           { name: 'Scanner', description: 'Análise de foto de refeição via IA Vision' },
+          { name: 'Notifications', description: 'Notificações in-app' },
+          { name: 'Weight', description: 'Histórico de peso / evolução' },
         ],
         components: {
           securitySchemes: {
@@ -186,6 +190,8 @@ export async function buildApp() {
   await app.register(challengesRoutes, { prefix: '/challenges' })
   await app.register(foodLogRoutes, { prefix: '/food-log' })
   await app.register(scannerRoutes, { prefix: '/scanner' })
+  await app.register(notificationsRoutes, { prefix: '/notifications' })
+  await app.register(weightRoutes, { prefix: '/weight' })
 
   return app
 }
