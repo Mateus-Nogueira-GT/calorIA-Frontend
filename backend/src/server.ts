@@ -30,6 +30,7 @@ import weightRoutes from './modules/weight/weight.routes.js'
 
 import { env } from './shared/env.js'
 import { AppError } from './shared/errors.js'
+import { isAllowedIssuer } from './shared/auth-issuer.js'
 
 export async function buildApp() {
   const app = Fastify({
@@ -83,7 +84,8 @@ export async function buildApp() {
       }
       // Só buscamos JWKS se o issuer for do próprio projeto Supabase — evita
       // fetch de chave a partir de um domínio forjado num token malicioso.
-      if (!payload.iss || !payload.iss.startsWith(env.SUPABASE_URL)) {
+      // Fronteira exata (não `startsWith` solto): rejeita `...supabase.co.evil.com`.
+      if (!isAllowedIssuer(payload.iss, env.SUPABASE_URL)) {
         throw new Error('Issuer do token não corresponde ao Supabase configurado')
       }
       return getJwks.getPublicKey({ kid: header.kid, domain: payload.iss, alg: header.alg })
