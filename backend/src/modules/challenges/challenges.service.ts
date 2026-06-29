@@ -1,12 +1,61 @@
 import type { FastifyInstance } from 'fastify'
 import { AppError } from '../../shared/errors.js'
 import { createSystemPost } from '../feed/feed.service.js'
-import type {
-  Challenge,
-  ChallengeDetail,
-  ChallengeMember,
-  CreateChallengeBody,
-} from './challenges.schemas.js'
+import type { Challenge, ChallengeMember, CreateChallengeBody, LeaderboardEntry } from './challenges.schemas.js'
+
+interface DbChallengeRow {
+  id: string
+  title: string
+  description: string | null
+  invite_code: string
+  start_date: string
+  end_date: string
+  participant_count: number
+  joined_by_me: boolean
+}
+
+function toChallenge(row: DbChallengeRow): Challenge {
+  return {
+    id: row.id,
+    title: row.title,
+    description: row.description ?? '',
+    emoji: '🔥',
+    startDate: row.start_date,
+    endDate: row.end_date,
+    participantCount: row.participant_count,
+    metric: 'streak',
+    joinedByMe: row.joined_by_me,
+    inviteCode: row.invite_code,
+  }
+}
+
+// Fragmento de colunas reutilizado (camelCase derivado: datas, contagem, joinedByMe).
+function selectChallenge(fastify: FastifyInstance, userId: string) {
+  return fastify.db`
+    c.id, c.title, c.description, c.invite_code,
+    c.starts_at::DATE::TEXT AS start_date,
+    COALESCE(c.ends_at, c.starts_at + (c.duration_days || ' days')::interval)::DATE::TEXT AS end_date,
+    (SELECT COUNT(*) FROM challenge_members cm WHERE cm.challenge_id = c.id AND cm.status = 'active')::INT AS participant_count,
+    EXISTS (
+      SELECT 1 FROM challenge_members me
+      WHERE me.challenge_id = c.id AND me.user_id = ${userId} AND me.status = 'active'
+    ) AS joined_by_me
+  `
+}
+
+async function getChallengeById(
+  fastify: FastifyInstance,
+  userId: string,
+  challengeId: string,
+): Promise<Challenge> {
+  const [row] = await fastify.db<DbChallengeRow[]>`
+    SELECT ${selectChallenge(fastify, userId)}
+    FROM challenges c
+    WHERE c.id = ${challengeId}
+  `
+  if (!row) throw new AppError(404, 'CHALLENGE_NOT_FOUND', 'Desafio não encontrado')
+  return toChallenge(row)
+}
 
 // ─── Criação e listagem ───────────────────────────────────────────────────────
 
@@ -15,106 +64,69 @@ export async function createChallenge(
   userId: string,
   data: CreateChallengeBody,
 ): Promise<Challenge> {
-  return fastify.db.begin(async (sql) => {
-    const [challenge] = await sql<Omit<Challenge, 'member_count'>[]>`
-      INSERT INTO challenges (
-        creator_id, title, description, rules, goal_type, target_value,
-        duration_days, is_public, max_members
-      ) VALUES (
-        ${userId}, ${data.title}, ${data.description ?? null}, ${data.rules ?? null},
-        ${data.goal_type}, ${data.target_value ?? null},
-        ${data.duration_days}, ${data.is_public}, ${data.max_members}
-      )
-      RETURNING
-        id, creator_id, title, description, rules, goal_type, target_value, duration_days,
-        status, starts_at::TEXT AS starts_at, ends_at::TEXT AS ends_at,
-        invite_code, is_public, max_members, created_at::TEXT AS created_at
-    `
+  const durationDays = Math.max(
+    1,
+    Math.round((Date.parse(data.endDate) - Date.parse(data.startDate)) / 86_400_000),
+  )
 
+  const challengeId = await fastify.db.begin(async (sql) => {
+    const [challenge] = await sql<{ id: string }[]>`
+      INSERT INTO challenges (
+        creator_id, title, description, goal_type, duration_days, starts_at, ends_at, is_public, max_members
+      ) VALUES (
+        ${userId}, ${data.title}, ${data.description}, 'streak', ${durationDays},
+        ${data.startDate}, ${data.endDate}, false, 50
+      )
+      RETURNING id
+    `
     await sql`
       INSERT INTO challenge_members (challenge_id, user_id, status)
       VALUES (${challenge.id}, ${userId}, 'active')
     `
-
-    return { ...challenge, member_count: 1 }
+    return challenge.id
   })
+
+  return getChallengeById(fastify, userId, challengeId)
 }
 
 export async function listMyChallenges(
   fastify: FastifyInstance,
   userId: string,
 ): Promise<Challenge[]> {
-  return fastify.db<Challenge[]>`
-    SELECT
-      c.id, c.creator_id, c.title, c.description, c.rules, c.goal_type, c.target_value, c.duration_days,
-      c.status, c.starts_at::TEXT AS starts_at, c.ends_at::TEXT AS ends_at,
-      c.invite_code, c.is_public, c.max_members, c.created_at::TEXT AS created_at,
-      (SELECT COUNT(*) FROM challenge_members cm WHERE cm.challenge_id = c.id AND cm.status = 'active')::INT AS member_count
+  const rows = await fastify.db<DbChallengeRow[]>`
+    SELECT ${selectChallenge(fastify, userId)}
     FROM challenges c
-    JOIN challenge_members me ON me.challenge_id = c.id AND me.user_id = ${userId}
+    JOIN challenge_members me2 ON me2.challenge_id = c.id AND me2.user_id = ${userId} AND me2.status = 'active'
     ORDER BY c.created_at DESC
   `
-}
-
-export async function getChallengeDetail(
-  fastify: FastifyInstance,
-  userId: string,
-  challengeId: string,
-): Promise<ChallengeDetail> {
-  const [challenge] = await fastify.db<Omit<Challenge, 'member_count'>[]>`
-    SELECT
-      c.id, c.creator_id, c.title, c.description, c.rules, c.goal_type, c.target_value, c.duration_days,
-      c.status, c.starts_at::TEXT AS starts_at, c.ends_at::TEXT AS ends_at,
-      c.invite_code, c.is_public, c.max_members, c.created_at::TEXT AS created_at
-    FROM challenges c
-    JOIN challenge_members me ON me.challenge_id = c.id AND me.user_id = ${userId}
-    WHERE c.id = ${challengeId}
-  `
-  if (!challenge) throw new AppError(404, 'CHALLENGE_NOT_FOUND', 'Desafio não encontrado')
-
-  const members = await fastify.db<ChallengeMember[]>`
-    SELECT
-      cm.id, cm.user_id, p.username, p.full_name, p.avatar_url,
-      cm.status, cm.current_streak, cm.best_streak, cm.total_days,
-      cm.last_check_in::TEXT AS last_check_in
-    FROM challenge_members cm
-    JOIN profiles p ON p.id = cm.user_id
-    WHERE cm.challenge_id = ${challengeId}
-    ORDER BY cm.current_streak DESC, cm.total_days DESC
-  `
-
-  return {
-    ...challenge,
-    member_count: members.filter((m) => m.status === 'active').length,
-    members,
-  }
+  return rows.map(toChallenge)
 }
 
 // ─── Participação ─────────────────────────────────────────────────────────────
 
-export async function joinChallengeByCode(
+export async function joinChallenge(
   fastify: FastifyInstance,
   userId: string,
-  inviteCode: string,
-): Promise<{ id: string }> {
+  challengeId: string,
+): Promise<Challenge> {
   const [challenge] = await fastify.db<
-    { id: string; status: string; max_members: number | null }[]
+    { id: string; status: string; max_members: number | null; title: string }[]
   >`
-    SELECT id, status, max_members FROM challenges WHERE invite_code = ${inviteCode}
+    SELECT id, status, max_members, title FROM challenges WHERE id = ${challengeId}
   `
-  if (!challenge) throw new AppError(404, 'CHALLENGE_NOT_FOUND', 'Código de convite inválido')
+  if (!challenge) throw new AppError(404, 'CHALLENGE_NOT_FOUND', 'Desafio não encontrado')
   if (challenge.status !== 'active')
     throw new AppError(409, 'CHALLENGE_NOT_ACTIVE', 'Este desafio não está ativo')
 
   const [existing] = await fastify.db<{ id: string; status: string }[]>`
-    SELECT id, status FROM challenge_members WHERE challenge_id = ${challenge.id} AND user_id = ${userId}
+    SELECT id, status FROM challenge_members WHERE challenge_id = ${challengeId} AND user_id = ${userId}
   `
   if (existing?.status === 'active')
     throw new AppError(409, 'ALREADY_MEMBER', 'Você já participa deste desafio')
 
   if (challenge.max_members) {
     const [{ count }] = await fastify.db<{ count: number }[]>`
-      SELECT COUNT(*)::INT AS count FROM challenge_members WHERE challenge_id = ${challenge.id} AND status = 'active'
+      SELECT COUNT(*)::INT AS count FROM challenge_members WHERE challenge_id = ${challengeId} AND status = 'active'
     `
     if (count >= challenge.max_members)
       throw new AppError(409, 'CHALLENGE_FULL', 'Este desafio já atingiu o limite de participantes')
@@ -123,17 +135,60 @@ export async function joinChallengeByCode(
   if (existing) {
     await fastify.db`UPDATE challenge_members SET status = 'active', updated_at = NOW() WHERE id = ${existing.id}`
   } else {
-    await fastify.db`INSERT INTO challenge_members (challenge_id, user_id, status) VALUES (${challenge.id}, ${userId}, 'active')`
+    await fastify.db`INSERT INTO challenge_members (challenge_id, user_id, status) VALUES (${challengeId}, ${userId}, 'active')`
   }
 
-  const [{ title }] = await fastify.db<
-    { title: string }[]
-  >`SELECT title FROM challenges WHERE id = ${challenge.id}`
-  await createSystemPost(fastify, userId, 'challenge_joined', `Entrou no desafio "${title}"!`, {
-    challenge_id: challenge.id,
-  })
+  try {
+    await createSystemPost(fastify, userId, 'challenge_joined', `Entrou no desafio "${challenge.title}"!`, {
+      challenge_id: challengeId,
+    })
+  } catch (err) {
+    fastify.log.warn(err, 'Falha ao publicar post de entrada em desafio')
+  }
 
-  return { id: challenge.id }
+  return getChallengeById(fastify, userId, challengeId)
+}
+
+export async function resolveInvite(
+  fastify: FastifyInstance,
+  userId: string,
+  inviteCode: string,
+): Promise<Challenge> {
+  const [row] = await fastify.db<DbChallengeRow[]>`
+    SELECT ${selectChallenge(fastify, userId)}
+    FROM challenges c
+    WHERE c.invite_code = ${inviteCode}
+  `
+  if (!row) throw new AppError(404, 'CHALLENGE_NOT_FOUND', 'Código de convite inválido')
+  return toChallenge(row)
+}
+
+export async function getLeaderboard(
+  fastify: FastifyInstance,
+  userId: string,
+  challengeId: string,
+): Promise<LeaderboardEntry[]> {
+  const rows = await fastify.db<
+    {
+      user_id: string
+      full_name: string | null
+      username: string | null
+      current_streak: number
+    }[]
+  >`
+    SELECT cm.user_id, p.full_name, p.username, cm.current_streak
+    FROM challenge_members cm
+    JOIN profiles p ON p.id = cm.user_id
+    WHERE cm.challenge_id = ${challengeId} AND cm.status = 'active'
+    ORDER BY cm.current_streak DESC, cm.total_days DESC
+  `
+
+  return rows.map((r, i) => ({
+    rank: i + 1,
+    user: { id: r.user_id, name: r.full_name ?? r.username ?? 'Usuário' },
+    streak: r.current_streak,
+    isMe: r.user_id === userId,
+  }))
 }
 
 export async function leaveChallenge(
@@ -172,17 +227,7 @@ export async function checkIn(
   const [updated] = await fastify.db.begin(async (sql) => {
     await sql`INSERT INTO challenge_days (member_id, check_date) VALUES (${member.id}, ${today}) ON CONFLICT DO NOTHING`
 
-    return sql<
-      {
-        id: string
-        user_id: string
-        status: string
-        current_streak: number
-        best_streak: number
-        total_days: number
-        last_check_in: string
-      }[]
-    >`
+    return sql<ChallengeMember[]>`
       UPDATE challenge_members
       SET
         current_streak = CASE
@@ -214,11 +259,5 @@ export async function checkIn(
     )
   }
 
-  const [profile] = await fastify.db<
-    { username: string | null; full_name: string | null; avatar_url: string | null }[]
-  >`
-    SELECT username, full_name, avatar_url FROM profiles WHERE id = ${userId}
-  `
-
-  return { ...updated, ...profile } as unknown as ChallengeMember
+  return updated
 }

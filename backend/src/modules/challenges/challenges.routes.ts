@@ -3,17 +3,17 @@ import { z } from 'zod'
 import type { JwtPayload } from '../../shared/types.js'
 import {
   challengeSchema,
-  challengeDetailSchema,
+  leaderboardEntrySchema,
   challengeMemberSchema,
   createChallengeBodySchema,
-  joinChallengeBodySchema,
   errorSchema,
 } from './challenges.schemas.js'
 import {
   createChallenge,
   listMyChallenges,
-  getChallengeDetail,
-  joinChallengeByCode,
+  joinChallenge,
+  resolveInvite,
+  getLeaderboard,
   leaveChallenge,
   checkIn,
 } from './challenges.service.js'
@@ -55,54 +55,67 @@ const challengesRoutes: FastifyPluginAsyncZod = async (fastify) => {
         summary: 'Criar desafio',
         security: [{ bearerAuth: [] }],
         body: createChallengeBodySchema,
-        response: { 201: challengeSchema, 401: errorSchema },
+        response: { 201: challengeSchema, 401: errorSchema, 422: errorSchema },
       },
     },
     async (request, reply) => {
       const { sub: userId } = request.user as JwtPayload
-      const created = await createChallenge(fastify, userId, request.body)
-      return reply.status(201).send(created)
+      const challenge = await createChallenge(fastify, userId, request.body)
+      return reply.status(201).send(challenge)
     },
   )
 
-  /** GET /challenges/:id — detalhe + ranking */
+  /** GET /challenges/invite/:code — preview do desafio por código (antes de entrar) */
   fastify.get(
-    '/:id',
+    '/invite/:code',
     {
       schema: {
         tags: ['Challenges'],
-        summary: 'Detalhe do desafio com ranking',
+        summary: 'Preview de convite',
+        security: [{ bearerAuth: [] }],
+        params: z.object({ code: z.string().min(4).max(20) }),
+        response: { 200: challengeSchema, 401: errorSchema, 404: errorSchema },
+      },
+    },
+    async (request, reply) => {
+      const { sub: userId } = request.user as JwtPayload
+      return reply.send(await resolveInvite(fastify, userId, request.params.code))
+    },
+  )
+
+  /** POST /challenges/:id/join — entrar no desafio */
+  fastify.post(
+    '/:id/join',
+    {
+      schema: {
+        tags: ['Challenges'],
+        summary: 'Entrar no desafio',
         security: [{ bearerAuth: [] }],
         params: z.object({ id: z.string().uuid() }),
-        response: { 200: challengeDetailSchema, 401: errorSchema, 404: errorSchema },
+        response: { 200: challengeSchema, 401: errorSchema, 404: errorSchema, 409: errorSchema },
       },
     },
     async (request, reply) => {
       const { sub: userId } = request.user as JwtPayload
-      return reply.send(await getChallengeDetail(fastify, userId, request.params.id))
+      return reply.send(await joinChallenge(fastify, userId, request.params.id))
     },
   )
 
-  /** POST /challenges/join — entrar via código de convite */
-  fastify.post(
-    '/join',
+  /** GET /challenges/:id/leaderboard — ranking do desafio */
+  fastify.get(
+    '/:id/leaderboard',
     {
       schema: {
         tags: ['Challenges'],
-        summary: 'Entrar em desafio via código de convite',
+        summary: 'Ranking do desafio',
         security: [{ bearerAuth: [] }],
-        body: joinChallengeBodySchema,
-        response: {
-          200: z.object({ id: z.string().uuid() }),
-          401: errorSchema,
-          404: errorSchema,
-          409: errorSchema,
-        },
+        params: z.object({ id: z.string().uuid() }),
+        response: { 200: z.array(leaderboardEntrySchema), 401: errorSchema },
       },
     },
     async (request, reply) => {
       const { sub: userId } = request.user as JwtPayload
-      return reply.send(await joinChallengeByCode(fastify, userId, request.body.invite_code))
+      return reply.send(await getLeaderboard(fastify, userId, request.params.id))
     },
   )
 
@@ -112,15 +125,10 @@ const challengesRoutes: FastifyPluginAsyncZod = async (fastify) => {
     {
       schema: {
         tags: ['Challenges'],
-        summary: 'Check-in diário no desafio',
+        summary: 'Check-in diário',
         security: [{ bearerAuth: [] }],
         params: z.object({ id: z.string().uuid() }),
-        response: {
-          200: challengeMemberSchema,
-          401: errorSchema,
-          404: errorSchema,
-          409: errorSchema,
-        },
+        response: { 200: challengeMemberSchema, 401: errorSchema, 404: errorSchema, 409: errorSchema },
       },
     },
     async (request, reply) => {
@@ -129,13 +137,13 @@ const challengesRoutes: FastifyPluginAsyncZod = async (fastify) => {
     },
   )
 
-  /** DELETE /challenges/:id/leave — saída do desafio */
+  /** DELETE /challenges/:id/leave — sair do desafio */
   fastify.delete(
     '/:id/leave',
     {
       schema: {
         tags: ['Challenges'],
-        summary: 'Saída do desafio',
+        summary: 'Sair do desafio',
         security: [{ bearerAuth: [] }],
         params: z.object({ id: z.string().uuid() }),
         response: { 204: z.null(), 401: errorSchema, 404: errorSchema },
