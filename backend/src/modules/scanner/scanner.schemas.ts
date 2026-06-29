@@ -12,7 +12,8 @@ export const analyzePhotoBodySchema = z.object({
 
 // ─── Responses (contrato com o frontend) ───────────────────────────────────────
 
-export const scanResultSchema = z.object({
+export const scanItemSchema = z.object({
+  id: z.string(),
   name: z.string(),
   calories: z.number(),
   protein: z.number(),
@@ -20,6 +21,12 @@ export const scanResultSchema = z.object({
   fat: z.number(),
   /** Confiança da IA na estimativa, entre 0 e 1. */
   confidence: z.number().min(0).max(1),
+})
+
+// A IA hoje retorna 1 item por foto, mas o contrato já é uma lista para abrir
+// caminho a múltiplos itens por foto no futuro (e o front edita item a item).
+export const scanResponseSchema = z.object({
+  items: z.array(scanItemSchema),
 })
 
 export const errorSchema = z.object({
@@ -43,5 +50,6 @@ export const visionAnalysisSchema = z.object({
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type AnalyzePhotoBody = z.infer<typeof analyzePhotoBodySchema>
-export type ScanResult = z.infer<typeof scanResultSchema>
+export type ScanItem = z.infer<typeof scanItemSchema>
+export type ScanResponse = z.infer<typeof scanResponseSchema>
 export type VisionAnalysis = z.infer<typeof visionAnalysisSchema>

@@ -1,6 +1,6 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import type { JwtPayload } from '../../shared/types.js'
-import { analyzePhotoBodySchema, scanResultSchema, errorSchema } from './scanner.schemas.js'
+import { analyzePhotoBodySchema, scanResponseSchema, errorSchema } from './scanner.schemas.js'
 import { analyzePhoto } from './scanner.service.js'
 
 const scannerRoutes: FastifyPluginAsyncZod = async (fastify) => {
@@ -39,7 +39,7 @@ const scannerRoutes: FastifyPluginAsyncZod = async (fastify) => {
         security: [{ bearerAuth: [] }],
         body: analyzePhotoBodySchema,
         response: {
-          200: scanResultSchema,
+          200: scanResponseSchema,
           401: errorSchema,
           422: errorSchema.describe('Imagem não contém comida'),
           502: errorSchema.describe('Serviço de IA indisponível'),

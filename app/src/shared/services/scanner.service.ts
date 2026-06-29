@@ -10,25 +10,41 @@ export interface ScanItem {
   confidence: number;
 }
 
-export interface ScanAnalysis {
+export interface ScanResponse {
   items: ScanItem[];
 }
 
-interface RawItem extends Omit<ScanItem, 'id'> {
-  id?: string;
-}
+let fallbackSeq = 0;
 
-let seq = 0;
-function withId(item: RawItem): ScanItem {
-  return { ...item, id: item.id ?? `scan-${Date.now()}-${seq++}` };
+/**
+ * Normaliza a resposta do backend para { items }. O contrato canônico é
+ * { items: ScanItem[] }, mas mantemos tolerância a um item único legado.
+ */
+function normalize(data: unknown): ScanResponse {
+  const d = data as ({ items?: ScanItem[] } & Partial<ScanItem>) | null;
+  if (d && Array.isArray(d.items)) {
+    return { items: d.items.map((it, i) => ({ ...it, id: it.id ?? `scan-${i}` })) };
+  }
+  if (d && typeof d.name === 'string') {
+    return {
+      items: [
+        {
+          id: d.id ?? `scan-${fallbackSeq++}`,
+          name: d.name,
+          calories: d.calories ?? 0,
+          protein: d.protein ?? 0,
+          carbs: d.carbs ?? 0,
+          fat: d.fat ?? 0,
+          confidence: d.confidence ?? 1,
+        },
+      ],
+    };
+  }
+  return { items: [] };
 }
 
 export const scannerService = {
-  /** Envia a imagem (data URL base64) para análise IA Vision. */
-  analyzePhoto: (image: string): Promise<ScanAnalysis> =>
-    api.post<{ items?: RawItem[] } & Partial<RawItem>>('/scanner/analyze', { image }).then((r) => {
-      const data = r.data;
-      const list = Array.isArray(data.items) ? data.items : [data as RawItem];
-      return { items: list.filter((i) => i && typeof i.name === 'string').map(withId) };
-    }),
+  /** Envia a imagem como data URL base64 para análise via IA Vision. */
+  analyzePhoto: (image: string) =>
+    api.post<unknown>('/scanner/analyze', { image }).then((r) => normalize(r.data)),
 };

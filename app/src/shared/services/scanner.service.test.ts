@@ -7,7 +7,9 @@ const api = require('./api').default;
 const { scannerService } = require('./scanner.service');
 
 describe('scannerService.analyzePhoto', () => {
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
 
   it('retorna a lista de itens', async () => {
     api.post.mockResolvedValue({ data: { items: [{ id: '1', name: 'Arroz', calories: 200, protein: 4, carbs: 44, fat: 1, confidence: 0.9 }] } });

@@ -1,8 +1,9 @@
 import type { FastifyInstance } from 'fastify'
+import { randomUUID } from 'node:crypto'
 import { zodResponseFormat } from 'openai/helpers/zod.js'
 import { env } from '../../shared/env.js'
 import { AppError } from '../../shared/errors.js'
-import { visionAnalysisSchema, type ScanResult } from './scanner.schemas.js'
+import { visionAnalysisSchema, type ScanResponse } from './scanner.schemas.js'
 
 const VISION_SYSTEM_PROMPT = `Você é um nutricionista especialista em análise visual de alimentos.
 Receberá a foto de um prato/refeição e deve estimar os valores nutricionais do que está visível.
@@ -23,7 +24,7 @@ Receberá a foto de um prato/refeição e deve estimar os valores nutricionais d
 export async function analyzePhoto(
   fastify: FastifyInstance,
   imageDataUrl: string,
-): Promise<ScanResult> {
+): Promise<ScanResponse> {
   let analysis: import('./scanner.schemas.js').VisionAnalysis
   try {
     const completion = await fastify.openai.beta.chat.completions.parse({
@@ -56,11 +57,16 @@ export async function analyzePhoto(
   }
 
   return {
-    name: analysis.name,
-    calories: Math.max(0, Math.round(analysis.calories)),
-    protein: Math.max(0, Math.round(analysis.protein)),
-    carbs: Math.max(0, Math.round(analysis.carbs)),
-    fat: Math.max(0, Math.round(analysis.fat)),
-    confidence: Math.min(1, Math.max(0, analysis.confidence)),
+    items: [
+      {
+        id: randomUUID(),
+        name: analysis.name,
+        calories: Math.max(0, Math.round(analysis.calories)),
+        protein: Math.max(0, Math.round(analysis.protein)),
+        carbs: Math.max(0, Math.round(analysis.carbs)),
+        fat: Math.max(0, Math.round(analysis.fat)),
+        confidence: Math.min(1, Math.max(0, analysis.confidence)),
+      },
+    ],
   }
 }
