@@ -19,7 +19,7 @@ export const useDietStore = create<DietState>((set, get) => ({
   loadCurrent: async () => {
     set({ isLoading: true });
     try {
-      const plan = await dietService.getCurrent();
+      const plan = await dietService.getToday();
       set({ plan, isLoading: false });
     } catch {
       set({ isLoading: false });

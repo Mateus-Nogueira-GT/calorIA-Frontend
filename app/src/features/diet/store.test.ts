@@ -29,7 +29,7 @@ const plan: DietPlan = {
 
 jest.mock('@shared/services/diet.service', () => ({
   dietService: {
-    getCurrent: jest.fn(),
+    getToday: jest.fn(),
     toggleMeal: jest.fn(),
   },
 }));
@@ -48,7 +48,7 @@ describe('useDietStore', () => {
   });
 
   it('loadCurrent popula o plan', async () => {
-    dietService.getCurrent.mockResolvedValue(plan);
+    dietService.getToday.mockResolvedValue(plan);
     const { result } = renderHook(() => useDietStore());
     await act(() => result.current.loadCurrent());
     expect(result.current.plan).toEqual(plan);
@@ -56,7 +56,7 @@ describe('useDietStore', () => {
   });
 
   it('loadCurrent aceita null (sem dieta)', async () => {
-    dietService.getCurrent.mockResolvedValue(null);
+    dietService.getToday.mockResolvedValue(null);
     const { result } = renderHook(() => useDietStore());
     await act(() => result.current.loadCurrent());
     expect(result.current.plan).toBeNull();

@@ -65,6 +65,39 @@ export const dietWithDaysSchema = dietSchema.extend({
   days: z.array(dietDaySchema),
 })
 
+// ─── Dieta de hoje (camelCase — contrato com o frontend / dashboard) ────────────
+
+export const plannedMealItemSchema = z.object({
+  name: z.string(),
+  quantity: z.number(),
+  unit: z.string(),
+  calories: z.number(),
+})
+
+export const plannedMealSchema = z.object({
+  id: z.string().uuid(),
+  type: z.enum(['breakfast', 'lunch', 'snack', 'dinner']),
+  title: z.string(),
+  suggestedTime: z.string(),
+  items: z.array(plannedMealItemSchema),
+  calories: z.number(),
+  protein: z.number(),
+  carbs: z.number(),
+  fat: z.number(),
+  completedAt: z.string().nullable(),
+})
+
+export const todayPlanSchema = z.object({
+  id: z.string().uuid(),
+  date: z.string(),
+  meals: z.array(plannedMealSchema),
+  totalCalories: z.number(),
+  totalProtein: z.number(),
+  totalCarbs: z.number(),
+  totalFat: z.number(),
+  generatedAt: z.string(),
+})
+
 // ─── Requests ─────────────────────────────────────────────────────────────────
 
 export const replaceDietItemBodySchema = z.object({
@@ -89,3 +122,5 @@ export type DietWithDays = z.infer<typeof dietWithDaysSchema>
 export type DietDay = z.infer<typeof dietDaySchema>
 export type DietMeal = z.infer<typeof dietMealSchema>
 export type ReplaceDietItemBody = z.infer<typeof replaceDietItemBodySchema>
+export type TodayPlan = z.infer<typeof todayPlanSchema>
+export type PlannedMealType = z.infer<typeof plannedMealSchema>['type']

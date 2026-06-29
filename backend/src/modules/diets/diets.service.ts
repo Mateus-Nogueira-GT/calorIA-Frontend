@@ -2,8 +2,22 @@ import type { FastifyInstance } from 'fastify'
 import type { AiDietPlan, CollectedUserData } from '../../shared/diet-ai-schema.js'
 import { AppError } from '../../shared/errors.js'
 import { createSystemPost } from '../feed/feed.service.js'
-import type { Diet, DietDay, DietMeal, DietWithDays, ReplaceDietItemBody } from './diets.schemas.js'
+import type {
+  Diet,
+  DietDay,
+  DietMeal,
+  DietWithDays,
+  ReplaceDietItemBody,
+  TodayPlan,
+  PlannedMealType,
+} from './diets.schemas.js'
 import { randomUUID } from 'node:crypto'
+
+/** Mapeia os 6 tipos de refeição do banco para os 4 do app (lanches viram 'snack'). */
+function toPlannedMealType(mealType: string): PlannedMealType {
+  if (mealType === 'breakfast' || mealType === 'lunch' || mealType === 'dinner') return mealType
+  return 'snack'
+}
 
 // ─── Tipos internos de DB ─────────────────────────────────────────────────────
 
@@ -266,6 +280,81 @@ export async function getTodayDiet(fastify: FastifyInstance, userId: string): Pr
   }
 
   return { ...dbDay, meals }
+}
+
+/**
+ * Dia atual da dieta no formato camelCase consumido pelo dashboard (DietPlan).
+ * Retorna null (em vez de 404) quando não há dieta ativa, para o front
+ * distinguir "sem dieta" de erro.
+ */
+export async function getTodayPlan(
+  fastify: FastifyInstance,
+  userId: string,
+): Promise<TodayPlan | null> {
+  let diet: Diet
+  try {
+    diet = await getActiveDiet(fastify, userId)
+  } catch {
+    return null
+  }
+
+  const todayDayNumber = ((new Date().getDay() + 6) % 7) + 1
+  const today = new Date().toISOString().slice(0, 10)
+
+  const [dbDay] = await fastify.db<DbDietDay[]>`
+    SELECT id, diet_id, day_number, day_name,
+           total_calories, total_protein, total_carbs, total_fat
+    FROM diet_days
+    WHERE diet_id = ${diet.id} AND day_number = ${todayDayNumber}
+  `
+  if (!dbDay) return null
+
+  const dbMeals = await fastify.db<DbDietMeal[]>`
+    SELECT id, diet_day_id, meal_type, name, time_suggestion,
+           total_calories, total_protein, total_carbs, total_fat,
+           is_completed, completed_at::TEXT AS completed_at, sort_order
+    FROM diet_meals
+    WHERE diet_day_id = ${dbDay.id}
+    ORDER BY sort_order
+  `
+
+  const meals = []
+  for (const dbMeal of dbMeals) {
+    const items = await fastify.db<DbDietItem[]>`
+      SELECT food_name, quantity_g, unit, calories
+      FROM diet_items
+      WHERE diet_meal_id = ${dbMeal.id} AND is_substitution = FALSE
+      ORDER BY sort_order
+    `
+    meals.push({
+      id: dbMeal.id,
+      type: toPlannedMealType(dbMeal.meal_type),
+      title: dbMeal.name,
+      suggestedTime: dbMeal.time_suggestion ?? '',
+      items: items.map((it) => ({
+        name: it.food_name,
+        quantity: Number(it.quantity_g),
+        unit: it.unit,
+        calories: Number(it.calories),
+      })),
+      calories: Number(dbMeal.total_calories),
+      protein: Number(dbMeal.total_protein),
+      carbs: Number(dbMeal.total_carbs),
+      fat: Number(dbMeal.total_fat),
+      completedAt: dbMeal.completed_at,
+    })
+  }
+
+  return {
+    id: dbDay.id,
+    date: today,
+    meals,
+    totalCalories: Number(dbDay.total_calories),
+    totalProtein: Number(dbDay.total_protein),
+    totalCarbs: Number(dbDay.total_carbs),
+    totalFat: Number(dbDay.total_fat),
+    generatedAt: diet.created_at,
+  }
 }
 
 // ─── Ações do usuário na dieta ────────────────────────────────────────────────

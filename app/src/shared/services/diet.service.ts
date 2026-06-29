@@ -35,8 +35,8 @@ export interface DietPlan {
 }
 
 export const dietService = {
-  getCurrent: () =>
-    api.get<DietPlan | null>('/diets/current').then((r) => r.data),
+  /** Dia atual da dieta (refeições + metas) — dado principal do dashboard. */
+  getToday: () => api.get<DietPlan | null>('/diets/today').then((r) => r.data),
   toggleMeal: (mealId: string) =>
     api.patch<{ is_completed: boolean }>(`/diets/meals/${mealId}/toggle`).then((r) => r.data),
 };

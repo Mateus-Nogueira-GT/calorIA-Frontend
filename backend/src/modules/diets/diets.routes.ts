@@ -4,14 +4,14 @@ import type { JwtPayload } from '../../shared/types.js'
 import {
   dietSchema,
   dietWithDaysSchema,
-  dietDaySchema,
+  todayPlanSchema,
   replaceDietItemBodySchema,
   errorSchema,
 } from './diets.schemas.js'
 import {
   getActiveDiet,
   getDietWithDays,
-  getTodayDiet,
+  getTodayPlan,
   toggleMealCompleted,
   replaceDietItem,
   getDietHistory,
@@ -79,12 +79,12 @@ const dietsRoutes: FastifyPluginAsyncZod = async (fastify) => {
         description:
           'Retorna as refeições do dia atual conforme o dia da semana. É o dado principal da tela inicial.',
         security: [{ bearerAuth: [] }],
-        response: { 200: dietDaySchema, 401: errorSchema, 404: errorSchema },
+        response: { 200: todayPlanSchema.nullable(), 401: errorSchema },
       },
     },
     async (request, reply) => {
       const { sub: userId } = request.user as JwtPayload
-      return reply.send(await getTodayDiet(fastify, userId))
+      return reply.send(await getTodayPlan(fastify, userId))
     },
   )
 
