@@ -3,10 +3,20 @@ import {
   registerBodySchema,
   loginBodySchema,
   refreshBodySchema,
+  googleBodySchema,
+  appleBodySchema,
   authResponseSchema,
+  logoutResponseSchema,
   errorSchema,
 } from './auth.schemas.js'
-import { registerUser, loginUser, refreshSession } from './auth.service.js'
+import {
+  registerUser,
+  loginUser,
+  refreshSession,
+  googleLogin,
+  appleLogin,
+  logout,
+} from './auth.service.js'
 
 const authRoutes: FastifyPluginAsyncZod = async (fastify) => {
   /**
@@ -83,6 +93,65 @@ const authRoutes: FastifyPluginAsyncZod = async (fastify) => {
     async (request, reply) => {
       const result = await refreshSession(fastify, request.body)
       return reply.send(result)
+    },
+  )
+
+  /**
+   * POST /auth/google
+   * Login social com Google (valida o id_token no Supabase).
+   */
+  fastify.post(
+    '/google',
+    {
+      config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+      schema: {
+        tags: ['Auth'],
+        summary: 'Login com Google',
+        body: googleBodySchema,
+        response: { 200: authResponseSchema, 401: errorSchema },
+      },
+    },
+    async (request, reply) => {
+      return reply.send(await googleLogin(fastify, request.body.idToken))
+    },
+  )
+
+  /**
+   * POST /auth/apple
+   * Login social com Apple (valida o identity_token no Supabase).
+   */
+  fastify.post(
+    '/apple',
+    {
+      config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+      schema: {
+        tags: ['Auth'],
+        summary: 'Login com Apple',
+        body: appleBodySchema,
+        response: { 200: authResponseSchema, 401: errorSchema },
+      },
+    },
+    async (request, reply) => {
+      const { identityToken, fullName } = request.body
+      return reply.send(await appleLogin(fastify, identityToken, fullName))
+    },
+  )
+
+  /**
+   * POST /auth/logout
+   * Stub seguro — o cliente limpa o token local. Sempre 200.
+   */
+  fastify.post(
+    '/logout',
+    {
+      schema: {
+        tags: ['Auth'],
+        summary: 'Logout',
+        response: { 200: logoutResponseSchema },
+      },
+    },
+    async (_request, reply) => {
+      return reply.send(await logout())
     },
   )
 }

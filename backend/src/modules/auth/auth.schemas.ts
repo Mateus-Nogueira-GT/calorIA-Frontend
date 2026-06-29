@@ -23,6 +23,19 @@ export const refreshBodySchema = z.object({
   refresh_token: z.string().min(1, 'Refresh token é obrigatório'),
 })
 
+export const googleBodySchema = z.object({
+  idToken: z.string().min(1, 'idToken é obrigatório'),
+})
+
+export const appleBodySchema = z.object({
+  identityToken: z.string().min(1, 'identityToken é obrigatório'),
+  fullName: z.string().optional(),
+})
+
+export const logoutResponseSchema = z.object({
+  success: z.boolean(),
+})
+
 // ─── Responses ───────────────────────────────────────────────────────────────
 
 export const authUserSchema = z.object({

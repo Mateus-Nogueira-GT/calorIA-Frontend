@@ -1,6 +1,22 @@
 import type { FastifyInstance } from 'fastify'
+import type { Session, User } from '@supabase/supabase-js'
 import { AppError } from '../../shared/errors.js'
 import type { RegisterBody, LoginBody, RefreshBody, AuthResponse } from './auth.schemas.js'
+
+/** Mapeia uma sessão do Supabase para o shape de resposta de auth da API. */
+function sessionToAuthResponse(session: Session, user: User): AuthResponse {
+  return {
+    access_token: session.access_token,
+    refresh_token: session.refresh_token,
+    token_type: 'bearer',
+    expires_in: session.expires_in ?? 3600,
+    user: {
+      id: user.id,
+      email: user.email ?? '',
+      name: (user.user_metadata?.name as string) ?? null,
+    },
+  }
+}
 
 /**
  * Cadastra um novo usuário via Supabase Auth.
@@ -96,4 +112,58 @@ export async function refreshSession(
       name: (session.user!.user_metadata?.name as string) ?? null,
     },
   }
+}
+
+/**
+ * Login social via Google — valida o id_token no Supabase.
+ */
+export async function googleLogin(
+  fastify: FastifyInstance,
+  idToken: string,
+): Promise<AuthResponse> {
+  const { data, error } = await fastify.supabaseAuth.auth.signInWithIdToken({
+    provider: 'google',
+    token: idToken,
+  })
+  if (error || !data.session || !data.user) {
+    throw new AppError(401, 'GOOGLE_AUTH_FAILED', 'Não foi possível autenticar com o Google')
+  }
+  return sessionToAuthResponse(data.session, data.user)
+}
+
+/**
+ * Login social via Apple — valida o identity_token no Supabase.
+ * Se o nome vier do provedor (só no 1º login), preenche o perfil.
+ */
+export async function appleLogin(
+  fastify: FastifyInstance,
+  identityToken: string,
+  fullName?: string,
+): Promise<AuthResponse> {
+  const { data, error } = await fastify.supabaseAuth.auth.signInWithIdToken({
+    provider: 'apple',
+    token: identityToken,
+  })
+  if (error || !data.session || !data.user) {
+    throw new AppError(401, 'APPLE_AUTH_FAILED', 'Não foi possível autenticar com a Apple')
+  }
+
+  if (fullName) {
+    try {
+      await fastify.db`
+        UPDATE profiles SET full_name = COALESCE(full_name, ${fullName}) WHERE id = ${data.user.id}
+      `
+    } catch (err) {
+      fastify.log.warn(err, 'Falha ao preencher nome no login com Apple')
+    }
+  }
+
+  return sessionToAuthResponse(data.session, data.user)
+}
+
+/**
+ * Logout — stub seguro. O cliente já limpa o token local; sempre retorna 200.
+ */
+export async function logout(): Promise<{ success: boolean }> {
+  return { success: true }
 }

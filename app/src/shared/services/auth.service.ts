@@ -70,10 +70,12 @@ export const authService = {
       .then((r) => toAuthResponse(r.data)),
 
   loginWithGoogle: (idToken: string) =>
-    api.post<AuthResponse>('/auth/google', { idToken }).then((r) => r.data),
+    api.post<BackendAuthResponse>('/auth/google', { idToken }).then((r) => toAuthResponse(r.data)),
 
   loginWithApple: (identityToken: string, fullName?: string) =>
-    api.post<AuthResponse>('/auth/apple', { identityToken, fullName }).then((r) => r.data),
+    api
+      .post<BackendAuthResponse>('/auth/apple', { identityToken, fullName })
+      .then((r) => toAuthResponse(r.data)),
 
   profileSetup: (data: ProfileSetupPayload) =>
     api
