@@ -43,6 +43,38 @@ Seu objetivo é coletar informações do usuário em forma de conversa natural e
 Use Mifflin-St Jeor para BMR, multiplique pelo fator de atividade (TDEE) e ajuste pelo objetivo:
 - Perder peso: TDEE − 500 kcal | Manter: TDEE | Ganhar massa: TDEE + 300 | Ganhar peso: TDEE + 500`
 
+// Trecho de tom adicionado ao prompt conforme a personalidade escolhida no onboarding.
+const PERSONALITY_TONES: Record<string, string> = {
+  motivational:
+    'TOM: seja encorajador e entusiasmado, celebre cada progresso e use energia positiva.',
+  direct: 'TOM: seja objetivo e direto ao ponto, sem rodeios nem floreios.',
+  empathetic:
+    'TOM: seja acolhedor e empático, valide os sentimentos do usuário antes de orientar.',
+  scientific:
+    'TOM: explique o "porquê" das recomendações com base técnica e evidências, de forma didática.',
+}
+
+function buildSystemPrompt(personality: string | null | undefined): string {
+  const tone = PERSONALITY_TONES[personality ?? 'motivational'] ?? PERSONALITY_TONES.motivational
+  return `${CHAT_SYSTEM_PROMPT}\n\n## ${tone}`
+}
+
+// Timeout do cliente OpenAI menor que o maxDuration da função (60s na Vercel),
+// pra falhar com erro tratável antes de o gateway cortar em 502.
+const OPENAI_TIMEOUT_MS = 50_000
+
+/** Mapeia erros do SDK OpenAI para AppError com status/mensagem claros. */
+function mapOpenAIError(err: unknown): AppError {
+  const e = err as { status?: number; name?: string; code?: string }
+  if (e?.name?.includes('Timeout') || e?.code === 'ETIMEDOUT') {
+    return new AppError(504, 'AI_TIMEOUT', 'A IA demorou demais para responder. Tente novamente.')
+  }
+  if (e?.status === 401 || e?.status === 429) {
+    return new AppError(502, 'AI_UNAVAILABLE', 'Serviço de IA indisponível no momento.')
+  }
+  return new AppError(502, 'AI_ERROR', 'Serviço de IA temporariamente indisponível')
+}
+
 // ─── Tool definition para coleta de dados ─────────────────────────────────
 
 const COLLECT_DIET_DATA_TOOL: OpenAI.Chat.ChatCompletionTool = {
@@ -153,20 +185,29 @@ export async function sendChatMessage(
 
   history.push({ role: 'user', content: data.message })
 
+  // Personaliza o tom do coach conforme a preferência do usuário.
+  const [profile] = await fastify.db<{ coach_personality: string | null }[]>`
+    SELECT coach_personality FROM profiles WHERE id = ${userId}
+  `
+  const systemPrompt = buildSystemPrompt(profile?.coach_personality)
+
   // ── Chamada à OpenAI com suporte a function calling ──────────────────────
   let completion: Awaited<ReturnType<typeof fastify.openai.chat.completions.create>>
   try {
-    completion = await fastify.openai.chat.completions.create({
-      model: env.OPENAI_MODEL,
-      messages: [{ role: 'system', content: CHAT_SYSTEM_PROMPT }, ...history],
-      tools: [COLLECT_DIET_DATA_TOOL],
-      tool_choice: 'auto',
-      max_tokens: 600,
-      temperature: 0.7,
-    })
+    completion = await fastify.openai.chat.completions.create(
+      {
+        model: env.OPENAI_MODEL,
+        messages: [{ role: 'system', content: systemPrompt }, ...history],
+        tools: [COLLECT_DIET_DATA_TOOL],
+        tool_choice: 'auto',
+        max_tokens: 600,
+        temperature: 0.7,
+      },
+      { timeout: OPENAI_TIMEOUT_MS },
+    )
   } catch (err) {
     fastify.log.error({ err }, 'Erro ao chamar OpenAI chat')
-    throw new AppError(502, 'AI_ERROR', 'Serviço de IA temporariamente indisponível')
+    throw mapOpenAIError(err)
   }
 
   const choice = completion.choices[0]
@@ -233,32 +274,41 @@ async function handleDietGeneration(
   // ── Gera o plano alimentar estruturado ───────────────────────────────────
   let dietPlan: import('../../shared/diet-ai-schema.js').AiDietPlan
   try {
-    const dietCompletion = await fastify.openai.beta.chat.completions.parse({
-      model: env.OPENAI_MODEL,
-      messages: [
-        {
-          role: 'system',
-          content:
-            'Você é um nutricionista especializado. Crie planos alimentares detalhados, precisos e com alimentos brasileiros. Retorne SOMENTE o JSON do plano, sem texto adicional.',
-        },
-        { role: 'user', content: buildDietGenerationPrompt(userData) },
-      ],
-      response_format: zodResponseFormat(aiDietPlanSchema, 'diet_plan'),
-      max_tokens: 8000,
-      temperature: 0.3, // baixa temperatura para saída mais precisa
-    })
+    const dietCompletion = await fastify.openai.beta.chat.completions.parse(
+      {
+        model: env.OPENAI_MODEL,
+        messages: [
+          {
+            role: 'system',
+            content:
+              'Você é um nutricionista especializado. Crie planos alimentares detalhados, precisos e com alimentos brasileiros. Retorne SOMENTE o JSON do plano, sem texto adicional.',
+          },
+          { role: 'user', content: buildDietGenerationPrompt(userData) },
+        ],
+        response_format: zodResponseFormat(aiDietPlanSchema, 'diet_plan'),
+        max_tokens: 8000,
+        temperature: 0.3, // baixa temperatura para saída mais precisa
+      },
+      { timeout: OPENAI_TIMEOUT_MS },
+    )
 
     const parsed = dietCompletion.choices[0].message.parsed
     if (!parsed) throw new Error('OpenAI retornou dieta vazia')
     dietPlan = parsed
   } catch (err) {
+    // Não deixa o usuário preso em "generating": reseta o status e responde de
+    // forma amigável (diet_generated:false) em vez de estourar um 502 genérico.
     fastify.log.error({ err }, 'Erro ao gerar dieta estruturada')
+    const retryMsg =
+      'Tive um problema ao gerar sua dieta agora. Podemos tentar de novo em instantes?'
+    history.push({ role: 'assistant', content: retryMsg })
     await persistHistory(fastify, userId, conversationId, history, 'collecting')
-    throw new AppError(
-      502,
-      'DIET_GENERATION_ERROR',
-      'Erro ao gerar o plano alimentar. Tente novamente.',
-    )
+    return {
+      conversation_id: conversationId,
+      message: { role: 'assistant', content: retryMsg, created_at: new Date().toISOString() },
+      diet_generated: false,
+      diet_id: null,
+    }
   }
 
   // ── Persiste a dieta no banco ────────────────────────────────────────────
