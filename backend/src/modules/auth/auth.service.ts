@@ -55,8 +55,44 @@ export async function registerUser(
     ON CONFLICT (id) DO NOTHING
   `
 
+  // Deriva um username (a busca/pedido de amizade dependem dele; sem isso fica NULL).
+  await ensureUsername(fastify, createdUser.user.id, data.email)
+
   // Faz login para retornar os tokens
   return loginUser(fastify, { email: data.email, password: data.password })
+}
+
+/**
+ * Garante um username no perfil quando ainda é NULL, derivando do email.
+ * Best-effort: nunca bloqueia o cadastro. Tenta sufixos aleatórios em caso de
+ * colisão (a coluna username é UNIQUE).
+ */
+async function ensureUsername(
+  fastify: FastifyInstance,
+  userId: string,
+  email: string,
+): Promise<void> {
+  const base =
+    (email.split('@')[0] ?? 'user')
+      .toLowerCase()
+      .replace(/[^a-z0-9_]/g, '')
+      .slice(0, 20) || 'user'
+
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const suffix = attempt === 0 ? '' : String(1000 + Math.floor(Math.random() * 9000))
+    const candidate = `${base}${suffix}`.slice(0, 30)
+    try {
+      await fastify.db`
+        UPDATE profiles SET username = ${candidate}
+        WHERE id = ${userId} AND username IS NULL
+      `
+      return
+    } catch (err) {
+      if (err && typeof err === 'object' && 'code' in err && err.code === '23505') continue
+      fastify.log.warn(err, 'Falha ao derivar username')
+      return
+    }
+  }
 }
 
 /**
