@@ -51,10 +51,13 @@ export async function buildApp() {
   app.setSerializerCompiler(serializerCompiler)
 
   // ─── Plugins de infraestrutura ──────────────────────────────────────────────
+  // Com origin '*' não se pode enviar credentials:true (viola a spec CORS e o
+  // navegador bloqueia). Só habilitamos credentials quando há whitelist explícita.
+  const corsWildcard = env.CORS_ORIGIN === '*'
   await app.register(cors, {
-    origin: env.CORS_ORIGIN === '*' ? true : env.CORS_ORIGIN.split(','),
+    origin: corsWildcard ? true : env.CORS_ORIGIN.split(','),
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    credentials: true,
+    credentials: !corsWildcard,
   })
 
   await app.register(rateLimit, {
@@ -75,6 +78,11 @@ export async function buildApp() {
       const { header, payload } = tokenOrHeader as {
         header: { kid: string; alg: string }
         payload: { iss: string }
+      }
+      // Só buscamos JWKS se o issuer for do próprio projeto Supabase — evita
+      // fetch de chave a partir de um domínio forjado num token malicioso.
+      if (!payload.iss || !payload.iss.startsWith(env.SUPABASE_URL)) {
+        throw new Error('Issuer do token não corresponde ao Supabase configurado')
       }
       return getJwks.getPublicKey({ kid: header.kid, domain: payload.iss, alg: header.alg })
     },

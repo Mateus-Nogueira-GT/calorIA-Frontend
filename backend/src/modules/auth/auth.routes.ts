@@ -16,6 +16,8 @@ const authRoutes: FastifyPluginAsyncZod = async (fastify) => {
   fastify.post(
     '/register',
     {
+      // Limite mais estrito que o global pra mitigar abuso/brute-force.
+      config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
       schema: {
         tags: ['Auth'],
         summary: 'Criar conta',
@@ -41,6 +43,8 @@ const authRoutes: FastifyPluginAsyncZod = async (fastify) => {
   fastify.post(
     '/login',
     {
+      // Limite mais estrito que o global pra mitigar brute-force de credenciais.
+      config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
       schema: {
         tags: ['Auth'],
         summary: 'Login',

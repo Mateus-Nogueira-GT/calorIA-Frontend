@@ -12,7 +12,9 @@ const envSchema = z.object({
   SUPABASE_URL: z.string().url(),
   SUPABASE_ANON_KEY: z.string(),
   SUPABASE_SERVICE_ROLE_KEY: z.string(),
-  SUPABASE_JWT_SECRET: z.string(),
+  // Legado: a autenticação real valida o JWT (ES256) via JWKS do Supabase,
+  // não por este segredo simétrico. Mantido opcional só por compatibilidade.
+  SUPABASE_JWT_SECRET: z.string().optional(),
   DATABASE_URL: z.string(),
 
   // OpenAI
@@ -26,11 +28,15 @@ export type Env = z.infer<typeof envSchema>
 const parsed = envSchema.safeParse(process.env)
 
 if (!parsed.success) {
-  console.error('❌  Variáveis de ambiente inválidas ou ausentes:')
-  for (const [field, messages] of Object.entries(parsed.error.flatten().fieldErrors)) {
-    console.error(`   ${field}: ${messages?.join(', ')}`)
-  }
-  process.exit(1)
+  const details = Object.entries(parsed.error.flatten().fieldErrors)
+    .map(([field, messages]) => `   ${field}: ${messages?.join(', ')}`)
+    .join('\n')
+  const message = `❌  Variáveis de ambiente inválidas ou ausentes:\n${details}`
+  console.error(message)
+  // Em ambiente serverless (Vercel), process.exit derruba a função sem log
+  // tratável. Lançamos um erro: o handler captura e responde 500 com log claro,
+  // e o index.ts local falha cedo ao propagar (fail-fast em dev).
+  throw new Error(message)
 }
 
 export const env = parsed.data

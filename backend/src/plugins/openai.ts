@@ -10,17 +10,12 @@ declare module 'fastify' {
 }
 
 const openaiPlugin: FastifyPluginAsync = fp(async (fastify) => {
+  // Cliente lazy: não testamos a conexão no boot. Em serverless isso só adiciona
+  // latência de cold start e arriscaria atrasar/derrubar a função por causa de
+  // chave/limite. A validação acontece no 1º uso real, com erro tratado no serviço.
   const openai = new OpenAI({
     apiKey: env.OPENAI_API_KEY,
   })
-
-  // Testa a conexão listando modelos disponíveis (não bloqueia o boot se falhar)
-  try {
-    await openai.models.list()
-    fastify.log.info('✅  OpenAI conectado (modelo: %s)', env.OPENAI_MODEL)
-  } catch (err) {
-    fastify.log.warn(err, '⚠️  Falha ao conectar à OpenAI — verifique OPENAI_API_KEY')
-  }
 
   fastify.decorate('openai', openai)
 })
