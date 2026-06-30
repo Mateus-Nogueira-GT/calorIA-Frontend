@@ -50,28 +50,35 @@ export async function addMeal(
   userId: string,
   data: AddMealBody,
 ): Promise<Meal> {
-  return fastify.db.begin(async (sql) => {
-    const [meal] = await sql<{ id: string; logged_at: string }[]>`
-      INSERT INTO meals (user_id, meal_type, meal_date, name)
-      VALUES (${userId}, 'other', CURRENT_DATE, ${data.name})
-      RETURNING id, logged_at::TEXT AS logged_at
-    `
+  try {
+    return await fastify.db.begin(async (sql) => {
+      const [meal] = await sql<{ id: string; logged_at: string }[]>`
+        INSERT INTO meals (user_id, meal_type, meal_date, name)
+        VALUES (${userId}, 'other', CURRENT_DATE, ${data.name})
+        RETURNING id, logged_at::TEXT AS logged_at
+      `
 
-    await sql`
-      INSERT INTO meal_items (meal_id, food_name, quantity_g, calories, protein_g, carbs_g, fat_g, source)
-      VALUES (${meal.id}, ${data.name}, 100, ${data.calories}, ${data.protein}, ${data.carbs}, ${data.fat}, 'manual')
-    `
+      await sql`
+        INSERT INTO meal_items (meal_id, food_name, quantity_g, calories, protein_g, carbs_g, fat_g, source)
+        VALUES (${meal.id}, ${data.name}, 100, ${data.calories}, ${data.protein}, ${data.carbs}, ${data.fat}, 'manual')
+      `
 
-    return {
-      id: meal.id,
-      name: data.name,
-      calories: data.calories,
-      protein: data.protein,
-      carbs: data.carbs,
-      fat: data.fat,
-      loggedAt: meal.logged_at,
-    }
-  })
+      return {
+        id: meal.id,
+        name: data.name,
+        calories: data.calories,
+        protein: data.protein,
+        carbs: data.carbs,
+        fat: data.fat,
+        loggedAt: meal.logged_at,
+      }
+    })
+  } catch (err) {
+    // DIAGNÓSTICO TEMPORÁRIO: expõe o código do erro pg pra identificar a causa.
+    const e = err as { code?: string; message?: string }
+    fastify.log.error({ err }, 'Erro ao registrar refeição no diário')
+    throw new AppError(500, 'FOODLOG_DB_ERROR', `code=${e?.code ?? '?'} msg=${e?.message ?? '?'}`)
+  }
 }
 
 export async function deleteMeal(
