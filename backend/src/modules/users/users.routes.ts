@@ -1,7 +1,12 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import type { JwtPayload } from '../../shared/types.js'
-import { profileSchema, updateProfileBodySchema, errorSchema } from './users.schemas.js'
-import { getUserProfile, updateUserProfile } from './users.service.js'
+import {
+  profileSchema,
+  updateProfileBodySchema,
+  uploadAvatarBodySchema,
+  errorSchema,
+} from './users.schemas.js'
+import { getUserProfile, updateUserProfile, uploadUserAvatar } from './users.service.js'
 
 const usersRoutes: FastifyPluginAsyncZod = async (fastify) => {
   // Todas as rotas deste módulo exigem autenticação via JWT
@@ -66,6 +71,37 @@ const usersRoutes: FastifyPluginAsyncZod = async (fastify) => {
     async (request, reply) => {
       const { sub: userId } = request.user as JwtPayload
       const profile = await updateUserProfile(fastify, userId, request.body)
+      return reply.send(profile)
+    },
+  )
+
+  /**
+   * POST /users/me/avatar
+   * Recebe a foto (data URL base64), envia ao Storage e grava a URL no perfil.
+   */
+  fastify.post(
+    '/me/avatar',
+    {
+      // Imagens base64 estouram o limite padrão de 1MB do Fastify.
+      bodyLimit: 8 * 1024 * 1024,
+      schema: {
+        tags: ['Users'],
+        summary: 'Atualizar foto de perfil',
+        description: 'Envia uma imagem (data URL base64). Salva no Storage e atualiza avatar_url.',
+        security: [{ bearerAuth: [] }],
+        body: uploadAvatarBodySchema,
+        response: {
+          200: profileSchema,
+          401: errorSchema,
+          404: errorSchema,
+          422: errorSchema,
+          502: errorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { sub: userId } = request.user as JwtPayload
+      const profile = await uploadUserAvatar(fastify, userId, request.body.image)
       return reply.send(profile)
     },
   )

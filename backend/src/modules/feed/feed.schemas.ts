@@ -17,7 +17,8 @@ export const achievementTypeEnum = z.enum(['meal_logged', 'diet_completed', 'str
 export const postAuthorSchema = z.object({
   id: z.string(),
   name: z.string(),
-  avatarEmoji: z.string().optional(),
+  avatarEmoji: z.string().nullable().optional(),
+  avatarUrl: z.string().nullable().optional(),
 })
 
 export const postAchievementSchema = z.object({

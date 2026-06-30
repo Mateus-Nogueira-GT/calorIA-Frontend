@@ -8,7 +8,7 @@ import type { Comment } from '@shared/services/feed.service';
 export function CommentRow({ comment }: { comment: Comment }): React.JSX.Element {
   return (
     <View style={styles.row}>
-      <Avatar size='sm' emoji={comment.author.avatarEmoji ?? '🙂'} backgroundColor={colors.brandMutedSurface} />
+      <Avatar size='sm' uri={comment.author.avatarUrl} emoji={comment.author.avatarEmoji ?? '🙂'} backgroundColor={colors.brandMutedSurface} />
       <View style={styles.body}>
         <View style={styles.headRow}>
           <Text style={styles.author}>{comment.author.name}</Text>

@@ -8,9 +8,11 @@ import { weightHandlers } from './handlers/weight';
 import { feedHandlers } from './handlers/feed';
 import { challengesHandlers } from './handlers/challenges';
 import { notificationsHandlers } from './handlers/notifications';
+import { usersHandlers } from './handlers/users';
 
 export const server = setupServer(
   ...authHandlers,
+  ...usersHandlers,
   ...foodLogHandlers,
   ...scannerHandlers,
   ...coachHandlers,

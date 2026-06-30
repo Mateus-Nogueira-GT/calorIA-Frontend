@@ -13,6 +13,16 @@ interface DbPostRow {
   author_id: string
   author_full_name: string | null
   author_username: string | null
+  author_avatar_url: string | null
+  author_avatar_emoji: string | null
+}
+
+interface DbAuthorRow {
+  id: string
+  full_name: string | null
+  username: string | null
+  avatar_url: string | null
+  avatar_emoji: string | null
 }
 
 const ACHIEVEMENT_TO_TYPE: Record<PostAchievement['type'], PostType> = {
@@ -23,6 +33,24 @@ const ACHIEVEMENT_TO_TYPE: Record<PostAchievement['type'], PostType> = {
 
 function authorName(fullName: string | null, username: string | null): string {
   return fullName ?? username ?? 'Usuário'
+}
+
+function postRowToAuthor(row: DbPostRow): Post['author'] {
+  return {
+    id: row.author_id,
+    name: authorName(row.author_full_name, row.author_username),
+    avatarEmoji: row.author_avatar_emoji,
+    avatarUrl: row.author_avatar_url,
+  }
+}
+
+function authorRowToAuthor(row: DbAuthorRow): Post['author'] {
+  return {
+    id: row.id,
+    name: authorName(row.full_name, row.username),
+    avatarEmoji: row.avatar_emoji,
+    avatarUrl: row.avatar_url,
+  }
 }
 
 /** Deriva o badge de conquista do post (metadata.achievement tem prioridade). */
@@ -58,7 +86,7 @@ async function rowToPost(fastify: FastifyInstance, row: DbPostRow): Promise<Post
   `
   return {
     id: row.id,
-    author: { id: row.author_id, name: authorName(row.author_full_name, row.author_username) },
+    author: postRowToAuthor(row),
     content: row.content ?? '',
     achievement: toAchievement(row.type, row.metadata ?? {}),
     likeCount,
@@ -122,7 +150,8 @@ export async function getPostById(
       p.id, p.type, p.content, p.metadata,
       p.created_at::TEXT AS created_at,
       EXISTS (SELECT 1 FROM post_likes pl WHERE pl.post_id = p.id AND pl.user_id = ${userId}) AS liked_by_me,
-      a.id AS author_id, a.full_name AS author_full_name, a.username AS author_username
+      a.id AS author_id, a.full_name AS author_full_name, a.username AS author_username,
+      a.avatar_url AS author_avatar_url, a.avatar_emoji AS author_avatar_emoji
     FROM feed_posts p
     JOIN profiles a ON a.id = p.user_id
     WHERE p.id = ${postId}
@@ -155,7 +184,8 @@ export async function getFeed(
       p.id, p.type, p.content, p.metadata,
       p.created_at::TEXT AS created_at,
       EXISTS (SELECT 1 FROM post_likes pl WHERE pl.post_id = p.id AND pl.user_id = ${userId}) AS liked_by_me,
-      a.id AS author_id, a.full_name AS author_full_name, a.username AS author_username
+      a.id AS author_id, a.full_name AS author_full_name, a.username AS author_username,
+      a.avatar_url AS author_avatar_url, a.avatar_emoji AS author_avatar_emoji
     FROM feed_posts p
     JOIN profiles a ON a.id = p.user_id
     WHERE (p.user_id = ${userId} OR are_friends(${userId}, p.user_id))
@@ -258,16 +288,14 @@ export async function addComment(
     fastify.log.warn(err, 'Falha ao criar notificação de comentário')
   }
 
-  const [author] = await fastify.db<
-    { id: string; full_name: string | null; username: string | null }[]
-  >`
-    SELECT id, full_name, username FROM profiles WHERE id = ${userId}
+  const [author] = await fastify.db<DbAuthorRow[]>`
+    SELECT id, full_name, username, avatar_url, avatar_emoji FROM profiles WHERE id = ${userId}
   `
 
   return {
     id: created.id,
     postId,
-    author: { id: author.id, name: authorName(author.full_name, author.username) },
+    author: authorRowToAuthor(author),
     content,
     createdAt: created.created_at,
   }
@@ -288,11 +316,14 @@ export async function getComments(
       author_id: string
       author_full_name: string | null
       author_username: string | null
+      author_avatar_url: string | null
+      author_avatar_emoji: string | null
     }[]
   >`
     SELECT
       c.id, c.content, c.created_at::TEXT AS created_at,
-      a.id AS author_id, a.full_name AS author_full_name, a.username AS author_username
+      a.id AS author_id, a.full_name AS author_full_name, a.username AS author_username,
+      a.avatar_url AS author_avatar_url, a.avatar_emoji AS author_avatar_emoji
     FROM post_comments c
     JOIN profiles a ON a.id = c.user_id
     WHERE c.post_id = ${postId}
@@ -302,7 +333,12 @@ export async function getComments(
   return rows.map((r) => ({
     id: r.id,
     postId,
-    author: { id: r.author_id, name: authorName(r.author_full_name, r.author_username) },
+    author: {
+      id: r.author_id,
+      name: authorName(r.author_full_name, r.author_username),
+      avatarEmoji: r.author_avatar_emoji,
+      avatarUrl: r.author_avatar_url,
+    },
     content: r.content,
     createdAt: r.created_at,
   }))

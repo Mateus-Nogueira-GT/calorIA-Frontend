@@ -46,6 +46,7 @@ export type RootStackParamList = {
   App: undefined;
   ProfileGoals: undefined;
   ProfileCoachPersonality: undefined;
+  ProfileEdit: undefined;
   Scanner: NavigatorScreenParams<ScannerStackParamList>;
 };
 

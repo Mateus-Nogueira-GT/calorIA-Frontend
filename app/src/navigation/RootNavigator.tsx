@@ -9,6 +9,7 @@ import { ForgotPasswordScreen } from '@features/auth/screens/ForgotPasswordScree
 import { ProfileSetupScreen } from '@features/auth/screens/ProfileSetupScreen';
 import { ProfileGoalsScreen } from '@features/profile/screens/ProfileGoalsScreen';
 import { ProfileCoachPersonalityScreen } from '@features/profile/screens/ProfileCoachPersonalityScreen';
+import { ProfileEditScreen } from '@features/profile/screens/ProfileEditScreen';
 import { BrandTabNavigator } from './BrandTabNavigator';
 import { ScannerNavigator } from './ScannerNavigator';
 import { useAuthStore } from '@features/auth/store';
@@ -74,6 +75,11 @@ export function RootNavigator(): React.JSX.Element {
             name='ProfileCoachPersonality'
             component={ProfileCoachPersonalityScreen}
             options={{ headerShown: true, title: 'Personalidade do Coach' }}
+          />
+          <RootStack.Screen
+            name='ProfileEdit'
+            component={ProfileEditScreen}
+            options={{ headerShown: true, title: 'Editar perfil' }}
           />
           <RootStack.Screen
             name='Scanner'

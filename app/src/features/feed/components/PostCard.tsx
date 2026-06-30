@@ -18,7 +18,7 @@ export function PostCard({ post, onPressComments, onToggleLike }: Props): React.
   return (
     <Card style={styles.card}>
       <View style={styles.header}>
-        <Avatar size='sm' emoji={post.author.avatarEmoji ?? '🙂'} backgroundColor={colors.brandSupportSoft} />
+        <Avatar size='sm' uri={post.author.avatarUrl} emoji={post.author.avatarEmoji ?? '🙂'} backgroundColor={colors.brandSupportSoft} />
         <View style={styles.headerText}>
           <Text style={styles.author}>{post.author.name}</Text>
           <Text style={styles.time}>{timeAgo(post.createdAt)}</Text>
