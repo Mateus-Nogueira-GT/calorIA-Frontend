@@ -13,6 +13,8 @@ interface User {
   email: string;
   goal?: string | null;
   coachPersonality?: CoachPersonalityPreference | null;
+  avatarUrl?: string | null;
+  avatarEmoji?: string | null;
 }
 
 export type GoalPreference = 'lose_weight' | 'gain_muscle' | 'maintain' | 'health';
@@ -33,6 +35,7 @@ interface AuthState {
   setToken: (token: string, user: User, refreshToken?: string) => void;
   setPendingAuth: (token: string, user: User, refreshToken: string) => void;
   setProfilePreferences: (preferences: Partial<ProfilePreferences>) => void;
+  updateUser: (patch: Partial<Pick<User, 'name' | 'avatarUrl' | 'avatarEmoji'>>) => void;
   clearToken: () => void;
 }
 
@@ -188,6 +191,15 @@ export const useAuthStore = create<AuthState>((set) => ({
             },
           }),
     })),
+  updateUser: (patch) =>
+    set((state) => {
+      if (!state.user) return {};
+      // Ignora chaves undefined (não sobrescreve dados existentes); null é mantido (limpa o campo).
+      const clean = Object.fromEntries(
+        Object.entries(patch).filter(([, value]) => value !== undefined),
+      );
+      return { user: { ...state.user, ...clean } };
+    }),
   clearToken: () => {
     useDietStore.getState().clear();
     useFoodLogStore.getState().clear();

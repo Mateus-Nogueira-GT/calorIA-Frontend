@@ -36,12 +36,18 @@ export function ProfileScreen({ navigation }: TabScreenProps<'Profile'>): React.
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <ProfileHeader name={user?.name ?? ''} email={user?.email ?? ''} />
+      <ProfileHeader name={user?.name ?? ''} email={user?.email ?? ''} avatarUri={user?.avatarUrl ?? undefined} />
       {streak > 0 && <StreakBadge days={streak} />}
       <View style={styles.section}>
         {!loading && weeklyData.length > 0 && <WeeklyCalorieChart data={weeklyData} />}
       </View>
       <View style={styles.menuCard}>
+        <ProfileMenuItem
+          label="👤 Editar perfil"
+          description="Altere seu nome e foto de perfil"
+          onPress={() => navigation.navigate('ProfileEdit')}
+          testID="profile-edit-btn"
+        />
         <ProfileMenuItem
           label="🎯 Metas e objetivos"
           description={profilePreferences.goal ? goalLabels[profilePreferences.goal] : 'Defina o foco principal do seu plano'}

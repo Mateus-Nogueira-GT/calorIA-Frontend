@@ -5,7 +5,8 @@ export type AchievementType = 'meal_logged' | 'diet_completed' | 'streak';
 export interface PostAuthor {
   id: string;
   name: string;
-  avatarEmoji?: string;
+  avatarEmoji?: string | null;
+  avatarUrl?: string | null;
 }
 
 export interface PostAchievement {

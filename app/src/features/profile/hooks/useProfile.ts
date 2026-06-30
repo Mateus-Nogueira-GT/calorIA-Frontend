@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { foodLogService } from '@shared/services/food-log.service';
 import { authService } from '@shared/services/auth.service';
+import { profileService } from '@shared/services/profile.service';
 import { useAuthStore } from '@features/auth/store';
 import { dateToString } from '@shared/utils/date';
 
@@ -11,11 +12,26 @@ const DAYS_PT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 export function useProfile() {
   const user = useAuthStore((s) => s.user);
   const clearToken = useAuthStore((s) => s.clearToken);
+  const updateUser = useAuthStore((s) => s.updateUser);
   const [weeklyData, setWeeklyData] = useState<DayCalories[]>([]);
   const [streak, setStreak] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => { loadWeeklyData(); }, []);
+
+  // Hidrata nome/foto do backend (o login não traz avatar).
+  useEffect(() => {
+    profileService
+      .getMe()
+      .then((p) =>
+        updateUser({
+          name: p.full_name ?? undefined,
+          avatarUrl: p.avatar_url,
+          avatarEmoji: p.avatar_emoji,
+        }),
+      )
+      .catch(() => {});
+  }, [updateUser]);
 
   async function loadWeeklyData() {
     setLoading(true);
