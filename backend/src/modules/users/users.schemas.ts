@@ -22,6 +22,7 @@ export const profileSchema = z.object({
   username: z.string().nullable(),
   full_name: z.string().nullable(),
   avatar_url: z.string().url().nullable(),
+  avatar_emoji: z.string().nullable(),
   weight_kg: z.number().positive().nullable(),
   height_cm: z.number().int().positive().nullable(),
   birth_date: z.string().nullable(),
@@ -48,6 +49,8 @@ export const updateProfileBodySchema = z
       .regex(/^[a-z0-9_]+$/, 'Username deve conter apenas letras minúsculas, números e underscore')
       .optional(),
     full_name: z.string().min(2).max(100).optional(),
+    avatar_url: z.string().url().nullable().optional(),
+    avatar_emoji: z.string().min(1).max(16).nullable().optional(),
     weight_kg: z
       .number({ invalid_type_error: 'Peso deve ser um número' })
       .positive('Peso deve ser positivo')
@@ -76,6 +79,14 @@ export const updateProfileBodySchema = z
     message: 'Informe ao menos um campo para atualizar',
   })
 
+export const uploadAvatarBodySchema = z.object({
+  /** Imagem em data URL base64 (ex: "data:image/jpeg;base64,...."). */
+  image: z
+    .string()
+    .startsWith('data:image/', 'Imagem deve ser um data URL base64')
+    .max(8 * 1024 * 1024, 'Imagem muito grande'),
+})
+
 export const errorSchema = z.object({
   error: z.string(),
   message: z.string(),
@@ -85,3 +96,4 @@ export const errorSchema = z.object({
 
 export type Profile = z.infer<typeof profileSchema>
 export type UpdateProfileBody = z.infer<typeof updateProfileBodySchema>
+export type UploadAvatarBody = z.infer<typeof uploadAvatarBodySchema>
