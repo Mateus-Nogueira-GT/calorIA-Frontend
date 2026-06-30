@@ -1,9 +1,11 @@
 import { http, HttpResponse } from 'msw';
+import { meAuthor } from './_profile-state';
 
 interface PostAuthor {
   id: string;
   name: string;
-  avatarEmoji?: string;
+  avatarEmoji?: string | null;
+  avatarUrl?: string | null;
 }
 interface Comment {
   id: string;
@@ -23,7 +25,6 @@ interface Post {
   createdAt: string;
 }
 
-const me: PostAuthor = { id: 'me', name: 'Você', avatarEmoji: '😎' };
 const ana: PostAuthor = { id: 'u1', name: 'Ana Souza', avatarEmoji: '🦊' };
 const bruno: PostAuthor = { id: 'u2', name: 'Bruno Lima', avatarEmoji: '🐻' };
 
@@ -75,7 +76,7 @@ export const feedHandlers = [
     const body = (await request.json()) as { content: string; achievement?: Post['achievement'] };
     const created: Post = {
       id: nextId('p'),
-      author: me,
+      author: meAuthor(),
       content: body.content,
       achievement: body.achievement ?? null,
       likeCount: 0,
@@ -113,7 +114,7 @@ export const feedHandlers = [
     const comment: Comment = {
       id: nextId('c'),
       postId,
-      author: me,
+      author: meAuthor(),
       content: body.content,
       createdAt: new Date().toISOString(),
     };
