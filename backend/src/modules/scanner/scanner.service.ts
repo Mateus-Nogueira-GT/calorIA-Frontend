@@ -40,8 +40,9 @@ export async function analyzePhoto(
         },
       ],
       response_format: zodResponseFormat(visionAnalysisSchema, 'food_analysis'),
-      max_tokens: 500,
-      temperature: 0.2,
+      // GPT-5 (reasoning + visão): sem temperature custom e com teto folgado pra
+      // os reasoning tokens não estourarem antes do JSON da análise.
+      max_tokens: 2000,
     })
 
     const parsed = completion.choices[0].message.parsed

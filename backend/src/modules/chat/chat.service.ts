@@ -200,8 +200,9 @@ export async function sendChatMessage(
         messages: [{ role: 'system', content: systemPrompt }, ...history],
         tools: [COLLECT_DIET_DATA_TOOL],
         tool_choice: 'auto',
-        max_tokens: 600,
-        temperature: 0.7,
+        // GPT-5 é reasoning model: não aceita temperature custom (só o default) e
+        // gasta "reasoning tokens" do orçamento — por isso um limite mais folgado.
+        max_tokens: 2000,
       },
       { timeout: OPENAI_TIMEOUT_MS },
     )
@@ -286,8 +287,9 @@ async function handleDietGeneration(
           { role: 'user', content: buildDietGenerationPrompt(userData) },
         ],
         response_format: zodResponseFormat(aiDietPlanSchema, 'diet_plan'),
-        max_tokens: 8000,
-        temperature: 0.3, // baixa temperatura para saída mais precisa
+        // Plano de 7 dias é uma saída grande; com reasoning tokens do GPT-5 some
+        // ao orçamento, então um teto alto pra não truncar o JSON.
+        max_tokens: 16000,
       },
       { timeout: OPENAI_TIMEOUT_MS },
     )

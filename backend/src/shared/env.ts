@@ -17,10 +17,13 @@ const envSchema = z.object({
   SUPABASE_JWT_SECRET: z.string().optional(),
   DATABASE_URL: z.string(),
 
-  // OpenAI
+  // IA via OpenRouter (API compatível com a OpenAI). OPENAI_API_KEY é a key do
+  // OpenRouter; OPENAI_BASE_URL aponta para o endpoint do OpenRouter. Os modelos
+  // vêm prefixados (ex: openai/gpt-5).
   OPENAI_API_KEY: z.string(),
-  OPENAI_MODEL: z.string().default('gpt-4o'),
-  OPENAI_VISION_MODEL: z.string().default('gpt-4o'),
+  OPENAI_BASE_URL: z.string().url().default('https://openrouter.ai/api/v1'),
+  OPENAI_MODEL: z.string().default('openai/gpt-5'),
+  OPENAI_VISION_MODEL: z.string().default('openai/gpt-5'),
 })
 
 export type Env = z.infer<typeof envSchema>
