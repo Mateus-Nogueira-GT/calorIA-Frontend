@@ -301,8 +301,8 @@ async function handleDietGeneration(
     // Não deixa o usuário preso em "generating": reseta o status e responde de
     // forma amigável (diet_generated:false) em vez de estourar um 502 genérico.
     fastify.log.error({ err }, 'Erro ao gerar dieta estruturada')
-    const retryMsg =
-      'Tive um problema ao gerar sua dieta agora. Podemos tentar de novo em instantes?'
+    const de = err as { status?: number; message?: string }
+    const retryMsg = `DIETDEBUG st=${de?.status ?? '?'} :: ${(de?.message ?? '?').slice(0, 300)}`
     history.push({ role: 'assistant', content: retryMsg })
     await persistHistory(fastify, userId, conversationId, history, 'collecting')
     return {
