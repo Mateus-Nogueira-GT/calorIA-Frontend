@@ -16,6 +16,15 @@ import {
   replaceDietItem,
   getDietHistory,
 } from './diets.service.js'
+import { getJob, processJobStep } from './jobs.service.js'
+
+const jobStatusSchema = z.object({
+  jobId: z.string().uuid(),
+  status: z.enum(['pending', 'running', 'completed', 'failed']),
+  daysCompleted: z.number().int(),
+  totalDays: z.number().int(),
+  dietId: z.string().uuid().nullable(),
+})
 
 const dietsRoutes: FastifyPluginAsyncZod = async (fastify) => {
   // Autenticação obrigatória em todas as rotas
@@ -171,6 +180,45 @@ const dietsRoutes: FastifyPluginAsyncZod = async (fastify) => {
     async (request, reply) => {
       const { sub: userId } = request.user as JwtPayload
       return reply.send(await replaceDietItem(fastify, userId, request.params.itemId, request.body))
+    },
+  )
+
+  // ─── Geração assíncrona (job dirigido por polling) ──────────────────────────
+
+  /** GET /diets/jobs/:id — status do job de geração */
+  fastify.get(
+    '/jobs/:id',
+    {
+      schema: {
+        tags: ['Diets'],
+        summary: 'Status da geração de dieta',
+        security: [{ bearerAuth: [] }],
+        params: z.object({ id: z.string().uuid() }),
+        response: { 200: jobStatusSchema, 401: errorSchema, 404: errorSchema },
+      },
+    },
+    async (request, reply) => {
+      const { sub: userId } = request.user as JwtPayload
+      return reply.send(await getJob(fastify, userId, request.params.id))
+    },
+  )
+
+  /** POST /diets/jobs/:id/step — gera o próximo dia (1 dia por chamada) */
+  fastify.post(
+    '/jobs/:id/step',
+    {
+      schema: {
+        tags: ['Diets'],
+        summary: 'Gerar próximo dia da dieta',
+        description: 'Gera e persiste o próximo dia do plano. Chamar em polling até status=completed.',
+        security: [{ bearerAuth: [] }],
+        params: z.object({ id: z.string().uuid() }),
+        response: { 200: jobStatusSchema, 401: errorSchema, 404: errorSchema, 502: errorSchema },
+      },
+    },
+    async (request, reply) => {
+      const { sub: userId } = request.user as JwtPayload
+      return reply.send(await processJobStep(fastify, userId, request.params.id))
     },
   )
 }

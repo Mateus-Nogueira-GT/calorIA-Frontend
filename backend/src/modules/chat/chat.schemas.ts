@@ -26,6 +26,11 @@ export const chatResponseSchema = z.object({
   diet_generated: z.boolean().default(false),
   /** ID da dieta gerada (presente quando diet_generated = true) */
   diet_id: z.string().uuid().nullable().default(null),
+  /**
+   * ID do job de geração assíncrona. Quando presente, o cliente deve fazer
+   * polling em POST /diets/jobs/:id/step até status = completed.
+   */
+  diet_job_id: z.string().uuid().nullable().default(null),
 })
 
 export const errorSchema = z.object({

@@ -1,15 +1,10 @@
 import type { FastifyInstance } from 'fastify'
 import { randomUUID } from 'node:crypto'
-import { zodResponseFormat } from 'openai/helpers/zod.js'
 import type OpenAI from 'openai'
 import { env } from '../../shared/env.js'
 import { AppError } from '../../shared/errors.js'
-import {
-  aiDietPlanSchema,
-  collectedUserDataSchema,
-  type CollectedUserData,
-} from '../../shared/diet-ai-schema.js'
-import { saveDietToDb } from '../diets/diets.service.js'
+import { collectedUserDataSchema, type CollectedUserData } from '../../shared/diet-ai-schema.js'
+import { createDietJob } from '../diets/jobs.service.js'
 import type { ChatMessageBody, ChatResponse } from './chat.schemas.js'
 
 // ─── System prompt ─────────────────────────────────────────────────────────
@@ -125,46 +120,9 @@ const COLLECT_DIET_DATA_TOOL: OpenAI.Chat.ChatCompletionTool = {
   },
 }
 
-// ─── Prompt de geração de dieta ────────────────────────────────────────────
-
-function buildDietGenerationPrompt(userData: CollectedUserData): string {
-  const goalLabels: Record<string, string> = {
-    lose_weight: 'perda de peso',
-    maintain: 'manutenção de peso',
-    gain_muscle: 'ganho de massa muscular',
-    gain_weight: 'ganho de peso',
-  }
-  const activityLabels: Record<string, string> = {
-    sedentary: 'sedentário',
-    light: 'levemente ativo',
-    moderate: 'moderadamente ativo',
-    active: 'ativo',
-    very_active: 'muito ativo',
-  }
-
-  return `Crie um plano alimentar COMPLETO de 7 dias para o seguinte perfil:
-
-**Dados do usuário:**
-- Peso: ${userData.weight_kg}kg
-- Altura: ${userData.height_cm}cm
-- Idade: ${userData.age} anos
-- Sexo: ${userData.gender === 'male' ? 'Masculino' : userData.gender === 'female' ? 'Feminino' : 'Outro'}
-- Objetivo: ${goalLabels[userData.goal]}
-- Nível de atividade: ${activityLabels[userData.activity_level]}
-- Refeições por dia: ${userData.meals_per_day}
-${userData.dietary_restrictions.length > 0 ? `- Restrições: ${userData.dietary_restrictions.join(', ')}` : ''}
-${userData.allergies.length > 0 ? `- Alergias: ${userData.allergies.join(', ')}` : ''}
-${userData.food_preferences ? `- Preferências: ${userData.food_preferences}` : ''}
-
-**Instruções:**
-1. Calcule o TDEE usando Mifflin-St Jeor e ajuste pelo objetivo
-2. Distribua as ${userData.meals_per_day} refeições diárias coerentemente
-3. Use alimentos brasileiros comuns e acessíveis (base TACO)
-4. Varie os alimentos entre os 7 dias — evite repetição excessiva
-5. Especifique SEMPRE a quantidade em gramas e o preparo
-6. Calcule calorias e macros com precisão para cada item
-7. O plano deve ser prático e realista para o dia a dia`
-}
+// A geração da dieta em si acontece de forma assíncrona (1 dia por chamada) no
+// jobs.service — ver createDietJob/processJobStep. Aqui só coletamos os dados e
+// enfileiramos o job.
 
 // ─── Tipos internos ─────────────────────────────────────────────────────────
 
@@ -233,6 +191,7 @@ export async function sendChatMessage(
     message: { role: 'assistant', content: assistantMessage, created_at: new Date().toISOString() },
     diet_generated: false,
     diet_id: null,
+    diet_job_id: null,
   }
 }
 
@@ -263,46 +222,22 @@ async function handleDietGeneration(
       message: { role: 'assistant', content: fallbackMsg, created_at: new Date().toISOString() },
       diet_generated: false,
       diet_id: null,
+      diet_job_id: null,
     }
   }
 
   const userData = parseResult.data
   const userMessage = userData.message_to_user
 
-  // Sinaliza que está gerando
-  await persistHistory(fastify, userId, conversationId, history, 'generating')
-
-  // ── Gera o plano alimentar estruturado ───────────────────────────────────
-  let dietPlan: import('../../shared/diet-ai-schema.js').AiDietPlan
+  // ── Enfileira o job de geração (gera 1 dia por chamada, via polling) ──────
+  // Não gera os 7 dias aqui: estouraria o limite de tempo da função serverless.
+  let job: { jobId: string; dietId: string }
   try {
-    const dietCompletion = await fastify.openai.beta.chat.completions.parse(
-      {
-        model: env.OPENAI_MODEL,
-        messages: [
-          {
-            role: 'system',
-            content:
-              'Você é um nutricionista especializado. Crie planos alimentares detalhados, precisos e com alimentos brasileiros. Retorne SOMENTE o JSON do plano, sem texto adicional.',
-          },
-          { role: 'user', content: buildDietGenerationPrompt(userData) },
-        ],
-        response_format: zodResponseFormat(aiDietPlanSchema, 'diet_plan'),
-        // Plano de 7 dias é uma saída grande; com reasoning tokens do GPT-5 some
-        // ao orçamento, então um teto alto pra não truncar o JSON.
-        max_tokens: 16000,
-      },
-      { timeout: OPENAI_TIMEOUT_MS },
-    )
-
-    const parsed = dietCompletion.choices[0].message.parsed
-    if (!parsed) throw new Error('OpenAI retornou dieta vazia')
-    dietPlan = parsed
+    job = await createDietJob(fastify, userId, conversationId, userData)
   } catch (err) {
-    // Não deixa o usuário preso em "generating": reseta o status e responde de
-    // forma amigável (diet_generated:false) em vez de estourar um 502 genérico.
-    fastify.log.error({ err }, 'Erro ao gerar dieta estruturada')
+    fastify.log.error({ err }, 'Erro ao criar job de geração de dieta')
     const retryMsg =
-      'Tive um problema ao gerar sua dieta agora. Podemos tentar de novo em instantes?'
+      'Tive um problema ao iniciar sua dieta agora. Podemos tentar de novo em instantes?'
     history.push({ role: 'assistant', content: retryMsg })
     await persistHistory(fastify, userId, conversationId, history, 'collecting')
     return {
@@ -310,11 +245,9 @@ async function handleDietGeneration(
       message: { role: 'assistant', content: retryMsg, created_at: new Date().toISOString() },
       diet_generated: false,
       diet_id: null,
+      diet_job_id: null,
     }
   }
-
-  // ── Persiste a dieta no banco ────────────────────────────────────────────
-  const dietId = await saveDietToDb(fastify, userId, conversationId, userData, dietPlan)
 
   // Atualiza perfil do usuário com os dados coletados
   await fastify.db`
@@ -331,17 +264,18 @@ async function handleDietGeneration(
     WHERE id = ${userId}
   `
 
-  // Mensagem final no histórico
+  // Sinaliza que está gerando; o front faz polling em /diets/jobs/:id/step.
   history.push({ role: 'assistant', content: userMessage })
-  await persistHistory(fastify, userId, conversationId, history, 'completed')
+  await persistHistory(fastify, userId, conversationId, history, 'generating')
 
-  fastify.log.info({ userId, dietId }, 'Dieta gerada com sucesso')
+  fastify.log.info({ userId, jobId: job.jobId }, 'Job de dieta enfileirado')
 
   return {
     conversation_id: conversationId,
     message: { role: 'assistant', content: userMessage, created_at: new Date().toISOString() },
-    diet_generated: true,
-    diet_id: dietId,
+    diet_generated: false,
+    diet_id: null,
+    diet_job_id: job.jobId,
   }
 }
 

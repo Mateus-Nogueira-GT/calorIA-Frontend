@@ -50,6 +50,12 @@ export const aiDietPlanSchema = z.object({
   days: z.array(aiDietDaySchema),
 })
 
+/** Um único dia da dieta — usado na geração assíncrona (1 dia por chamada). */
+export const aiSingleDaySchema = z.object({
+  day_name: z.string(),
+  meals: z.array(aiDietMealSchema),
+})
+
 /** Dados coletados pelo chat antes de gerar a dieta */
 export const collectedUserDataSchema = z.object({
   weight_kg: z.number(),
@@ -66,4 +72,5 @@ export const collectedUserDataSchema = z.object({
 })
 
 export type AiDietPlan = z.infer<typeof aiDietPlanSchema>
+export type AiSingleDay = z.infer<typeof aiSingleDaySchema>
 export type CollectedUserData = z.infer<typeof collectedUserDataSchema>
