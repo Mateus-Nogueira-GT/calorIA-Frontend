@@ -21,9 +21,20 @@ const envSchema = z.object({
   // OpenRouter; OPENAI_BASE_URL aponta para o endpoint do OpenRouter. Os modelos
   // vêm prefixados (ex: openai/gpt-5).
   OPENAI_API_KEY: z.string(),
-  OPENAI_BASE_URL: z.string().url().default('https://openrouter.ai/api/v1'),
-  OPENAI_MODEL: z.string().default('openai/gpt-5'),
-  OPENAI_VISION_MODEL: z.string().default('openai/gpt-5'),
+  // preprocess: env var em branco na Vercel vira string vazia (não undefined),
+  // o que puraria o default. Tratamos '' como ausente para o default valer.
+  OPENAI_BASE_URL: z.preprocess(
+    (v) => (v === '' || v == null ? undefined : v),
+    z.string().url().default('https://openrouter.ai/api/v1'),
+  ),
+  OPENAI_MODEL: z.preprocess(
+    (v) => (v === '' || v == null ? undefined : v),
+    z.string().default('openai/gpt-5'),
+  ),
+  OPENAI_VISION_MODEL: z.preprocess(
+    (v) => (v === '' || v == null ? undefined : v),
+    z.string().default('openai/gpt-5'),
+  ),
 })
 
 export type Env = z.infer<typeof envSchema>
