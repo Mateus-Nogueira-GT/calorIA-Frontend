@@ -352,17 +352,34 @@ export async function getChatHistory(
   userId: string,
   conversationId: string,
 ): Promise<{ messages: ChatHistoryMessage[]; status: string }> {
-  const [row] = await fastify.db<{ messages: ChatHistoryMessage[]; status: string }[]>`
+  const [row] = await fastify.db<{ messages: unknown; status: string }[]>`
     SELECT messages, status
     FROM chat_history
     WHERE id = ${conversationId} AND user_id = ${userId}
   `
 
   if (!row) throw new AppError(404, 'CONVERSATION_NOT_FOUND', 'Conversa não encontrada')
-  return row
+  return { messages: normalizeHistory(row.messages), status: row.status }
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Garante que o histórico seja sempre um array. Dependendo do driver/pooler, a
+ * coluna JSONB `messages` pode voltar como string (JSON) em vez de array já
+ * parseado — normalizamos os dois casos.
+ */
+function normalizeHistory(raw: unknown): ChatHistoryMessage[] {
+  let value = raw
+  if (typeof value === 'string') {
+    try {
+      value = JSON.parse(value)
+    } catch {
+      return []
+    }
+  }
+  return Array.isArray(value) ? (value as ChatHistoryMessage[]) : []
+}
 
 async function loadHistory(
   fastify: FastifyInstance,
@@ -370,11 +387,11 @@ async function loadHistory(
   conversationId: string,
 ): Promise<ChatHistoryMessage[]> {
   try {
-    const [row] = await fastify.db<{ messages: ChatHistoryMessage[] }[]>`
+    const [row] = await fastify.db<{ messages: unknown }[]>`
       SELECT messages FROM chat_history
       WHERE id = ${conversationId} AND user_id = ${userId}
     `
-    return row?.messages ?? []
+    return normalizeHistory(row?.messages)
   } catch {
     return []
   }

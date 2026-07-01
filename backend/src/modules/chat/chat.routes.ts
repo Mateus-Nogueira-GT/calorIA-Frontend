@@ -60,25 +60,14 @@ Envia uma mensagem para o assistente de dietas com IA.
           200: chatResponseSchema,
           401: errorSchema,
           429: errorSchema.describe('Limite de mensagens atingido'),
-          500: errorSchema,
           502: errorSchema.describe('Serviço de IA indisponível'),
         },
       },
     },
     async (request, reply) => {
       const { sub: userId } = request.user as JwtPayload
-      try {
-        const result = await sendChatMessage(fastify, userId, request.body)
-        return reply.send(result)
-      } catch (err) {
-        // DIAGNÓSTICO TEMPORÁRIO: expõe a causa real do 500 no multi-turno.
-        const e = err as { code?: string; message?: string; stack?: string }
-        fastify.log.error({ err }, 'Erro no /chat/message')
-        return reply.status(500).send({
-          error: 'CHAT_DEBUG',
-          message: `code=${e?.code ?? '?'} :: ${e?.message ?? '?'} :: ${(e?.stack ?? '').split('\n')[1]?.trim() ?? ''}`,
-        })
-      }
+      const result = await sendChatMessage(fastify, userId, request.body)
+      return reply.send(result)
     },
   )
 
