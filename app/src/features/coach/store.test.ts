@@ -18,6 +18,10 @@ jest.mock('@features/diet/store', () => ({
   useDietStore: { getState: () => ({ loadCurrent: jest.fn() }) },
 }));
 
+jest.mock('@shared/services/diet.service', () => ({
+  dietService: { stepJob: jest.fn(), getJob: jest.fn() },
+}));
+
 describe('useCoachStore', () => {
   beforeEach(() =>
     useCoachStore.setState({

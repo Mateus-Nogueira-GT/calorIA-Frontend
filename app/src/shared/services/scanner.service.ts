@@ -46,5 +46,6 @@ function normalize(data: unknown): ScanResponse {
 export const scannerService = {
   /** Envia a imagem como data URL base64 para análise via IA Vision. */
   analyzePhoto: (image: string) =>
-    api.post<unknown>('/scanner/analyze', { image }).then((r) => normalize(r.data)),
+    // Visão via GPT-5 leva ~20s+ — timeout acima do padrão de 10s.
+    api.post<unknown>('/scanner/analyze', { image }, { timeout: 75000 }).then((r) => normalize(r.data)),
 };

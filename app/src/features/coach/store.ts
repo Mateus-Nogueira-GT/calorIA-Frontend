@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { coachService, CoachMessage } from '@shared/services/coach.service';
+import { dietService } from '@shared/services/diet.service';
 import { useDietStore } from '@features/diet/store';
 
 interface StoreMessage {
@@ -9,6 +10,13 @@ interface StoreMessage {
   timestamp: Date;
   dietGenerated?: boolean;
   dietId?: string | null;
+  dietJobId?: string | null;
+}
+
+interface DietJobState {
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  daysCompleted: number;
+  totalDays: number;
 }
 
 interface CoachState {
@@ -18,9 +26,12 @@ interface CoachState {
   error: string | null;
   hasLoadedHistory: boolean;
   lastFailedAction: 'history' | 'send' | null;
+  dietJob: DietJobState | null;
   loadHistory: () => Promise<void>;
   sendMessage: (content: string) => Promise<boolean>;
   retryLastAction: () => Promise<void>;
+  runDietGeneration: (jobId: string) => Promise<void>;
+  clear: () => void;
 }
 
 function toStoreMessage(m: CoachMessage): StoreMessage {
@@ -30,6 +41,7 @@ function toStoreMessage(m: CoachMessage): StoreMessage {
     content: m.content,
     timestamp: new Date(m.timestamp),
     ...(m.dietGenerated ? { dietGenerated: true, dietId: m.dietId } : {}),
+    ...(m.dietJobId ? { dietJobId: m.dietJobId } : {}),
   };
 }
 
@@ -40,6 +52,7 @@ export const useCoachStore = create<CoachState>((set, get) => ({
   error: null,
   hasLoadedHistory: false,
   lastFailedAction: null,
+  dietJob: null,
 
   loadHistory: async () => {
     const { conversationId } = get();
@@ -70,11 +83,7 @@ export const useCoachStore = create<CoachState>((set, get) => ({
       content: trimmed,
       timestamp: new Date(),
     };
-    set({
-      messages: [...get().messages, userMsg],
-      isLoading: true,
-      error: null,
-    });
+    set({ messages: [...get().messages, userMsg], isLoading: true, error: null });
     try {
       const { conversationId, message } = await coachService.sendMessage(trimmed, get().conversationId);
       set((s) => ({
@@ -84,9 +93,8 @@ export const useCoachStore = create<CoachState>((set, get) => ({
         error: null,
         lastFailedAction: null,
       }));
-      if (message.dietGenerated) {
-        void useDietStore.getState().loadCurrent();
-      }
+      // Dieta é gerada de forma assíncrona (1 dia por chamada) — inicia o polling.
+      if (message.dietJobId) void get().runDietGeneration(message.dietJobId);
       return true;
     } catch {
       set({
@@ -123,9 +131,7 @@ export const useCoachStore = create<CoachState>((set, get) => ({
           error: null,
           lastFailedAction: null,
         }));
-        if (message.dietGenerated) {
-          void useDietStore.getState().loadCurrent();
-        }
+        if (message.dietJobId) void get().runDietGeneration(message.dietJobId);
       } catch {
         set({
           isLoading: false,
@@ -135,4 +141,44 @@ export const useCoachStore = create<CoachState>((set, get) => ({
       }
     }
   },
+
+  // Polling da geração assíncrona: cada /step gera um dia; repetimos até
+  // completar. A UI pode ler `dietJob` para mostrar o progresso.
+  runDietGeneration: async (jobId: string) => {
+    if (get().dietJob?.status === 'running') return;
+    set({ dietJob: { status: 'running', daysCompleted: 0, totalDays: 7 } });
+    try {
+      // Guard: no máximo alguns passos a mais que o total de dias.
+      for (let i = 0; i < 12; i++) {
+        const s = await dietService.stepJob(jobId);
+        set({
+          dietJob: { status: s.status, daysCompleted: s.daysCompleted, totalDays: s.totalDays },
+        });
+        if (s.status === 'completed') {
+          await useDietStore.getState().loadCurrent();
+          break;
+        }
+        if (s.status === 'failed') break;
+      }
+    } catch {
+      set((st) => ({
+        dietJob: {
+          status: 'failed',
+          daysCompleted: st.dietJob?.daysCompleted ?? 0,
+          totalDays: st.dietJob?.totalDays ?? 7,
+        },
+      }));
+    }
+  },
+
+  clear: () =>
+    set({
+      conversationId: null,
+      messages: [],
+      isLoading: false,
+      error: null,
+      hasLoadedHistory: false,
+      lastFailedAction: null,
+      dietJob: null,
+    }),
 }));

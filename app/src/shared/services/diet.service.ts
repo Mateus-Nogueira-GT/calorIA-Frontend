@@ -34,9 +34,22 @@ export interface DietPlan {
   generatedAt: string;
 }
 
+export interface DietJobStatus {
+  jobId: string;
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  daysCompleted: number;
+  totalDays: number;
+  dietId: string | null;
+}
+
 export const dietService = {
   /** Dia atual da dieta (refeições + metas) — dado principal do dashboard. */
   getToday: () => api.get<DietPlan | null>('/diets/today').then((r) => r.data),
   toggleMeal: (mealId: string) =>
     api.patch<{ is_completed: boolean }>(`/diets/meals/${mealId}/toggle`).then((r) => r.data),
+  /** Geração assíncrona: cada chamada gera 1 dia; chamar em polling até completed. */
+  stepJob: (jobId: string) =>
+    // Gerar 1 dia via GPT-5 leva dezenas de segundos — timeout bem acima do padrão.
+    api.post<DietJobStatus>(`/diets/jobs/${jobId}/step`, undefined, { timeout: 75000 }).then((r) => r.data),
+  getJob: (jobId: string) => api.get<DietJobStatus>(`/diets/jobs/${jobId}`).then((r) => r.data),
 };

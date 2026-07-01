@@ -7,6 +7,7 @@ export interface CoachMessage {
   timestamp: string;
   dietGenerated?: boolean;
   dietId?: string | null;
+  dietJobId?: string | null;
 }
 
 export interface HistoryResult {
@@ -24,6 +25,7 @@ interface BackendChatResponse {
   message: { role: 'assistant'; content: string; created_at: string };
   diet_generated: boolean;
   diet_id: string | null;
+  diet_job_id: string | null;
 }
 
 function toCoachRole(role: 'user' | 'assistant'): 'coach' | 'user' {
@@ -46,7 +48,12 @@ export const coachService = {
 
   sendMessage: (content: string, conversationId: string | null) =>
     api
-      .post<BackendChatResponse>('/chat/message', { message: content, conversation_id: conversationId })
+      // Chat com IA pode levar mais que os 10s padrão do axios.
+      .post<BackendChatResponse>(
+        '/chat/message',
+        { message: content, conversation_id: conversationId },
+        { timeout: 60000 },
+      )
       .then((r) => ({
         conversationId: r.data.conversation_id,
         message: {
@@ -56,6 +63,7 @@ export const coachService = {
           timestamp: r.data.message.created_at,
           dietGenerated: r.data.diet_generated,
           dietId: r.data.diet_id,
+          dietJobId: r.data.diet_job_id,
         },
       })),
 };
