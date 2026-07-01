@@ -49,8 +49,10 @@ export async function analyzePhoto(
     if (!parsed) throw new Error('OpenAI retornou análise vazia')
     analysis = parsed
   } catch (err) {
+    // DIAGNÓSTICO TEMPORÁRIO: expõe status/mensagem reais do erro de visão.
+    const e = err as { status?: number; message?: string }
     fastify.log.error({ err }, 'Erro ao analisar foto via Vision')
-    throw new AppError(502, 'VISION_ERROR', 'Não foi possível analisar a imagem. Tente novamente.')
+    throw new AppError(502, 'VISION_DEBUG', `status=${e?.status ?? '?'} :: ${(e?.message ?? '?').slice(0, 300)}`)
   }
 
   if (!analysis.is_food) {
