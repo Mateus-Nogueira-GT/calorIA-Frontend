@@ -144,30 +144,55 @@ export const useCoachStore = create<CoachState>((set, get) => ({
 
   // Polling da geração assíncrona: cada /step gera um dia; repetimos até
   // completar. A UI pode ler `dietJob` para mostrar o progresso.
+  // Importante: um erro de rede no step NÃO significa falha — o servidor pode
+  // continuar processando (conexão caiu no meio). Nesses casos consultamos o
+  // status (getJob) e seguimos enquanto houver progresso.
   runDietGeneration: async (jobId: string) => {
     if (get().dietJob?.status === 'running') return;
     set({ dietJob: { status: 'running', daysCompleted: 0, totalDays: 5 } });
-    try {
-      // Guard: no máximo alguns passos a mais que o total de dias.
-      for (let i = 0; i < 12; i++) {
+    const apply = (s: { status: 'pending' | 'running' | 'completed' | 'failed'; daysCompleted: number; totalDays: number }) =>
+      set({ dietJob: { status: s.status, daysCompleted: s.daysCompleted, totalDays: s.totalDays } });
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+    let networkMisses = 0;
+    // Guard: passos + folga pra retries de rede.
+    for (let i = 0; i < 20; i++) {
+      try {
         const s = await dietService.stepJob(jobId);
-        set({
-          dietJob: { status: s.status, daysCompleted: s.daysCompleted, totalDays: s.totalDays },
-        });
+        networkMisses = 0;
+        apply(s);
         if (s.status === 'completed') {
           await useDietStore.getState().loadCurrent();
-          break;
+          return;
         }
-        if (s.status === 'failed') break;
+        if (s.status === 'failed') return;
+      } catch {
+        // Conexão caiu — o servidor pode estar gerando o dia ainda. Espera e
+        // verifica o progresso antes de desistir.
+        await sleep(20000);
+        try {
+          const g = await dietService.getJob(jobId);
+          apply(g);
+          if (g.status === 'completed') {
+            await useDietStore.getState().loadCurrent();
+            return;
+          }
+          if (g.status === 'failed') return;
+          networkMisses++;
+        } catch {
+          networkMisses++;
+        }
+        if (networkMisses >= 4) {
+          set((st) => ({
+            dietJob: {
+              status: 'failed',
+              daysCompleted: st.dietJob?.daysCompleted ?? 0,
+              totalDays: st.dietJob?.totalDays ?? 5,
+            },
+          }));
+          return;
+        }
       }
-    } catch {
-      set((st) => ({
-        dietJob: {
-          status: 'failed',
-          daysCompleted: st.dietJob?.daysCompleted ?? 0,
-          totalDays: st.dietJob?.totalDays ?? 5,
-        },
-      }));
     }
   },
 
