@@ -42,7 +42,7 @@ export async function analyzePhoto(
       response_format: zodResponseFormat(visionAnalysisSchema, 'food_analysis'),
       // GPT-5 (reasoning + visão): sem temperature custom e com teto folgado pra
       // os reasoning tokens não estourarem antes do JSON da análise.
-      max_tokens: 2000,
+      max_tokens: 4000,
       // Reasoning baixo: análise de foto não precisa raciocínio profundo e reduz latência.
       reasoning_effort: 'low',
     })

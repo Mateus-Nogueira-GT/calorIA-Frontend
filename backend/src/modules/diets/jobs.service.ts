@@ -234,7 +234,10 @@ export async function processJobStep(
           { role: 'user', content: buildDayPrompt(userData, targets, dayNumber) },
         ],
         response_format: zodResponseFormat(aiSingleDaySchema, 'diet_day'),
-        max_tokens: 6000,
+        // Reasoning tokens consomem este mesmo orçamento no GPT-5; 6000 truncava
+        // o JSON do dia ("length limit was reached"). Folga grande — o teto real
+        // de tempo é o maxDuration (300s) + timeout abaixo.
+        max_tokens: 20000,
         // Reasoning baixo pra reduzir a latência por dia.
         reasoning_effort: 'low',
       },
