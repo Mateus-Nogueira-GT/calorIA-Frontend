@@ -167,6 +167,15 @@ export async function buildApp() {
       })
     }
 
+    // Erros 4xx do próprio Fastify (ex: FST_ERR_CTP_EMPTY_JSON_BODY = POST com
+    // Content-Type json e body vazio). Mascarar como 500 esconde a causa real.
+    if (error.statusCode && error.statusCode >= 400 && error.statusCode < 500) {
+      return reply.status(error.statusCode).send({
+        error: error.code ?? 'BAD_REQUEST',
+        message: error.message,
+      })
+    }
+
     app.log.error({ err: error, url: request.url }, 'Erro não tratado')
     return reply.status(500).send({
       error: 'INTERNAL_SERVER_ERROR',

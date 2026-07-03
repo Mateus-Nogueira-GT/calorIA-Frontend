@@ -50,6 +50,7 @@ export const dietService = {
   /** Geração assíncrona: cada chamada gera 1 dia; chamar em polling até completed. */
   stepJob: (jobId: string) =>
     // Gerar 1 dia via GPT-5 leva dezenas de segundos — timeout bem acima do padrão.
-    api.post<DietJobStatus>(`/diets/jobs/${jobId}/step`, undefined, { timeout: 75000 }).then((r) => r.data),
+    // Body {} explícito: POST com Content-Type json e body vazio é rejeitado pelo Fastify.
+    api.post<DietJobStatus>(`/diets/jobs/${jobId}/step`, {}, { timeout: 75000 }).then((r) => r.data),
   getJob: (jobId: string) => api.get<DietJobStatus>(`/diets/jobs/${jobId}`).then((r) => r.data),
 };
