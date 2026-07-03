@@ -161,6 +161,9 @@ export async function sendChatMessage(
         // GPT-5 é reasoning model: não aceita temperature custom (só o default) e
         // gasta "reasoning tokens" do orçamento — por isso um limite mais folgado.
         max_tokens: 2000,
+        // Reasoning baixo: coletar dados / decidir a tool não precisa de raciocínio
+        // profundo, e o reasoning alto estourava os 60s da função (timeout).
+        reasoning_effort: 'low',
       },
       { timeout: OPENAI_TIMEOUT_MS },
     )

@@ -208,6 +208,8 @@ export async function processJobStep(
       ],
       response_format: zodResponseFormat(aiSingleDaySchema, 'diet_day'),
       max_tokens: 6000,
+      // Reasoning baixo pra caber no limite serverless por dia.
+      reasoning_effort: 'low',
     })
     const parsed = completion.choices[0]?.message?.parsed
     if (!parsed) throw new Error('IA retornou dia vazio')
