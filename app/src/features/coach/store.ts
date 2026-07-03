@@ -146,7 +146,7 @@ export const useCoachStore = create<CoachState>((set, get) => ({
   // completar. A UI pode ler `dietJob` para mostrar o progresso.
   runDietGeneration: async (jobId: string) => {
     if (get().dietJob?.status === 'running') return;
-    set({ dietJob: { status: 'running', daysCompleted: 0, totalDays: 7 } });
+    set({ dietJob: { status: 'running', daysCompleted: 0, totalDays: 5 } });
     try {
       // Guard: no máximo alguns passos a mais que o total de dias.
       for (let i = 0; i < 12; i++) {
@@ -165,7 +165,7 @@ export const useCoachStore = create<CoachState>((set, get) => ({
         dietJob: {
           status: 'failed',
           daysCompleted: st.dietJob?.daysCompleted ?? 0,
-          totalDays: st.dietJob?.totalDays ?? 7,
+          totalDays: st.dietJob?.totalDays ?? 5,
         },
       }));
     }

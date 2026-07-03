@@ -11,7 +11,7 @@ import {
 } from '../../shared/diet-ai-schema.js'
 import { createSystemPost } from '../feed/feed.service.js'
 
-const TOTAL_DAYS = 7
+const TOTAL_DAYS = 5
 const DAYS_PT = ['', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo']
 
 export interface JobStatus {
@@ -125,7 +125,7 @@ function buildDayPrompt(u: CollectedUserData, t: DietTargets, dayNumber: number)
     gain_muscle: 'ganho de massa',
     gain_weight: 'ganho de peso',
   }
-  return `Gere o dia ${dayNumber} de 7 (${DAYS_PT[dayNumber] ?? `Dia ${dayNumber}`}) de um plano alimentar.
+  return `Gere o dia ${dayNumber} de ${TOTAL_DAYS} (${DAYS_PT[dayNumber] ?? `Dia ${dayNumber}`}) de um plano alimentar.
 
 Perfil: ${u.weight_kg}kg, ${u.height_cm}cm, ${u.age} anos, ${u.gender}, objetivo ${goalLabels[u.goal] ?? u.goal}.
 Metas do DIA: ${t.targetCalories} kcal, ${t.protein}g proteína, ${t.carbs}g carboidrato, ${t.fat}g gordura.
