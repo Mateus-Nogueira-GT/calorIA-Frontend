@@ -14,7 +14,7 @@ import type {
 import { randomUUID } from 'node:crypto'
 
 /** Mapeia os 6 tipos de refeição do banco para os 4 do app (lanches viram 'snack'). */
-function toPlannedMealType(mealType: string): PlannedMealType {
+export function toPlannedMealType(mealType: string): PlannedMealType {
   if (mealType === 'breakfast' || mealType === 'lunch' || mealType === 'dinner') return mealType
   return 'snack'
 }

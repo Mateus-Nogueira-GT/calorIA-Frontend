@@ -33,7 +33,7 @@ interface DietTargets {
 
 // ─── Metas determinísticas (Mifflin-St Jeor) ─────────────────────────────────
 
-function computeTargets(u: CollectedUserData): DietTargets {
+export function computeTargets(u: CollectedUserData): DietTargets {
   const base = 10 * u.weight_kg + 6.25 * u.height_cm - 5 * u.age
   const bmr = u.gender === 'male' ? base + 5 : u.gender === 'female' ? base - 161 : base - 78
   const factor = { sedentary: 1.2, light: 1.375, moderate: 1.55, active: 1.725, very_active: 1.9 }[
@@ -53,7 +53,7 @@ function computeTargets(u: CollectedUserData): DietTargets {
  * driver/pooler — mesmo caso do chat_history. Faz parse defensivo (sem estourar)
  * e valida o shape; retorna null se não der pra recuperar os dados.
  */
-function parseInput(raw: unknown): CollectedUserData | null {
+export function parseInput(raw: unknown): CollectedUserData | null {
   let value: unknown = raw
   for (let i = 0; i < 3 && typeof value === 'string'; i++) {
     try {

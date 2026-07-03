@@ -10,6 +10,8 @@ interface DbPostRow {
   metadata: Record<string, unknown>
   created_at: string
   liked_by_me: boolean
+  like_count: number
+  comment_count: number
   author_id: string
   author_full_name: string | null
   author_username: string | null
@@ -54,7 +56,7 @@ function authorRowToAuthor(row: DbAuthorRow): Post['author'] {
 }
 
 /** Deriva o badge de conquista do post (metadata.achievement tem prioridade). */
-function toAchievement(type: PostType, metadata: Record<string, unknown>): PostAchievement | null {
+export function toAchievement(type: PostType, metadata: Record<string, unknown>): PostAchievement | null {
   const fromMeta = metadata?.achievement
   if (fromMeta && typeof fromMeta === 'object') return fromMeta as PostAchievement
 
@@ -77,20 +79,15 @@ function toAchievement(type: PostType, metadata: Record<string, unknown>): PostA
   }
 }
 
-async function rowToPost(fastify: FastifyInstance, row: DbPostRow): Promise<Post> {
-  const [{ count: likeCount }] = await fastify.db<{ count: number }[]>`
-    SELECT COUNT(*)::int AS count FROM post_likes WHERE post_id = ${row.id}
-  `
-  const [{ count: commentCount }] = await fastify.db<{ count: number }[]>`
-    SELECT COUNT(*)::int AS count FROM post_comments WHERE post_id = ${row.id}
-  `
+// Os contadores vêm agregados na própria query (evita N+1 por post).
+function rowToPost(row: DbPostRow): Post {
   return {
     id: row.id,
     author: postRowToAuthor(row),
     content: row.content ?? '',
     achievement: toAchievement(row.type, row.metadata ?? {}),
-    likeCount,
-    commentCount,
+    likeCount: row.like_count,
+    commentCount: row.comment_count,
     likedByMe: row.liked_by_me,
     createdAt: row.created_at,
   }
@@ -150,6 +147,8 @@ export async function getPostById(
       p.id, p.type, p.content, p.metadata,
       p.created_at::TEXT AS created_at,
       EXISTS (SELECT 1 FROM post_likes pl WHERE pl.post_id = p.id AND pl.user_id = ${userId}) AS liked_by_me,
+      (SELECT COUNT(*)::int FROM post_likes pl WHERE pl.post_id = p.id) AS like_count,
+      (SELECT COUNT(*)::int FROM post_comments pc WHERE pc.post_id = p.id) AS comment_count,
       a.id AS author_id, a.full_name AS author_full_name, a.username AS author_username,
       a.avatar_url AS author_avatar_url, a.avatar_emoji AS author_avatar_emoji
     FROM feed_posts p
@@ -157,7 +156,7 @@ export async function getPostById(
     WHERE p.id = ${postId}
   `
   if (!row) throw new AppError(404, 'POST_NOT_FOUND', 'Post não encontrado')
-  return rowToPost(fastify, row)
+  return rowToPost(row)
 }
 
 /** Cria um post do próprio usuário (com conquista opcional) e retorna o post completo. */
@@ -184,6 +183,8 @@ export async function getFeed(
       p.id, p.type, p.content, p.metadata,
       p.created_at::TEXT AS created_at,
       EXISTS (SELECT 1 FROM post_likes pl WHERE pl.post_id = p.id AND pl.user_id = ${userId}) AS liked_by_me,
+      (SELECT COUNT(*)::int FROM post_likes pl WHERE pl.post_id = p.id) AS like_count,
+      (SELECT COUNT(*)::int FROM post_comments pc WHERE pc.post_id = p.id) AS comment_count,
       a.id AS author_id, a.full_name AS author_full_name, a.username AS author_username,
       a.avatar_url AS author_avatar_url, a.avatar_emoji AS author_avatar_emoji
     FROM feed_posts p
@@ -194,7 +195,7 @@ export async function getFeed(
     LIMIT ${limit}
   `
 
-  const posts = await Promise.all(rows.map((row) => rowToPost(fastify, row)))
+  const posts = rows.map(rowToPost)
   const nextCursor = rows.length === limit ? rows[rows.length - 1].created_at : null
   return { posts, nextCursor }
 }

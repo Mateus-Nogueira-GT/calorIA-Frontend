@@ -49,7 +49,7 @@ const PERSONALITY_TONES: Record<string, string> = {
     'TOM: explique o "porquê" das recomendações com base técnica e evidências, de forma didática.',
 }
 
-function buildSystemPrompt(personality: string | null | undefined): string {
+export function buildSystemPrompt(personality: string | null | undefined): string {
   const tone = PERSONALITY_TONES[personality ?? 'motivational'] ?? PERSONALITY_TONES.motivational
   return `${CHAT_SYSTEM_PROMPT}\n\n## ${tone}`
 }
@@ -59,7 +59,7 @@ function buildSystemPrompt(personality: string | null | undefined): string {
 const OPENAI_TIMEOUT_MS = 50_000
 
 /** Mapeia erros do SDK OpenAI para AppError com status/mensagem claros. */
-function mapOpenAIError(err: unknown): AppError {
+export function mapOpenAIError(err: unknown): AppError {
   const e = err as { status?: number; name?: string; code?: string }
   if (e?.name?.includes('Timeout') || e?.code === 'ETIMEDOUT') {
     return new AppError(504, 'AI_TIMEOUT', 'A IA demorou demais para responder. Tente novamente.')
@@ -306,7 +306,7 @@ export async function getChatHistory(
  * coluna JSONB `messages` pode voltar como string (JSON) em vez de array já
  * parseado — normalizamos os dois casos.
  */
-function normalizeHistory(raw: unknown): ChatHistoryMessage[] {
+export function normalizeHistory(raw: unknown): ChatHistoryMessage[] {
   let value = raw
   if (typeof value === 'string') {
     try {
