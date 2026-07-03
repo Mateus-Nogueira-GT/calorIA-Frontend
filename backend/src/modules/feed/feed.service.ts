@@ -147,8 +147,8 @@ export async function getPostById(
       p.id, p.type, p.content, p.metadata,
       p.created_at::TEXT AS created_at,
       EXISTS (SELECT 1 FROM post_likes pl WHERE pl.post_id = p.id AND pl.user_id = ${userId}) AS liked_by_me,
-      (SELECT COUNT(*)::int FROM post_likes pl WHERE pl.post_id = p.id) AS like_count,
-      (SELECT COUNT(*)::int FROM post_comments pc WHERE pc.post_id = p.id) AS comment_count,
+      p.likes_count AS like_count,
+      p.comments_count AS comment_count,
       a.id AS author_id, a.full_name AS author_full_name, a.username AS author_username,
       a.avatar_url AS author_avatar_url, a.avatar_emoji AS author_avatar_emoji
     FROM feed_posts p
@@ -183,8 +183,8 @@ export async function getFeed(
       p.id, p.type, p.content, p.metadata,
       p.created_at::TEXT AS created_at,
       EXISTS (SELECT 1 FROM post_likes pl WHERE pl.post_id = p.id AND pl.user_id = ${userId}) AS liked_by_me,
-      (SELECT COUNT(*)::int FROM post_likes pl WHERE pl.post_id = p.id) AS like_count,
-      (SELECT COUNT(*)::int FROM post_comments pc WHERE pc.post_id = p.id) AS comment_count,
+      p.likes_count AS like_count,
+      p.comments_count AS comment_count,
       a.id AS author_id, a.full_name AS author_full_name, a.username AS author_username,
       a.avatar_url AS author_avatar_url, a.avatar_emoji AS author_avatar_emoji
     FROM feed_posts p
@@ -217,10 +217,11 @@ async function likeResult(
   postId: string,
   likedByMe: boolean,
 ): Promise<LikeResult> {
-  const [{ count }] = await fastify.db<{ count: number }[]>`
-    SELECT COUNT(*)::int AS count FROM post_likes WHERE post_id = ${postId}
+  // likes_count é mantido por trigger (migration 007) — leitura direta, sem COUNT.
+  const [{ likes_count }] = await fastify.db<{ likes_count: number }[]>`
+    SELECT likes_count FROM feed_posts WHERE id = ${postId}
   `
-  return { likeCount: count, likedByMe }
+  return { likeCount: likes_count, likedByMe }
 }
 
 export async function likePost(
