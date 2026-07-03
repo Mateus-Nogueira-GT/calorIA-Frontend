@@ -7,7 +7,7 @@
   ],
   "functions": {
     "api/handler.js": {
-      "maxDuration": 60,
+      "maxDuration": 300,
       "includeFiles": "backend/node_modules/openai/**"
     }
   }

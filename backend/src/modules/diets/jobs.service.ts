@@ -223,17 +223,21 @@ export async function processJobStep(
   // 1) Gera o dia (chamada longa — SEM segurar transação/lock).
   let aiDay: AiSingleDay
   try {
-    const completion = await fastify.openai.beta.chat.completions.parse({
-      model: env.OPENAI_MODEL,
-      messages: [
-        { role: 'system', content: DAY_SYSTEM_PROMPT },
-        { role: 'user', content: buildDayPrompt(userData, targets, dayNumber) },
-      ],
-      response_format: zodResponseFormat(aiSingleDaySchema, 'diet_day'),
-      max_tokens: 6000,
-      // Reasoning baixo pra caber no limite serverless por dia.
-      reasoning_effort: 'low',
-    })
+    const completion = await fastify.openai.beta.chat.completions.parse(
+      {
+        model: env.OPENAI_MODEL,
+        messages: [
+          { role: 'system', content: DAY_SYSTEM_PROMPT },
+          { role: 'user', content: buildDayPrompt(userData, targets, dayNumber) },
+        ],
+        response_format: zodResponseFormat(aiSingleDaySchema, 'diet_day'),
+        max_tokens: 6000,
+        // Reasoning baixo pra reduzir a latência por dia.
+        reasoning_effort: 'low',
+      },
+      // Timeout explícito abaixo do maxDuration (300s) pra falhar tratável.
+      { timeout: 120_000 },
+    )
     const parsed = completion.choices[0]?.message?.parsed
     if (!parsed) throw new Error('IA retornou dia vazio')
     aiDay = parsed
