@@ -24,6 +24,7 @@ const jobStatusSchema = z.object({
   daysCompleted: z.number().int(),
   totalDays: z.number().int(),
   dietId: z.string().uuid().nullable(),
+  error: z.string().nullable(),
 })
 
 const dietsRoutes: FastifyPluginAsyncZod = async (fastify) => {

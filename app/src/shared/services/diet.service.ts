@@ -40,6 +40,7 @@ export interface DietJobStatus {
   daysCompleted: number;
   totalDays: number;
   dietId: string | null;
+  error: string | null;
 }
 
 export const dietService = {

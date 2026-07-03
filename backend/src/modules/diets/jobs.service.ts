@@ -20,6 +20,7 @@ export interface JobStatus {
   daysCompleted: number
   totalDays: number
   dietId: string | null
+  error: string | null
 }
 
 interface DietTargets {
@@ -161,6 +162,7 @@ interface JobRow {
   input: unknown
   total_days: number
   days_completed: number
+  error: string | null
 }
 
 function toStatus(job: JobRow): JobStatus {
@@ -170,6 +172,7 @@ function toStatus(job: JobRow): JobStatus {
     daysCompleted: job.days_completed,
     totalDays: job.total_days,
     dietId: job.diet_id,
+    error: job.error,
   }
 }
 
@@ -179,7 +182,7 @@ async function loadJob(
   jobId: string,
 ): Promise<JobRow> {
   const [job] = await fastify.db<JobRow[]>`
-    SELECT id, conversation_id, diet_id, status, input, total_days, days_completed
+    SELECT id, conversation_id, diet_id, status, input, total_days, days_completed, error
     FROM diet_jobs WHERE id = ${jobId} AND user_id = ${userId}
   `
   if (!job) throw new AppError(404, 'JOB_NOT_FOUND', 'Job de geração não encontrado')
@@ -325,5 +328,6 @@ export async function processJobStep(
     daysCompleted: dayNumber,
     totalDays: job.total_days,
     dietId: job.diet_id,
+    error: job.error,
   }
 }
