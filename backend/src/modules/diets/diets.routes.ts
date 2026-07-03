@@ -224,7 +224,21 @@ const dietsRoutes: FastifyPluginAsyncZod = async (fastify) => {
     },
     async (request, reply) => {
       const { sub: userId } = request.user as JwtPayload
-      return reply.send(await processJobStep(fastify, userId, request.params.id))
+      try {
+        return await reply.send(await processJobStep(fastify, userId, request.params.id))
+      } catch (err) {
+        // DIAGNÓSTICO TEMPORÁRIO
+        const e = err as { code?: string; message?: string; stack?: string }
+        fastify.log.error({ err }, 'Erro no /diets/jobs/:id/step')
+        return reply.status(502).send({
+          error: 'STEP_DEBUG',
+          message: `code=${e?.code ?? '?'} :: ${e?.message ?? '?'} :: ${(e?.stack ?? '')
+            .split('\n')
+            .slice(1, 3)
+            .map((s) => s.trim())
+            .join(' | ')}`,
+        })
+      }
     },
   )
 }
