@@ -318,32 +318,36 @@ export async function getTodayPlan(
     ORDER BY sort_order
   `
 
-  const meals = []
-  for (const dbMeal of dbMeals) {
-    const items = await fastify.db<DbDietItem[]>`
-      SELECT food_name, quantity_g, unit, calories
-      FROM diet_items
-      WHERE diet_meal_id = ${dbMeal.id} AND is_substitution = FALSE
-      ORDER BY sort_order
-    `
-    meals.push({
-      id: dbMeal.id,
-      type: toPlannedMealType(dbMeal.meal_type),
-      title: dbMeal.name,
-      suggestedTime: dbMeal.time_suggestion ?? '',
-      items: items.map((it) => ({
+  // Itens de TODAS as refeições numa query só (evita N+1 por refeição).
+  const mealIds = dbMeals.map((m) => m.id)
+  const allItems = mealIds.length
+    ? await fastify.db<(DbDietItem & { diet_meal_id: string })[]>`
+        SELECT diet_meal_id, food_name, quantity_g, unit, calories
+        FROM diet_items
+        WHERE diet_meal_id = ANY(${mealIds}) AND is_substitution = FALSE
+        ORDER BY sort_order
+      `
+    : []
+
+  const meals = dbMeals.map((dbMeal) => ({
+    id: dbMeal.id,
+    type: toPlannedMealType(dbMeal.meal_type),
+    title: dbMeal.name,
+    suggestedTime: dbMeal.time_suggestion ?? '',
+    items: allItems
+      .filter((it) => it.diet_meal_id === dbMeal.id)
+      .map((it) => ({
         name: it.food_name,
         quantity: Number(it.quantity_g),
         unit: it.unit,
         calories: Number(it.calories),
       })),
-      calories: Number(dbMeal.total_calories),
-      protein: Number(dbMeal.total_protein),
-      carbs: Number(dbMeal.total_carbs),
-      fat: Number(dbMeal.total_fat),
-      completedAt: dbMeal.completed_at,
-    })
-  }
+    calories: Number(dbMeal.total_calories),
+    protein: Number(dbMeal.total_protein),
+    carbs: Number(dbMeal.total_carbs),
+    fat: Number(dbMeal.total_fat),
+    completedAt: dbMeal.completed_at,
+  }))
 
   return {
     id: dbDay.id,

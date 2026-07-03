@@ -11,10 +11,11 @@ declare module 'fastify' {
 
 const dbPlugin: FastifyPluginAsync = fp(async (fastify) => {
   const sql = postgres(env.DATABASE_URL, {
-    // Serverless cria muitas instâncias de função; cada uma deve manter poucas
-    // conexões. Com o pooler do Supabase (porta 6543) + prepare:false esse é o
-    // padrão correto — prepared statements não sobrevivem ao pgbouncer.
-    max: 1,
+    // Com Fluid Compute a MESMA instância atende várias requisições concorrentes;
+    // max:1 (padrão serverless clássico) virava fila de 9-12s sob concorrência 10
+    // (medido em teste de carga). Pool pequeno por instância + pooler do Supabase
+    // (porta 6543) + prepare:false — prepared statements não sobrevivem ao pgbouncer.
+    max: 8,
     idle_timeout: 20, // fechar conexões idle após 20s
     connect_timeout: 10, // timeout de conexão em segundos
     prepare: false,
