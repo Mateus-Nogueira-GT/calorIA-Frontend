@@ -213,22 +213,18 @@ const dietsRoutes: FastifyPluginAsyncZod = async (fastify) => {
         description: 'Gera e persiste o próximo dia do plano. Chamar em polling até status=completed.',
         security: [{ bearerAuth: [] }],
         params: z.object({ id: z.string().uuid() }),
-        response: { 200: jobStatusSchema, 401: errorSchema, 404: errorSchema, 500: errorSchema, 502: errorSchema },
+        response: {
+          200: jobStatusSchema,
+          401: errorSchema,
+          404: errorSchema,
+          422: errorSchema,
+          502: errorSchema,
+        },
       },
     },
     async (request, reply) => {
       const { sub: userId } = request.user as JwtPayload
-      try {
-        return reply.send(await processJobStep(fastify, userId, request.params.id))
-      } catch (err) {
-        // DIAGNÓSTICO TEMPORÁRIO
-        const e = err as { code?: string; message?: string; stack?: string }
-        fastify.log.error({ err }, 'Erro no /diets/jobs/:id/step')
-        return reply.status(500).send({
-          error: 'STEP_DEBUG',
-          message: `code=${e?.code ?? '?'} :: ${e?.message ?? '?'} :: ${(e?.stack ?? '').split('\n')[1]?.trim() ?? ''}`,
-        })
-      }
+      return reply.send(await processJobStep(fastify, userId, request.params.id))
     },
   )
 }

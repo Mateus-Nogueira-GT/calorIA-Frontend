@@ -3,7 +3,12 @@ import { randomUUID } from 'node:crypto'
 import { zodResponseFormat } from 'openai/helpers/zod.js'
 import { env } from '../../shared/env.js'
 import { AppError } from '../../shared/errors.js'
-import { aiSingleDaySchema, type AiSingleDay, type CollectedUserData } from '../../shared/diet-ai-schema.js'
+import {
+  aiSingleDaySchema,
+  collectedUserDataSchema,
+  type AiSingleDay,
+  type CollectedUserData,
+} from '../../shared/diet-ai-schema.js'
 import { createSystemPost } from '../feed/feed.service.js'
 
 const TOTAL_DAYS = 7
@@ -42,10 +47,23 @@ function computeTargets(u: CollectedUserData): DietTargets {
   return { tdee: Math.round(tdee), targetCalories, protein, carbs, fat }
 }
 
-/** jsonb pode voltar como string dependendo do driver/pooler. */
-function parseInput(raw: unknown): CollectedUserData {
-  if (typeof raw === 'string') return JSON.parse(raw) as CollectedUserData
-  return raw as CollectedUserData
+/**
+ * jsonb pode voltar como string (às vezes duplamente serializada) dependendo do
+ * driver/pooler — mesmo caso do chat_history. Faz parse defensivo (sem estourar)
+ * e valida o shape; retorna null se não der pra recuperar os dados.
+ */
+function parseInput(raw: unknown): CollectedUserData | null {
+  let value: unknown = raw
+  for (let i = 0; i < 3 && typeof value === 'string'; i++) {
+    try {
+      value = JSON.parse(value)
+    } catch {
+      return null
+    }
+  }
+  if (!value || typeof value !== 'object') return null
+  const result = collectedUserDataSchema.safeParse(value)
+  return result.success ? result.data : null
 }
 
 // ─── Criação do job ───────────────────────────────────────────────────────────
@@ -112,8 +130,8 @@ function buildDayPrompt(u: CollectedUserData, t: DietTargets, dayNumber: number)
 Perfil: ${u.weight_kg}kg, ${u.height_cm}cm, ${u.age} anos, ${u.gender}, objetivo ${goalLabels[u.goal] ?? u.goal}.
 Metas do DIA: ${t.targetCalories} kcal, ${t.protein}g proteína, ${t.carbs}g carboidrato, ${t.fat}g gordura.
 Refeições por dia: ${u.meals_per_day}.
-${u.dietary_restrictions.length ? `Restrições: ${u.dietary_restrictions.join(', ')}.` : ''}
-${u.allergies.length ? `Alergias (EVITAR): ${u.allergies.join(', ')}.` : ''}
+${u.dietary_restrictions?.length ? `Restrições: ${u.dietary_restrictions.join(', ')}.` : ''}
+${u.allergies?.length ? `Alergias (EVITAR): ${u.allergies.join(', ')}.` : ''}
 ${u.food_preferences ? `Preferências: ${u.food_preferences}.` : ''}
 
 Regras: varie os alimentos (evite repetir em relação a um dia típico), especifique quantidade em gramas e calorias/macros por item. Distribua as ${u.meals_per_day} refeições ao longo do dia.`
@@ -195,6 +213,11 @@ export async function processJobStep(
   }
 
   const userData = parseInput(job.input)
+  if (!userData) {
+    fastify.log.error({ jobId, input: job.input }, 'Dados do job inválidos/irrecuperáveis')
+    await fastify.db`UPDATE diet_jobs SET status = 'failed', error = 'invalid_input', updated_at = NOW() WHERE id = ${jobId}`
+    throw new AppError(422, 'INVALID_JOB_INPUT', 'Dados da geração inválidos. Refaça a conversa com o coach.')
+  }
   const targets = computeTargets(userData)
 
   // 1) Gera o dia (chamada longa — SEM segurar transação/lock).
