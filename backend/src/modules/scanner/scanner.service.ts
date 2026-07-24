@@ -1,9 +1,10 @@
-import type { FastifyInstance } from 'fastify'
 import { randomUUID } from 'node:crypto'
+import type { FastifyInstance } from 'fastify'
 import { zodResponseFormat } from 'openai/helpers/zod.js'
+import { buildModelsField, logAiUsage } from '../../shared/ai-usage.js'
 import { env } from '../../shared/env.js'
 import { AppError } from '../../shared/errors.js'
-import { visionAnalysisSchema, type ScanResponse } from './scanner.schemas.js'
+import { type ScanResponse, visionAnalysisSchema } from './scanner.schemas.js'
 
 const VISION_SYSTEM_PROMPT = `Você é um nutricionista especialista em análise visual de alimentos.
 Receberá a foto de um prato/refeição e deve estimar os valores nutricionais do que está visível.
@@ -24,11 +25,14 @@ Receberá a foto de um prato/refeição e deve estimar os valores nutricionais d
 export async function analyzePhoto(
   fastify: FastifyInstance,
   imageDataUrl: string,
+  userId: string,
 ): Promise<ScanResponse> {
   let analysis: import('./scanner.schemas.js').VisionAnalysis
   try {
     const completion = await fastify.openai.beta.chat.completions.parse({
       model: env.OPENAI_VISION_MODEL,
+      // I5.2: fallbacks do OpenRouter (spread não dispara excess-property check).
+      ...buildModelsField(env.OPENAI_VISION_MODEL, env.OPENAI_FALLBACK_MODELS),
       messages: [
         { role: 'system', content: VISION_SYSTEM_PROMPT },
         {
@@ -47,6 +51,12 @@ export async function analyzePhoto(
       reasoning_effort: 'low',
     })
 
+    logAiUsage(fastify, {
+      feature: 'vision',
+      model: env.OPENAI_VISION_MODEL,
+      userId,
+      usage: completion.usage,
+    })
     const parsed = completion.choices[0].message.parsed
     if (!parsed) throw new Error('OpenAI retornou análise vazia')
     analysis = parsed

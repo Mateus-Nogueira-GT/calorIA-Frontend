@@ -31,14 +31,16 @@ export const useDietStore = create<DietState>((set, get) => ({
     if (!plan) return;
     const meal = plan.meals.find((m) => m.id === mealId);
     if (!meal) return;
-    const wasCompleted = meal.completedAt !== null;
+    // completedToday é o campo canônico (derivado por dia local no backend) —
+    // completedAt cru pode ser de semanas atrás e não significa "feita hoje".
+    const wasCompleted = meal.completedToday;
     const optimisticAt = wasCompleted ? null : new Date().toISOString();
     set({
       togglingMealId: mealId,
       plan: {
         ...plan,
         meals: plan.meals.map((m) =>
-          m.id === mealId ? { ...m, completedAt: optimisticAt } : m,
+          m.id === mealId ? { ...m, completedAt: optimisticAt, completedToday: !wasCompleted } : m,
         ),
       },
     });
@@ -51,7 +53,11 @@ export const useDietStore = create<DietState>((set, get) => ({
               ...s.plan,
               meals: s.plan.meals.map((m) =>
                 m.id === mealId
-                  ? { ...m, completedAt: is_completed ? optimisticAt : null }
+                  ? {
+                      ...m,
+                      completedAt: is_completed ? optimisticAt : null,
+                      completedToday: is_completed,
+                    }
                   : m,
               ),
             }
@@ -64,7 +70,9 @@ export const useDietStore = create<DietState>((set, get) => ({
           ? {
               ...s.plan,
               meals: s.plan.meals.map((m) =>
-                m.id === mealId ? { ...m, completedAt: meal.completedAt } : m,
+                m.id === mealId
+                  ? { ...m, completedAt: meal.completedAt, completedToday: meal.completedToday }
+                  : m,
               ),
             }
           : s.plan,

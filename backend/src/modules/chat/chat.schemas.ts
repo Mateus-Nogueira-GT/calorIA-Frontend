@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { localDateSchema, tzOffsetMinutesSchema } from '../../shared/local-date.js'
 
 // ─── Requests ─────────────────────────────────────────────────────────────────
 
@@ -9,6 +10,9 @@ export const chatMessageBodySchema = z.object({
     .max(2000, 'Mensagem muito longa (máx 2000 caracteres)'),
   /** ID da conversa para manter histórico. Null inicia uma nova conversa. */
   conversation_id: z.string().uuid().nullable().default(null),
+  /** Data/fuso locais (I1) — o coach usa para montar o contexto do dia. */
+  date: localDateSchema.optional(),
+  tzOffsetMinutes: tzOffsetMinutesSchema.optional(),
 })
 
 // ─── Responses ────────────────────────────────────────────────────────────────

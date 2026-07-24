@@ -11,10 +11,7 @@ function toEntry(row: DbRow): WeightEntry {
   return { id: row.id, date: row.date, weightKg: Number(row.weight_kg) }
 }
 
-export async function getHistory(
-  fastify: FastifyInstance,
-  userId: string,
-): Promise<WeightEntry[]> {
+export async function getHistory(fastify: FastifyInstance, userId: string): Promise<WeightEntry[]> {
   const rows = await fastify.db<DbRow[]>`
     SELECT id, date::TEXT AS date, weight_kg
     FROM weight_entries

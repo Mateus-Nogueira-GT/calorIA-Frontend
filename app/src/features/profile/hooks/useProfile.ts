@@ -19,17 +19,20 @@ export function useProfile() {
 
   useEffect(() => { loadWeeklyData(); }, []);
 
-  // Hidrata nome/foto do backend (o login não traz avatar).
+  // Hidrata nome/foto E o streak canônico do backend (G5) — antes o streak era
+  // recalculado no cliente sobre o diário, divergindo do exibido em
+  // amigos/desafios (que usam a tabela `streaks`).
   useEffect(() => {
     profileService
       .getMe()
-      .then((p) =>
+      .then((p) => {
         updateUser({
           name: p.full_name ?? undefined,
           avatarUrl: p.avatar_url,
           avatarEmoji: p.avatar_emoji,
-        }),
-      )
+        });
+        setStreak(p.current_streak ?? 0);
+      })
       .catch(() => {});
   }, [updateUser]);
 
@@ -41,20 +44,17 @@ export function useProfile() {
       return d;
     });
     try {
-      const results = await Promise.all(
-        days.map((d) => foodLogService.getMeals(dateToString(d)).catch(() => [])),
-      );
-      const data: DayCalories[] = days.map((d, i) => ({
+      // G4: 1 request agregado no lugar de 7 (um por dia).
+      const from = dateToString(days[0]);
+      const to = dateToString(days[6]);
+      const summary = await foodLogService.getSummary(from, to).catch(() => []);
+      const byDate = new Map(summary.map((s) => [s.date, s.calories]));
+      const data: DayCalories[] = days.map((d) => ({
         date: dateToString(d),
         label: DAYS_PT[d.getDay()],
-        calories: results[i].reduce((s, m) => s + m.calories, 0),
+        calories: byDate.get(dateToString(d)) ?? 0,
       }));
       setWeeklyData(data);
-      let s = 0;
-      for (let i = data.length - 1; i >= 0; i--) {
-        if (data[i].calories > 0) s++; else break;
-      }
-      setStreak(s);
     } finally {
       setLoading(false);
     }

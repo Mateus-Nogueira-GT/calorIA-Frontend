@@ -18,7 +18,20 @@ const DEFAULT_CARBS_GOAL = 250;
 const DEFAULT_FAT_GOAL = 65;
 
 const DAYS_PT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab'];
-const MONTHS_PT = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+const MONTHS_PT = [
+  'Jan',
+  'Fev',
+  'Mar',
+  'Abr',
+  'Mai',
+  'Jun',
+  'Jul',
+  'Ago',
+  'Set',
+  'Out',
+  'Nov',
+  'Dez',
+];
 
 function todayLabel(): string {
   const d = new Date();
@@ -73,28 +86,28 @@ export function DashboardScreen(): React.JSX.Element {
     }
   }, [today, setFoodLogLoading, setMeals, loadCurrentDiet]);
 
-  const completedPlannedMeals = (plan?.meals ?? []).filter((m) => m.completedAt !== null);
-  const useDietForTotals = plan != null;
-
-  const totals = useDietForTotals
-    ? completedPlannedMeals.reduce(
-        (acc, m) => ({
-          calories: acc.calories + m.calories,
-          protein: acc.protein + m.protein,
-          carbs: acc.carbs + m.carbs,
-          fat: acc.fat + m.fat,
-        }),
-        { calories: 0, protein: 0, carbs: 0, fat: 0 },
-      )
-    : foodLogMeals.reduce(
-        (acc, m) => ({
-          calories: acc.calories + m.calories,
-          protein: acc.protein + m.protein,
-          carbs: acc.carbs + m.carbs,
-          fat: acc.fat + m.fat,
-        }),
-        { calories: 0, protein: 0, carbs: 0, fat: 0 },
-      );
+  // D1 da spec: o anel soma o que a pessoa REALMENTE comeu — refeições do
+  // plano concluídas hoje + diário livre (inclui itens do scanner). Antes,
+  // com dieta ativa, o diário era ignorado e a contagem ficava errada.
+  const completedPlannedMeals = (plan?.meals ?? []).filter((m) => m.completedToday);
+  const sumMacros = (items: { calories: number; protein: number; carbs: number; fat: number }[]) =>
+    items.reduce(
+      (acc, m) => ({
+        calories: acc.calories + m.calories,
+        protein: acc.protein + m.protein,
+        carbs: acc.carbs + m.carbs,
+        fat: acc.fat + m.fat,
+      }),
+      { calories: 0, protein: 0, carbs: 0, fat: 0 },
+    );
+  const plannedTotals = sumMacros(completedPlannedMeals);
+  const freeTotals = sumMacros(foodLogMeals);
+  const totals = {
+    calories: plannedTotals.calories + freeTotals.calories,
+    protein: plannedTotals.protein + freeTotals.protein,
+    carbs: plannedTotals.carbs + freeTotals.carbs,
+    fat: plannedTotals.fat + freeTotals.fat,
+  };
 
   const calorieGoal = getDailyCalorieGoal(plan);
   const proteinGoal = plan?.totalProtein ?? DEFAULT_PROTEIN_GOAL;
@@ -129,13 +142,30 @@ export function DashboardScreen(): React.JSX.Element {
 
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Macronutrientes</Text>
-          <Text style={styles.sectionSubtitle}>Distribuicao consumida em relacao a meta atual.</Text>
+          <Text style={styles.sectionSubtitle}>
+            Distribuicao consumida em relacao a meta atual.
+          </Text>
         </View>
 
         <View style={styles.macroGrid}>
-          <MacroCard label='Proteina' current={totals.protein} goal={proteinGoal} color={colors.brandPrimary} />
-          <MacroCard label='Carboidratos' current={totals.carbs} goal={carbsGoal} color={colors.brandAnchor} />
-          <MacroCard label='Gordura' current={totals.fat} goal={fatGoal} color={colors.brandSupport} />
+          <MacroCard
+            label="Proteina"
+            current={totals.protein}
+            goal={proteinGoal}
+            color={colors.brandPrimary}
+          />
+          <MacroCard
+            label="Carboidratos"
+            current={totals.carbs}
+            goal={carbsGoal}
+            color={colors.brandAnchor}
+          />
+          <MacroCard
+            label="Gordura"
+            current={totals.fat}
+            goal={fatGoal}
+            color={colors.brandSupport}
+          />
         </View>
 
         <DietPlanSection />
@@ -150,18 +180,26 @@ export function DashboardScreen(): React.JSX.Element {
         ) : foodLogError ? (
           <View style={styles.feedbackCard}>
             <Text style={styles.feedbackTitle}>Nao foi possivel carregar o diario livre</Text>
-            <Text style={styles.feedbackText}>Atualize a pagina ou tente novamente em instantes.</Text>
+            <Text style={styles.feedbackText}>
+              Atualize a pagina ou tente novamente em instantes.
+            </Text>
           </View>
         ) : foodLogMeals.length > 0 ? (
           <View style={styles.sectionCard}>
             {foodLogMeals.map((meal, index) => (
-              <MealListItem key={meal.id} meal={meal} hideBorder={index === foodLogMeals.length - 1} />
+              <MealListItem
+                key={meal.id}
+                meal={meal}
+                hideBorder={index === foodLogMeals.length - 1}
+              />
             ))}
           </View>
         ) : (
           <View style={styles.feedbackCard}>
             <Text style={styles.feedbackTitle}>Nada registrado por aqui ainda</Text>
-            <Text style={styles.feedbackText}>Quando voce adicionar algo no diario livre, ele aparece nesta secao.</Text>
+            <Text style={styles.feedbackText}>
+              Quando voce adicionar algo no diario livre, ele aparece nesta secao.
+            </Text>
           </View>
         )}
       </View>
@@ -180,7 +218,11 @@ const styles = StyleSheet.create({
     color: colors.brandAnchor,
     marginTop: 6,
   },
-  date: { fontSize: typography.fontSize.sm, color: colors.brandTextMuted, fontFamily: typography.fontFamily.medium },
+  date: {
+    fontSize: typography.fontSize.sm,
+    color: colors.brandTextMuted,
+    fontFamily: typography.fontFamily.medium,
+  },
   headerHint: { fontSize: typography.fontSize.sm, color: colors.brandTextMuted, marginTop: 6 },
   ringCard: {
     flexDirection: 'row',
@@ -203,7 +245,11 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     marginBottom: spacing.md,
   },
-  badgeText: { fontSize: typography.fontSize.xs, color: colors.brandAnchor, fontFamily: typography.fontFamily.semiBold },
+  badgeText: {
+    fontSize: typography.fontSize.xs,
+    color: colors.brandAnchor,
+    fontFamily: typography.fontFamily.semiBold,
+  },
   kcalValue: {
     fontSize: typography.fontSize.xxxl,
     fontFamily: typography.fontFamily.extraBold,
@@ -218,7 +264,11 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   progressMetaLabel: { fontSize: typography.fontSize.sm, color: colors.brandTextMuted },
-  progressMetaValue: { fontSize: typography.fontSize.md, color: colors.brandPrimary, fontFamily: typography.fontFamily.bold },
+  progressMetaValue: {
+    fontSize: typography.fontSize.md,
+    color: colors.brandPrimary,
+    fontFamily: typography.fontFamily.bold,
+  },
   sectionHeader: { marginBottom: spacing.md },
   freeDiaryHeader: { marginTop: spacing.xl },
   sectionTitle: {
@@ -247,7 +297,11 @@ const styles = StyleSheet.create({
     borderColor: colors.brandDivider,
     padding: 18,
   },
-  feedbackTitle: { fontSize: typography.fontSize.base, fontFamily: typography.fontFamily.bold, color: colors.brandAnchor },
+  feedbackTitle: {
+    fontSize: typography.fontSize.base,
+    fontFamily: typography.fontFamily.bold,
+    color: colors.brandAnchor,
+  },
   feedbackText: { fontSize: typography.fontSize.sm, color: colors.brandTextMuted, marginTop: 4 },
   skeletonTitle: {
     height: 14,
@@ -267,7 +321,22 @@ const styles = StyleSheet.create({
     borderTopColor: colors.brandDivider,
     gap: spacing.md,
   },
-  skeletonMealMain: { height: 14, flex: 1, borderRadius: radius.pill, backgroundColor: colors.brandTrack },
-  skeletonMealSecondary: { height: 14, width: '58%', borderRadius: radius.pill, backgroundColor: colors.brandTrack },
-  skeletonMealKcal: { height: 14, width: 64, borderRadius: radius.pill, backgroundColor: colors.brandTrack },
+  skeletonMealMain: {
+    height: 14,
+    flex: 1,
+    borderRadius: radius.pill,
+    backgroundColor: colors.brandTrack,
+  },
+  skeletonMealSecondary: {
+    height: 14,
+    width: '58%',
+    borderRadius: radius.pill,
+    backgroundColor: colors.brandTrack,
+  },
+  skeletonMealKcal: {
+    height: 14,
+    width: 64,
+    borderRadius: radius.pill,
+    backgroundColor: colors.brandTrack,
+  },
 });

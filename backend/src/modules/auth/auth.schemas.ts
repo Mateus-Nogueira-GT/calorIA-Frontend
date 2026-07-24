@@ -36,6 +36,23 @@ export const logoutResponseSchema = z.object({
   success: z.boolean(),
 })
 
+export const forgotPasswordBodySchema = z.object({
+  email: z.string().email('Email inválido'),
+})
+
+export const resetPasswordBodySchema = z.object({
+  /** access_token de recovery que o Supabase põe no fragment do link do email. */
+  access_token: z.string().min(1, 'Token é obrigatório'),
+  new_password: z
+    .string({ required_error: 'Senha é obrigatória' })
+    .min(8, 'Senha deve ter no mínimo 8 caracteres')
+    .max(100),
+})
+
+export const successResponseSchema = z.object({
+  success: z.boolean(),
+})
+
 // ─── Responses ───────────────────────────────────────────────────────────────
 
 export const authUserSchema = z.object({

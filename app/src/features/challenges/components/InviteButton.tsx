@@ -9,7 +9,9 @@ interface Props {
 
 export function InviteButton({ inviteCode, title }: Props): React.JSX.Element {
   const onPress = async () => {
-    const url = `caloria://challenge/${inviteCode}`;
+    // H1 da spec: URL https universal — o scheme caloria:// não abre para quem
+    // não tem o app instalado (o prefixo https já está no linking do app).
+    const url = `https://caloria.app/challenge/${inviteCode}`;
     try {
       await Share.share({
         message: `Bora pro desafio "${title}" no CalorIA? Entre por aqui: ${url}`,

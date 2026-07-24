@@ -1,7 +1,7 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { z } from 'zod'
 import type { JwtPayload } from '../../shared/types.js'
-import { weightEntrySchema, addWeightBodySchema, errorSchema } from './weight.schemas.js'
+import { addWeightBodySchema, errorSchema, weightEntrySchema } from './weight.schemas.js'
 import { getHistory, upsertEntry } from './weight.service.js'
 
 const weightRoutes: FastifyPluginAsyncZod = async (fastify) => {

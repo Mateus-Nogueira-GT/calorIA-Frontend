@@ -1,10 +1,10 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import type { JwtPayload } from '../../shared/types.js'
 import {
-  notificationsResponseSchema,
+  errorSchema,
   markReadBodySchema,
   markReadResponseSchema,
-  errorSchema,
+  notificationsResponseSchema,
 } from './notifications.schemas.js'
 import { listForUser, markRead } from './notifications.service.js'
 

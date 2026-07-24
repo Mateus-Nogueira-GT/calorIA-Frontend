@@ -14,6 +14,7 @@
     "prepare": "husky"
   },
   "dependencies": {
+    "@react-native-async-storage/async-storage": "^3.1.1",
     "@react-navigation/bottom-tabs": "^6.6.1",
     "@react-navigation/native": "^6.1.18",
     "@react-navigation/native-stack": "^6.11.0",
@@ -92,13 +93,14 @@
       "/agentmemory-main/"
     ],
     "transformIgnorePatterns": [
-      "node_modules/(?!(react-native|@react-native|@react-navigation|react-native-safe-area-context|react-native-screens|react-native-image-picker|@testing-library)/)"
+      "node_modules/(?!(react-native|@react-native|@react-native-async-storage|@react-navigation|react-native-safe-area-context|react-native-screens|react-native-image-picker|@testing-library)/)"
     ],
     "moduleNameMapper": {
       "\\.(png|jpg|jpeg|gif|svg|webp)$": "<rootDir>/__mocks__/fileMock.js",
       "^@react-native-google-signin/google-signin$": "<rootDir>/__mocks__/@react-native-google-signin/google-signin.js",
       "AndroidHorizontalScrollContentViewNativeComponent": "<rootDir>/__mocks__/nativeComponentMock.js",
-      "^@env$": "<rootDir>/__mocks__/@env.js"
+      "^@env$": "<rootDir>/__mocks__/@env.js",
+      "^@react-native-async-storage/async-storage$": "<rootDir>/__mocks__/@react-native-async-storage/async-storage.js"
     }
   }
 }

@@ -56,15 +56,28 @@ function authorRowToAuthor(row: DbAuthorRow): Post['author'] {
 }
 
 /** Deriva o badge de conquista do post (metadata.achievement tem prioridade). */
-export function toAchievement(type: PostType, metadata: Record<string, unknown>): PostAchievement | null {
+export function toAchievement(
+  type: PostType,
+  metadata: Record<string, unknown>,
+): PostAchievement | null {
   const fromMeta = metadata?.achievement
   if (fromMeta && typeof fromMeta === 'object') return fromMeta as PostAchievement
 
   switch (type) {
     case 'meal_completed':
-      return { type: 'meal_logged', emoji: '🍽️', title: 'Refeição concluída', subtitle: 'Mais um passo no plano' }
+      return {
+        type: 'meal_logged',
+        emoji: '🍽️',
+        title: 'Refeição concluída',
+        subtitle: 'Mais um passo no plano',
+      }
     case 'diet_generated':
-      return { type: 'diet_completed', emoji: '📋', title: 'Plano atualizado', subtitle: 'Nova dieta gerada' }
+      return {
+        type: 'diet_completed',
+        emoji: '📋',
+        title: 'Plano atualizado',
+        subtitle: 'Nova dieta gerada',
+      }
     case 'streak_milestone': {
       const days = typeof metadata?.streak === 'number' ? metadata.streak : null
       return {
@@ -172,13 +185,41 @@ export async function createUserPost(
   return getPostById(fastify, userId, id)
 }
 
+/**
+ * Cursor keyset composto (G2): "created_at|id" — só created_at permitia pular
+ * ou duplicar posts com timestamp idêntico entre páginas. Opaco para o cliente.
+ * Retrocompatível: cursor antigo (sem "|") vira só created_at com id máximo.
+ */
+const MAX_UUID = 'ffffffff-ffff-ffff-ffff-ffffffffffff'
+
+export function encodeFeedCursor(createdAt: string, id: string): string {
+  return `${createdAt}|${id}`
+}
+
+export function decodeFeedCursor(cursor: string): { createdAt: string; id: string } {
+  const sep = cursor.lastIndexOf('|')
+  if (sep === -1) return { createdAt: cursor, id: MAX_UUID }
+  return { createdAt: cursor.slice(0, sep), id: cursor.slice(sep + 1) }
+}
+
 export async function getFeed(
   fastify: FastifyInstance,
   userId: string,
   limit: number,
   cursor?: string,
 ): Promise<{ posts: Post[]; nextCursor: string | null }> {
+  const decoded = cursor ? decodeFeedCursor(cursor) : null
+
+  // G1: are_friends() por linha varria feed_posts GLOBAL até achar `limit`
+  // posts de amigos (custo cresce com o app inteiro). A CTE materializa os ids
+  // de amigos uma vez e o filtro usa índice em feed_posts(user_id, created_at).
   const rows = await fastify.db<DbPostRow[]>`
+    WITH friend_ids AS (
+      SELECT CASE WHEN f.requester_id = ${userId} THEN f.addressee_id ELSE f.requester_id END AS id
+      FROM friendships f
+      WHERE f.status = 'accepted'
+        AND (f.requester_id = ${userId} OR f.addressee_id = ${userId})
+    )
     SELECT
       p.id, p.type, p.content, p.metadata,
       p.created_at::TEXT AS created_at,
@@ -189,14 +230,15 @@ export async function getFeed(
       a.avatar_url AS author_avatar_url, a.avatar_emoji AS author_avatar_emoji
     FROM feed_posts p
     JOIN profiles a ON a.id = p.user_id
-    WHERE (p.user_id = ${userId} OR are_friends(${userId}, p.user_id))
-      ${cursor ? fastify.db`AND p.created_at < ${cursor}` : fastify.db``}
-    ORDER BY p.created_at DESC
+    WHERE (p.user_id = ${userId} OR p.user_id IN (SELECT id FROM friend_ids))
+      ${decoded ? fastify.db`AND (p.created_at, p.id) < (${decoded.createdAt}, ${decoded.id})` : fastify.db``}
+    ORDER BY p.created_at DESC, p.id DESC
     LIMIT ${limit}
   `
 
   const posts = rows.map(rowToPost)
-  const nextCursor = rows.length === limit ? rows[rows.length - 1].created_at : null
+  const last = rows[rows.length - 1]
+  const nextCursor = rows.length === limit ? encodeFeedCursor(last.created_at, last.id) : null
   return { posts, nextCursor }
 }
 

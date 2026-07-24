@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { dayNumberSchema, localDateSchema, tzOffsetMinutesSchema } from '../../shared/local-date.js'
 
 // ─── Dieta completa ───────────────────────────────────────────────────────────
 
@@ -85,6 +86,11 @@ export const plannedMealSchema = z.object({
   carbs: z.number(),
   fat: z.number(),
   completedAt: z.string().nullable(),
+  /**
+   * Concluída NO DIA consultado (completed_at convertido pro fuso do cliente).
+   * É o campo que o app deve ler — deriva o "reset" diário sem job nenhum.
+   */
+  completedToday: z.boolean(),
 })
 
 export const todayPlanSchema = z.object({
@@ -99,6 +105,19 @@ export const todayPlanSchema = z.object({
 })
 
 // ─── Requests ─────────────────────────────────────────────────────────────────
+
+/**
+ * Timezone (Workstream A): o app informa seu dia/data local; tudo opcional —
+ * na ausência o backend cai no comportamento UTC anterior.
+ */
+export const todayQuerySchema = z.object({
+  dayNumber: dayNumberSchema.optional(),
+  date: localDateSchema.optional(),
+  tzOffsetMinutes: tzOffsetMinutesSchema.optional(),
+})
+
+/** Body opcional do toggle — data local para o streak (A4). */
+export const toggleMealBodySchema = z.object({ date: localDateSchema.optional() }).nullish()
 
 export const replaceDietItemBodySchema = z.object({
   food_name: z.string().min(2),
@@ -122,5 +141,6 @@ export type DietWithDays = z.infer<typeof dietWithDaysSchema>
 export type DietDay = z.infer<typeof dietDaySchema>
 export type DietMeal = z.infer<typeof dietMealSchema>
 export type ReplaceDietItemBody = z.infer<typeof replaceDietItemBodySchema>
+export type TodayQuery = z.infer<typeof todayQuerySchema>
 export type TodayPlan = z.infer<typeof todayPlanSchema>
 export type PlannedMealType = z.infer<typeof plannedMealSchema>['type']

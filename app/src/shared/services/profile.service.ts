@@ -7,6 +7,8 @@ export interface BackendProfile {
   full_name: string | null;
   avatar_url: string | null;
   avatar_emoji: string | null;
+  /** Streak canônico (tabela streaks) — o app não recalcula localmente. */
+  current_streak: number | null;
 }
 
 export interface UpdateProfileInput {

@@ -17,6 +17,7 @@ export function ChallengesScreen({ navigation }: Props): React.JSX.Element {
   const joiningId = useChallengesStore((s) => s.joiningId);
   const load = useChallengesStore((s) => s.load);
   const join = useChallengesStore((s) => s.join);
+  const checkIn = useChallengesStore((s) => s.checkIn);
   const [hasError, setHasError] = useState(false);
 
   useEffect(() => {
@@ -29,6 +30,13 @@ export function ChallengesScreen({ navigation }: Props): React.JSX.Element {
     setHasError(false);
     load().catch(() => { setHasError(true); });
   };
+
+  // F3 da spec: encerrados (data-fim passada) vão para uma seção própria no
+  // fim da lista — antes acumulavam misturados como "ativos" para sempre.
+  const active = challenges.filter((c) => !c.finished);
+  const finished = challenges.filter((c) => c.finished);
+  const sections = [...active, ...finished];
+  const firstFinishedId = finished[0]?.id;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -46,16 +54,22 @@ export function ChallengesScreen({ navigation }: Props): React.JSX.Element {
         <ErrorState onRetry={reload} />
       ) : (
         <FlatList
-          data={challenges}
+          data={sections}
           keyExtractor={(c) => c.id}
           contentContainerStyle={styles.listContent}
           renderItem={({ item }) => (
-            <ChallengeCard
-              challenge={item}
-              joining={joiningId === item.id}
-              onJoin={() => join(item.id).catch(() => {})}
-              onPress={() => navigation.navigate('ChallengeLeaderboard', { challengeId: item.id })}
-            />
+            <View>
+              {item.id === firstFinishedId ? (
+                <Text style={styles.sectionLabel}>Encerrados</Text>
+              ) : null}
+              <ChallengeCard
+                challenge={item}
+                joining={joiningId === item.id}
+                onJoin={() => join(item.id).catch(() => {})}
+                onCheckIn={item.joinedByMe && !item.finished ? () => void checkIn(item.id) : undefined}
+                onPress={() => navigation.navigate('ChallengeLeaderboard', { challengeId: item.id })}
+              />
+            </View>
           )}
           ListEmptyComponent={<EmptyChallengesState onCreate={goCreate} />}
         />
@@ -73,6 +87,13 @@ const styles = StyleSheet.create({
   header: { paddingHorizontal: spacing.xl, paddingVertical: spacing.md },
   title: { fontSize: typography.fontSize.xl, color: colors.brandAnchor, fontFamily: typography.fontFamily.bold },
   listContent: { paddingHorizontal: spacing.lg, paddingBottom: 96, flexGrow: 1 },
+  sectionLabel: {
+    fontSize: typography.fontSize.sm,
+    color: colors.brandTextMuted,
+    fontFamily: typography.fontFamily.semiBold,
+    marginTop: spacing.md,
+    marginBottom: spacing.sm,
+  },
   fab: {
     position: 'absolute', right: spacing.xl, bottom: spacing.xxl, width: 56, height: 56, borderRadius: 28,
     backgroundColor: colors.brandPrimary, alignItems: 'center', justifyContent: 'center',

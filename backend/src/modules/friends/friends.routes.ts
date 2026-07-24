@@ -2,21 +2,21 @@ import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { z } from 'zod'
 import type { JwtPayload } from '../../shared/types.js'
 import {
-  friendSchema,
+  errorSchema,
   friendRequestSchema,
-  userSearchResultSchema,
+  friendSchema,
+  respondFriendRequestBodySchema,
   searchUsersQuerySchema,
   sendFriendRequestBodySchema,
-  respondFriendRequestBodySchema,
-  errorSchema,
+  userSearchResultSchema,
 } from './friends.schemas.js'
 import {
-  searchUsers,
-  sendFriendRequest,
-  respondFriendRequest,
-  removeFriendship,
   listFriends,
   listPendingRequests,
+  removeFriendship,
+  respondFriendRequest,
+  searchUsers,
+  sendFriendRequest,
 } from './friends.service.js'
 
 const friendsRoutes: FastifyPluginAsyncZod = async (fastify) => {

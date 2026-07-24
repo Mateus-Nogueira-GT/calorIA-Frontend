@@ -4,7 +4,7 @@ import { ProfileScreen } from './ProfileScreen';
 import { useAuthStore } from '@features/auth/store';
 
 jest.mock('@shared/services/food-log.service', () => ({
-  foodLogService: { getMeals: jest.fn().mockResolvedValue([]) },
+  foodLogService: { getSummary: jest.fn().mockResolvedValue([]) },
 }));
 jest.mock('@shared/services/auth.service', () => ({
   authService: { logout: jest.fn().mockResolvedValue({}) },

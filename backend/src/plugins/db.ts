@@ -1,6 +1,6 @@
+import type { FastifyPluginAsync } from 'fastify'
 import fp from 'fastify-plugin'
 import postgres from 'postgres'
-import type { FastifyPluginAsync } from 'fastify'
 import { env } from '../shared/env.js'
 
 declare module 'fastify' {

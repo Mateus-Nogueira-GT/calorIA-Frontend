@@ -1,39 +1,45 @@
-import Fastify, { type FastifyError, type FastifyRequest } from 'fastify'
-import {
-  serializerCompiler,
-  validatorCompiler,
-  type ZodTypeProvider,
-} from 'fastify-type-provider-zod'
 import cors from '@fastify/cors'
 import fastifyJwt from '@fastify/jwt'
+import type { TokenOrHeader } from '@fastify/jwt'
 import rateLimit from '@fastify/rate-limit'
 import swagger from '@fastify/swagger'
 import swaggerUi from '@fastify/swagger-ui'
+import Fastify, { type FastifyError, type FastifyRequest } from 'fastify'
+import {
+  type ZodTypeProvider,
+  serializerCompiler,
+  validatorCompiler,
+} from 'fastify-type-provider-zod'
 import buildGetJwks from 'get-jwks'
-import type { TokenOrHeader } from '@fastify/jwt'
 
 import dbPlugin from './plugins/db.js'
-import supabasePlugin from './plugins/supabase.js'
 import openaiPlugin from './plugins/openai.js'
+import supabasePlugin from './plugins/supabase.js'
 
 import authRoutes from './modules/auth/auth.routes.js'
-import usersRoutes from './modules/users/users.routes.js'
+import challengesRoutes from './modules/challenges/challenges.routes.js'
 import chatRoutes from './modules/chat/chat.routes.js'
 import dietsRoutes from './modules/diets/diets.routes.js'
-import friendsRoutes from './modules/friends/friends.routes.js'
 import feedRoutes from './modules/feed/feed.routes.js'
-import challengesRoutes from './modules/challenges/challenges.routes.js'
 import foodLogRoutes from './modules/food-log/food-log.routes.js'
-import scannerRoutes from './modules/scanner/scanner.routes.js'
+import friendsRoutes from './modules/friends/friends.routes.js'
 import notificationsRoutes from './modules/notifications/notifications.routes.js'
+import scannerRoutes from './modules/scanner/scanner.routes.js'
+import usersRoutes from './modules/users/users.routes.js'
 import weightRoutes from './modules/weight/weight.routes.js'
 
+import { isAllowedIssuer } from './shared/auth-issuer.js'
 import { env } from './shared/env.js'
 import { AppError } from './shared/errors.js'
-import { isAllowedIssuer } from './shared/auth-issuer.js'
 
 export async function buildApp() {
   const app = Fastify({
+    // Atrás do proxy da Vercel, request.ip sem trustProxy é o IP interno do
+    // balanceador — o MESMO para todos os usuários. Com Fluid Compute (várias
+    // requisições concorrentes na mesma instância), o rate limit virava um
+    // bucket global compartilhado: 10 logins/min PARA TODOS (falsos 429) e
+    // proteção anti-brute-force por IP inócua. trustProxy lê o x-forwarded-for.
+    trustProxy: true,
     logger: {
       level: env.LOG_LEVEL,
       ...(env.NODE_ENV === 'development' && {
@@ -66,6 +72,9 @@ export async function buildApp() {
   await app.register(rateLimit, {
     max: 100,
     timeWindow: '1 minute',
+    // Usuário autenticado é limitado por conta; anônimo pelo IP real
+    // (request.user só existe se algum hook já verificou o JWT — fallback ip).
+    keyGenerator: (request) => (request.user as { sub?: string } | undefined)?.sub ?? request.ip,
     errorResponseBuilder: () => ({
       error: 'TOO_MANY_REQUESTS',
       message: 'Muitas requisições. Tente novamente em breve.',

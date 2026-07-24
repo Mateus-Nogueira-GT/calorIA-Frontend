@@ -1,6 +1,6 @@
-import fp from 'fastify-plugin'
-import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import { type SupabaseClient, createClient } from '@supabase/supabase-js'
 import type { FastifyPluginAsync } from 'fastify'
+import fp from 'fastify-plugin'
 import { env } from '../shared/env.js'
 
 declare module 'fastify' {

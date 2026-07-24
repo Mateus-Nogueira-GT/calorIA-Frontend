@@ -1,4 +1,5 @@
 import api from './api';
+import { todayString, tzOffsetMinutes } from '@shared/utils/date';
 
 export interface CoachMessage {
   id: string;
@@ -49,9 +50,15 @@ export const coachService = {
   sendMessage: (content: string, conversationId: string | null) =>
     api
       // Chat com IA pode levar mais que os 10s padrão do axios.
+      // date/tzOffsetMinutes locais: o coach monta o contexto do dia correto.
       .post<BackendChatResponse>(
         '/chat/message',
-        { message: content, conversation_id: conversationId },
+        {
+          message: content,
+          conversation_id: conversationId,
+          date: todayString(),
+          tzOffsetMinutes: tzOffsetMinutes(),
+        },
         { timeout: 60000 },
       )
       .then((r) => ({

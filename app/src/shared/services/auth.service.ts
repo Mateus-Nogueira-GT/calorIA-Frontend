@@ -91,4 +91,17 @@ export const authService = {
       .then((r) => r.data),
 
   logout: () => api.post('/auth/logout').then((r) => r.data),
+
+  /** Envia o email de recuperação. O backend sempre responde sucesso. */
+  forgotPassword: (email: string) =>
+    api.post<{ success: boolean }>('/auth/forgot-password', { email }).then((r) => r.data),
+
+  /** Redefine a senha com o access_token de recovery do link do email. */
+  resetPassword: (accessToken: string, newPassword: string) =>
+    api
+      .post<{ success: boolean }>('/auth/reset-password', {
+        access_token: accessToken,
+        new_password: newPassword,
+      })
+      .then((r) => r.data),
 };

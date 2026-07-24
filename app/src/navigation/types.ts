@@ -8,6 +8,8 @@ export type AuthStackParamList = {
   Register: undefined;
   Login: undefined;
   ForgotPassword: undefined;
+  /** Aberta pelo link do email de recuperação (web). */
+  ResetPassword: undefined;
   ProfileSetup: undefined;
 };
 
@@ -20,6 +22,7 @@ export type CommunityStackParamList = {
   CreateChallenge: undefined;
   ChallengeLeaderboard: { challengeId?: string; code?: string };
   Notifications: undefined;
+  Friends: { initialTab?: 'friends' | 'requests' | 'search' } | undefined;
 };
 
 // Tab Navigator
