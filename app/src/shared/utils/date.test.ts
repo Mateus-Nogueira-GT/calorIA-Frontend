@@ -6,8 +6,22 @@ import {
   last7Days,
   formatChipLabel,
   getMealGroup,
+  getMealGroupFor,
   timeAgo,
 } from './date';
+
+describe('getMealGroupFor', () => {
+  it('prefere o tipo escolhido pelo usuário', () => {
+    // 23h seria "Jantar" pelo horário, mas o usuário marcou Almoço
+    expect(getMealGroupFor('lunch', '2026-07-24T23:00:00')).toBe('Almoço');
+    expect(getMealGroupFor('breakfast', '2026-07-24T13:00:00')).toBe('Café da manhã');
+  });
+
+  it("cai no heurístico por hora para 'other'/ausente (registros antigos)", () => {
+    expect(getMealGroupFor('other', '2026-07-24T12:00:00')).toBe('Almoço');
+    expect(getMealGroupFor(undefined, '2026-07-24T08:00:00')).toBe('Café da manhã');
+  });
+});
 
 describe('todayDayNumber', () => {
   it('mapeia 1=Segunda … 7=Domingo no fuso local', () => {

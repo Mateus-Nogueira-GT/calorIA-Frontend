@@ -54,6 +54,21 @@ export function getMealGroup(loggedAt: string): MealGroup {
   return 'Jantar';
 }
 
+const TYPE_TO_GROUP: Record<string, MealGroup> = {
+  breakfast: 'Café da manhã',
+  lunch: 'Almoço',
+  snack: 'Lanche',
+  dinner: 'Jantar',
+};
+
+/**
+ * Grupo do diário: usa o tipo escolhido pelo usuário quando existir;
+ * registros antigos/'other' caem no heurístico por horário.
+ */
+export function getMealGroupFor(mealType: string | undefined, loggedAt: string): MealGroup {
+  return TYPE_TO_GROUP[mealType ?? ''] ?? getMealGroup(loggedAt);
+}
+
 export function timeAgo(iso: string, now: Date = new Date()): string {
   const diffMs = now.getTime() - new Date(iso).getTime();
   const min = Math.floor(diffMs / 60000);

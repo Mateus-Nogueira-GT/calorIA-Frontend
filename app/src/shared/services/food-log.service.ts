@@ -1,6 +1,8 @@
 import api from './api';
 import { todayString } from '@shared/utils/date';
 
+export type AppMealType = 'breakfast' | 'lunch' | 'snack' | 'dinner' | 'other';
+
 export interface Meal {
   id: string;
   name: string;
@@ -9,6 +11,7 @@ export interface Meal {
   carbs: number;
   fat: number;
   loggedAt: string;
+  mealType: AppMealType;
 }
 
 export interface AddMealPayload {
@@ -19,6 +22,8 @@ export interface AddMealPayload {
   fat: number;
   /** Data local do registro (YYYY-MM-DD). Default: hoje local. */
   date?: string;
+  /** Tipo da refeição — 'other' cai no agrupamento por horário. */
+  mealType?: AppMealType;
 }
 
 export const foodLogService = {

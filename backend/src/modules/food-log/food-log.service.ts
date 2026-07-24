@@ -10,6 +10,20 @@ import type { AddMealBody, Meal } from './food-log.schemas.js'
  * enviados pelo usuário.
  */
 
+/** App usa 4 grupos; o banco tem 6 tipos + other — traduz nos dois sentidos. */
+type AppMealType = Meal['mealType']
+
+function toDbMealType(t: AppMealType): string {
+  return t === 'snack' ? 'afternoon_snack' : t
+}
+
+export function toApiMealType(db: string): AppMealType {
+  if (db === 'morning_snack' || db === 'afternoon_snack') return 'snack'
+  if (db === 'supper') return 'dinner'
+  if (db === 'breakfast' || db === 'lunch' || db === 'dinner' || db === 'snack') return db
+  return 'other'
+}
+
 export async function listMeals(
   fastify: FastifyInstance,
   userId: string,
@@ -19,6 +33,7 @@ export async function listMeals(
     {
       id: string
       name: string | null
+      meal_type: string
       total_calories: string
       total_protein: string
       total_carbs: string
@@ -27,7 +42,7 @@ export async function listMeals(
     }[]
   >`
     SELECT
-      id, name,
+      id, name, meal_type,
       total_calories, total_protein, total_carbs, total_fat,
       logged_at::TEXT AS logged_at
     FROM meals
@@ -43,6 +58,7 @@ export async function listMeals(
     carbs: Number(row.total_carbs),
     fat: Number(row.total_fat),
     loggedAt: row.logged_at,
+    mealType: toApiMealType(row.meal_type),
   }))
 }
 
@@ -59,7 +75,8 @@ export async function addMeal(
     // Data local do cliente quando presente; CURRENT_DATE (UTC) como fallback
     const [meal] = await sql<{ id: string; logged_at: string }[]>`
       INSERT INTO meals (user_id, meal_type, meal_date, name)
-      VALUES (${userId}, 'other', COALESCE(${data.date ?? null}::date, CURRENT_DATE), ${data.name})
+      VALUES (${userId}, ${toDbMealType(data.mealType)},
+              COALESCE(${data.date ?? null}::date, CURRENT_DATE), ${data.name})
       RETURNING id, logged_at::TEXT AS logged_at
     `
 
@@ -76,6 +93,7 @@ export async function addMeal(
       carbs: data.carbs,
       fat: data.fat,
       loggedAt: meal.logged_at,
+      mealType: data.mealType,
     }
   })
 }
