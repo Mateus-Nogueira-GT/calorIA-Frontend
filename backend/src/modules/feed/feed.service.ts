@@ -56,15 +56,28 @@ function authorRowToAuthor(row: DbAuthorRow): Post['author'] {
 }
 
 /** Deriva o badge de conquista do post (metadata.achievement tem prioridade). */
-export function toAchievement(type: PostType, metadata: Record<string, unknown>): PostAchievement | null {
+export function toAchievement(
+  type: PostType,
+  metadata: Record<string, unknown>,
+): PostAchievement | null {
   const fromMeta = metadata?.achievement
   if (fromMeta && typeof fromMeta === 'object') return fromMeta as PostAchievement
 
   switch (type) {
     case 'meal_completed':
-      return { type: 'meal_logged', emoji: '🍽️', title: 'Refeição concluída', subtitle: 'Mais um passo no plano' }
+      return {
+        type: 'meal_logged',
+        emoji: '🍽️',
+        title: 'Refeição concluída',
+        subtitle: 'Mais um passo no plano',
+      }
     case 'diet_generated':
-      return { type: 'diet_completed', emoji: '📋', title: 'Plano atualizado', subtitle: 'Nova dieta gerada' }
+      return {
+        type: 'diet_completed',
+        emoji: '📋',
+        title: 'Plano atualizado',
+        subtitle: 'Nova dieta gerada',
+      }
     case 'streak_milestone': {
       const days = typeof metadata?.streak === 'number' ? metadata.streak : null
       return {

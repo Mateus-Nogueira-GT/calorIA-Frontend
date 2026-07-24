@@ -7,10 +7,7 @@
  * solto — caso contrário um issuer como `https://abcd.supabase.co.evil.com`
  * passaria por começar com a URL do projeto.
  */
-export function isAllowedIssuer(
-  iss: string | undefined,
-  supabaseUrl: string,
-): boolean {
+export function isAllowedIssuer(iss: string | undefined, supabaseUrl: string): boolean {
   if (!iss) return false
   const base = supabaseUrl.replace(/\/+$/, '')
   return iss === base || iss.startsWith(`${base}/`)

@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest'
-import { computeTargets, parseInput } from './jobs.service.js'
+import { describe, expect, it } from 'vitest'
 import type { CollectedUserData } from '../../shared/diet-ai-schema.js'
+import { computeTargets, parseInput } from './jobs.service.js'
 
 const base: CollectedUserData = {
   weight_kg: 80,

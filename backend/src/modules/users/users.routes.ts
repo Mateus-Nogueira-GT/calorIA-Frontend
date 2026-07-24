@@ -1,10 +1,10 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import type { JwtPayload } from '../../shared/types.js'
 import {
+  errorSchema,
   profileSchema,
   updateProfileBodySchema,
   uploadAvatarBodySchema,
-  errorSchema,
 } from './users.schemas.js'
 import { getUserProfile, updateUserProfile, uploadUserAvatar } from './users.service.js'
 

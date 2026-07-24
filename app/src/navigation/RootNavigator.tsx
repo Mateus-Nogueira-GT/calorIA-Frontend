@@ -50,6 +50,11 @@ function isResetPasswordPath(): boolean {
 }
 
 function isAppPreviewEnabled(): boolean {
+  // H4 da spec: o bypass de login (?preview=app) é ferramenta de desenvolvimento
+  // — em produção qualquer um poderia abrir o shell autenticado do app.
+  if (!__DEV__) {
+    return false;
+  }
   if (Platform.OS !== 'web' || typeof window === 'undefined') {
     return false;
   }

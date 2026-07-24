@@ -1,16 +1,16 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
+import { z } from 'zod'
 import type { JwtPayload } from '../../shared/types.js'
 import {
-  mealSchema,
-  listMealsQuerySchema,
   addMealBodySchema,
-  mealParamsSchema,
-  summaryQuerySchema,
   daySummarySchema,
   errorSchema,
+  listMealsQuerySchema,
+  mealParamsSchema,
+  mealSchema,
+  summaryQuerySchema,
 } from './food-log.schemas.js'
-import { listMeals, addMeal, deleteMeal, getSummary } from './food-log.service.js'
-import { z } from 'zod'
+import { addMeal, deleteMeal, getSummary, listMeals } from './food-log.service.js'
 
 const foodLogRoutes: FastifyPluginAsyncZod = async (fastify) => {
   // Todas as rotas deste módulo exigem autenticação via JWT

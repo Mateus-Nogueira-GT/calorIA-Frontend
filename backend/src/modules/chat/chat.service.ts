@@ -1,9 +1,9 @@
-import type { FastifyInstance } from 'fastify'
 import { randomUUID } from 'node:crypto'
+import type { FastifyInstance } from 'fastify'
 import type OpenAI from 'openai'
+import { type CollectedUserData, collectedUserDataSchema } from '../../shared/diet-ai-schema.js'
 import { env } from '../../shared/env.js'
 import { AppError } from '../../shared/errors.js'
-import { collectedUserDataSchema, type CollectedUserData } from '../../shared/diet-ai-schema.js'
 import { createDietJob } from '../diets/jobs.service.js'
 import type { ChatMessageBody, ChatResponse } from './chat.schemas.js'
 
@@ -43,8 +43,7 @@ const PERSONALITY_TONES: Record<string, string> = {
   motivational:
     'TOM: seja encorajador e entusiasmado, celebre cada progresso e use energia positiva.',
   direct: 'TOM: seja objetivo e direto ao ponto, sem rodeios nem floreios.',
-  empathetic:
-    'TOM: seja acolhedor e empático, valide os sentimentos do usuário antes de orientar.',
+  empathetic: 'TOM: seja acolhedor e empático, valide os sentimentos do usuário antes de orientar.',
   scientific:
     'TOM: explique o "porquê" das recomendações com base técnica e evidências, de forma didática.',
 }

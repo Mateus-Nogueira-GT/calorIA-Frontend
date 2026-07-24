@@ -1,5 +1,10 @@
-import { describe, it, expect } from 'vitest'
-import { buildSystemPrompt, mapOpenAIError, normalizeHistory, windowedHistory } from './chat.service.js'
+import { describe, expect, it } from 'vitest'
+import {
+  buildSystemPrompt,
+  mapOpenAIError,
+  normalizeHistory,
+  windowedHistory,
+} from './chat.service.js'
 
 describe('buildSystemPrompt (personality)', () => {
   it('inclui o tom da personalidade escolhida', () => {

@@ -2,23 +2,23 @@ import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { z } from 'zod'
 import type { JwtPayload } from '../../shared/types.js'
 import {
-  postSchema,
-  feedPageSchema,
   commentSchema,
-  likeResultSchema,
-  createPostBodySchema,
   createCommentBodySchema,
-  feedQuerySchema,
+  createPostBodySchema,
   errorSchema,
+  feedPageSchema,
+  feedQuerySchema,
+  likeResultSchema,
+  postSchema,
 } from './feed.schemas.js'
 import {
+  addComment,
   createUserPost,
-  getFeed,
   deletePost,
+  getComments,
+  getFeed,
   likePost,
   unlikePost,
-  addComment,
-  getComments,
 } from './feed.service.js'
 
 const feedRoutes: FastifyPluginAsyncZod = async (fastify) => {

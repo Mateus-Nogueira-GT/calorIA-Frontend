@@ -1,6 +1,6 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import type { JwtPayload } from '../../shared/types.js'
-import { analyzePhotoBodySchema, scanResponseSchema, errorSchema } from './scanner.schemas.js'
+import { analyzePhotoBodySchema, errorSchema, scanResponseSchema } from './scanner.schemas.js'
 import { analyzePhoto } from './scanner.service.js'
 
 const scannerRoutes: FastifyPluginAsyncZod = async (fastify) => {

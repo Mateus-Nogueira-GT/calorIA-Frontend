@@ -109,5 +109,20 @@ export async function uploadUserAvatar(
     throw new AppError(404, 'PROFILE_NOT_FOUND', 'Perfil não encontrado')
   }
 
+  // H3 da spec: remove as fotos antigas do prefixo do usuário (cada upload
+  // criava um arquivo novo e os anteriores acumulavam para sempre).
+  // Best-effort: falha aqui nunca derruba a troca de avatar.
+  try {
+    const { data: files } = await fastify.supabase.storage.from('avatars').list(userId)
+    const stale = (files ?? [])
+      .filter((f) => `${userId}/${f.name}` !== path)
+      .map((f) => `${userId}/${f.name}`)
+    if (stale.length > 0) {
+      await fastify.supabase.storage.from('avatars').remove(stale)
+    }
+  } catch (err) {
+    fastify.log.warn(err, 'Falha ao limpar avatares antigos do Storage')
+  }
+
   return getUserProfile(fastify, userId)
 }

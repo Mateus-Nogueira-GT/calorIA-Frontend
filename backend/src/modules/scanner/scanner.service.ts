@@ -1,9 +1,9 @@
-import type { FastifyInstance } from 'fastify'
 import { randomUUID } from 'node:crypto'
+import type { FastifyInstance } from 'fastify'
 import { zodResponseFormat } from 'openai/helpers/zod.js'
 import { env } from '../../shared/env.js'
 import { AppError } from '../../shared/errors.js'
-import { visionAnalysisSchema, type ScanResponse } from './scanner.schemas.js'
+import { type ScanResponse, visionAnalysisSchema } from './scanner.schemas.js'
 
 const VISION_SYSTEM_PROMPT = `Você é um nutricionista especialista em análise visual de alimentos.
 Receberá a foto de um prato/refeição e deve estimar os valores nutricionais do que está visível.

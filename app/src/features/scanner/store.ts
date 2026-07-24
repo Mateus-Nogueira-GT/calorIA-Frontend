@@ -38,8 +38,17 @@ export const useScannerStore = create<ScannerState>((set, get) => ({
     try {
       const res = await scannerService.analyzePhoto(image);
       set({ items: res.items, isAnalyzing: false });
-    } catch {
-      set({ isAnalyzing: false, error: 'Não foi possível analisar a imagem.' });
+    } catch (e) {
+      // H5 da spec: 422 NOT_FOOD merece orientação, não erro genérico.
+      const backendError = (e as { response?: { data?: { error?: string } } }).response?.data
+        ?.error;
+      set({
+        isAnalyzing: false,
+        error:
+          backendError === 'NOT_FOOD'
+            ? 'Não identificamos comida nesta foto — tente outro ângulo ou mais luz.'
+            : 'Não foi possível analisar a imagem.',
+      });
     }
   },
 
