@@ -47,9 +47,8 @@ const scannerRoutes: FastifyPluginAsyncZod = async (fastify) => {
       },
     },
     async (request, reply) => {
-      // userId não é usado na análise em si, mas a rota é protegida.
-      const { sub: _userId } = request.user as JwtPayload
-      return reply.send(await analyzePhoto(fastify, request.body.image))
+      const { sub: userId } = request.user as JwtPayload
+      return reply.send(await analyzePhoto(fastify, request.body.image, userId))
     },
   )
 }
