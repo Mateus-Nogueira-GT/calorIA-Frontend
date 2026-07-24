@@ -165,6 +165,9 @@ export async function googleLogin(
   if (error || !data.session || !data.user) {
     throw new AppError(401, 'GOOGLE_AUTH_FAILED', 'Não foi possível autenticar com o Google')
   }
+  // E6 da spec: sem username o usuário fica invisível na busca de amigos —
+  // o /register já derivava, mas o login social não. Idempotente (só se NULL).
+  if (data.user.email) await ensureUsername(fastify, data.user.id, data.user.email)
   return sessionToAuthResponse(data.session, data.user)
 }
 
@@ -194,6 +197,9 @@ export async function appleLogin(
       fastify.log.warn(err, 'Falha ao preencher nome no login com Apple')
     }
   }
+
+  // E6 da spec: mesmo caso do Google — garante username para a busca de amigos.
+  if (data.user.email) await ensureUsername(fastify, data.user.id, data.user.email)
 
   return sessionToAuthResponse(data.session, data.user)
 }

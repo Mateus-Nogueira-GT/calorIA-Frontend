@@ -5,6 +5,8 @@ export const notificationTypeEnum = z.enum([
   'comment',
   'challenge_invite',
   'challenge_rank',
+  'friend_request',
+  'friend_accepted',
 ])
 
 // Espelha o PostAuthor do frontend ({ id, name, avatarEmoji? }).

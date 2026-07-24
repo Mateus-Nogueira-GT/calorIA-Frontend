@@ -22,6 +22,7 @@ export type CommunityStackParamList = {
   CreateChallenge: undefined;
   ChallengeLeaderboard: { challengeId?: string; code?: string };
   Notifications: undefined;
+  Friends: { initialTab?: 'friends' | 'requests' | 'search' } | undefined;
 };
 
 // Tab Navigator

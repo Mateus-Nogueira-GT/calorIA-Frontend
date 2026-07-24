@@ -8,6 +8,7 @@ import { useWeightStore } from '@features/evolution/store';
 import { useFeedStore } from '@features/feed/store';
 import { useChallengesStore } from '@features/challenges/store';
 import { useNotificationsStore } from '@features/notifications/store';
+import { useFriendsStore } from '@features/friends/store';
 
 interface User {
   id: string;
@@ -222,6 +223,7 @@ export const useAuthStore = create<AuthState>()(
         useFeedStore.getState().clear();
         useChallengesStore.getState().clear();
         useNotificationsStore.getState().clear();
+        useFriendsStore.getState().clear();
         clearPreviewQueryOnWeb();
         set({
           token: null,

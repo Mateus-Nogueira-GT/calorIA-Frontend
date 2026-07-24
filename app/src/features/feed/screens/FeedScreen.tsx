@@ -47,12 +47,16 @@ export function FeedScreen({ navigation }: Props): React.JSX.Element {
   const goCreate = () => navigation.navigate('CreatePost');
   const goChallenges = () => navigation.navigate('Challenges');
   const goNotifications = () => navigation.navigate('Notifications');
+  const goFriends = () => navigation.navigate('Friends', undefined);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
         <Text style={styles.title}>Comunidade</Text>
         <View style={styles.headerActions}>
+          <Pressable onPress={goFriends} accessibilityRole='button' accessibilityLabel='Amigos' style={styles.headerAction} testID='feed-friends-button'>
+            <Text style={styles.headerActionIcon}>👥</Text>
+          </Pressable>
           <Pressable onPress={goChallenges} accessibilityRole='button' accessibilityLabel='Desafios' style={styles.headerAction}>
             <Text style={styles.headerActionIcon}>🏆</Text>
           </Pressable>
@@ -99,7 +103,7 @@ export function FeedScreen({ navigation }: Props): React.JSX.Element {
                 }}
               />
             ) : isEmpty ? (
-              <EmptyFeedState mode="empty" onCreate={goCreate} />
+              <EmptyFeedState mode="empty" onCreate={goCreate} onFindFriends={goFriends} />
             ) : null
           }
           ListFooterComponent={

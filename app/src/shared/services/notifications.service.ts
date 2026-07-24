@@ -1,7 +1,13 @@
 import api from './api';
 import type { PostAuthor } from './feed.service';
 
-export type NotificationType = 'like' | 'comment' | 'challenge_invite' | 'challenge_rank';
+export type NotificationType =
+  | 'like'
+  | 'comment'
+  | 'challenge_invite'
+  | 'challenge_rank'
+  | 'friend_request'
+  | 'friend_accepted';
 
 export interface AppNotification {
   id: string;

@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 import { AppError } from '../../shared/errors.js'
+import { createNotification } from '../notifications/notifications.service.js'
 import type { Friend, FriendRequest, UserSearchResult } from './friends.schemas.js'
 
 // ─── Busca de usuários ────────────────────────────────────────────────────────
@@ -79,6 +80,20 @@ export async function sendFriendRequest(
     RETURNING id
   `
 
+  // E4 da spec: sem isso o destinatário só descobria o pedido abrindo a tela
+  // de pedidos por conta própria. Best-effort — nunca derruba o pedido.
+  try {
+    await createNotification(fastify, {
+      userId: target.id,
+      actorId: userId,
+      type: 'friend_request',
+      message: 'enviou um pedido de amizade',
+      targetId: created.id,
+    })
+  } catch (err) {
+    fastify.log.warn(err, 'Falha ao criar notificação de pedido de amizade')
+  }
+
   return created
 }
 
@@ -88,8 +103,9 @@ export async function respondFriendRequest(
   requestId: string,
   action: 'accept' | 'reject',
 ): Promise<{ status: string }> {
-  const [request] = await fastify.db<{ id: string; status: string }[]>`
-    SELECT id, status FROM friendships WHERE id = ${requestId} AND addressee_id = ${userId}
+  const [request] = await fastify.db<{ id: string; status: string; requester_id: string }[]>`
+    SELECT id, status, requester_id FROM friendships
+    WHERE id = ${requestId} AND addressee_id = ${userId}
   `
   if (!request) throw new AppError(404, 'REQUEST_NOT_FOUND', 'Pedido de amizade não encontrado')
   if (request.status !== 'pending')
@@ -101,6 +117,19 @@ export async function respondFriendRequest(
   }
 
   await fastify.db`UPDATE friendships SET status = 'accepted', updated_at = NOW() WHERE id = ${requestId}`
+
+  try {
+    await createNotification(fastify, {
+      userId: request.requester_id,
+      actorId: userId,
+      type: 'friend_accepted',
+      message: 'aceitou seu pedido de amizade',
+      targetId: requestId,
+    })
+  } catch (err) {
+    fastify.log.warn(err, 'Falha ao criar notificação de amizade aceita')
+  }
+
   return { status: 'accepted' }
 }
 

@@ -7,6 +7,7 @@ import { ChallengesScreen } from '@features/challenges/screens/ChallengesScreen'
 import { CreateChallengeScreen } from '@features/challenges/screens/CreateChallengeScreen';
 import { ChallengeLeaderboardScreen } from '@features/challenges/screens/ChallengeLeaderboardScreen';
 import { NotificationsScreen } from '@features/notifications/screens/NotificationsScreen';
+import { FriendsScreen } from '@features/friends/screens/FriendsScreen';
 import { useNotificationPolling } from '@features/notifications/hooks/useNotificationPolling';
 import { colors } from '@theme';
 import type { CommunityStackParamList } from './types';
@@ -40,6 +41,7 @@ export function CommunityNavigator(): React.JSX.Element {
       <Stack.Screen name='CreateChallenge' component={CreateChallengeScreen} options={{ presentation: 'modal', title: 'Novo desafio' }} />
       <Stack.Screen name='ChallengeLeaderboard' component={ChallengeLeaderboardScreen} options={{ title: 'Ranking' }} />
       <Stack.Screen name='Notifications' component={NotificationsScreen} options={{ title: 'Notificações' }} />
+      <Stack.Screen name='Friends' component={FriendsScreen} options={{ title: 'Amigos' }} />
     </Stack.Navigator>
   );
 }
