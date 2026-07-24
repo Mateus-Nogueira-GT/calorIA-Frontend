@@ -4,17 +4,19 @@ import type { JwtPayload } from '../../shared/types.js'
 import {
   dietSchema,
   dietWithDaysSchema,
-  todayPlanSchema,
-  replaceDietItemBodySchema,
   errorSchema,
+  replaceDietItemBodySchema,
+  todayPlanSchema,
+  todayQuerySchema,
+  toggleMealBodySchema,
 } from './diets.schemas.js'
 import {
   getActiveDiet,
+  getDietHistory,
   getDietWithDays,
   getTodayPlan,
-  toggleMealCompleted,
   replaceDietItem,
-  getDietHistory,
+  toggleMealCompleted,
 } from './diets.service.js'
 import { getJob, processJobStep } from './jobs.service.js'
 
@@ -87,14 +89,16 @@ const dietsRoutes: FastifyPluginAsyncZod = async (fastify) => {
         tags: ['Diets'],
         summary: 'Dieta de hoje',
         description:
-          'Retorna as refeições do dia atual conforme o dia da semana. É o dado principal da tela inicial.',
+          'Retorna as refeições do dia atual conforme o dia da semana. É o dado principal da tela inicial. ' +
+          'O app envia dayNumber/date/tzOffsetMinutes locais; sem eles, usa o dia UTC (legado).',
         security: [{ bearerAuth: [] }],
-        response: { 200: todayPlanSchema.nullable(), 401: errorSchema },
+        querystring: todayQuerySchema,
+        response: { 200: todayPlanSchema.nullable(), 400: errorSchema, 401: errorSchema },
       },
     },
     async (request, reply) => {
       const { sub: userId } = request.user as JwtPayload
-      return reply.send(await getTodayPlan(fastify, userId))
+      return reply.send(await getTodayPlan(fastify, userId, request.query))
     },
   )
 
@@ -146,8 +150,10 @@ const dietsRoutes: FastifyPluginAsyncZod = async (fastify) => {
           'Alterna o estado concluído/pendente de uma refeição. Também atualiza o streak do usuário.',
         security: [{ bearerAuth: [] }],
         params: z.object({ mealId: z.string().uuid() }),
+        body: toggleMealBodySchema,
         response: {
           200: z.object({ is_completed: z.boolean() }),
+          400: errorSchema,
           401: errorSchema,
           404: errorSchema,
         },
@@ -155,7 +161,9 @@ const dietsRoutes: FastifyPluginAsyncZod = async (fastify) => {
     },
     async (request, reply) => {
       const { sub: userId } = request.user as JwtPayload
-      return reply.send(await toggleMealCompleted(fastify, userId, request.params.mealId))
+      return reply.send(
+        await toggleMealCompleted(fastify, userId, request.params.mealId, request.body?.date),
+      )
     },
   )
 
@@ -211,7 +219,8 @@ const dietsRoutes: FastifyPluginAsyncZod = async (fastify) => {
       schema: {
         tags: ['Diets'],
         summary: 'Gerar próximo dia da dieta',
-        description: 'Gera e persiste o próximo dia do plano. Chamar em polling até status=completed.',
+        description:
+          'Gera e persiste o próximo dia do plano. Chamar em polling até status=completed.',
         security: [{ bearerAuth: [] }],
         params: z.object({ id: z.string().uuid() }),
         response: {

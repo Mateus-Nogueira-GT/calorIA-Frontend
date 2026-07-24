@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 import { AppError } from '../../shared/errors.js'
+import { isWithinDateWindow } from '../../shared/local-date.js'
 import type { AddMealBody, Meal } from './food-log.schemas.js'
 
 /**
@@ -50,10 +51,15 @@ export async function addMeal(
   userId: string,
   data: AddMealBody,
 ): Promise<Meal> {
+  if (data.date && !isWithinDateWindow(data.date)) {
+    throw new AppError(400, 'INVALID_DATE', 'Data fora da janela permitida')
+  }
+
   return fastify.db.begin(async (sql) => {
+    // Data local do cliente quando presente; CURRENT_DATE (UTC) como fallback
     const [meal] = await sql<{ id: string; logged_at: string }[]>`
       INSERT INTO meals (user_id, meal_type, meal_date, name)
-      VALUES (${userId}, 'other', CURRENT_DATE, ${data.name})
+      VALUES (${userId}, 'other', COALESCE(${data.date ?? null}::date, CURRENT_DATE), ${data.name})
       RETURNING id, logged_at::TEXT AS logged_at
     `
 

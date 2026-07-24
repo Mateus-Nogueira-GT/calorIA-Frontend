@@ -1,7 +1,13 @@
 import type { FastifyInstance } from 'fastify'
 import { AppError } from '../../shared/errors.js'
+import { isWithinDateWindow, utcTodayString } from '../../shared/local-date.js'
 import { createSystemPost } from '../feed/feed.service.js'
-import type { Challenge, ChallengeMember, CreateChallengeBody, LeaderboardEntry } from './challenges.schemas.js'
+import type {
+  Challenge,
+  ChallengeMember,
+  CreateChallengeBody,
+  LeaderboardEntry,
+} from './challenges.schemas.js'
 
 interface DbChallengeRow {
   id: string
@@ -139,9 +145,15 @@ export async function joinChallenge(
   }
 
   try {
-    await createSystemPost(fastify, userId, 'challenge_joined', `Entrou no desafio "${challenge.title}"!`, {
-      challenge_id: challengeId,
-    })
+    await createSystemPost(
+      fastify,
+      userId,
+      'challenge_joined',
+      `Entrou no desafio "${challenge.title}"!`,
+      {
+        challenge_id: challengeId,
+      },
+    )
   } catch (err) {
     fastify.log.warn(err, 'Falha ao publicar post de entrada em desafio')
   }
@@ -210,7 +222,14 @@ export async function checkIn(
   fastify: FastifyInstance,
   userId: string,
   challengeId: string,
+  localDate?: string,
 ): Promise<ChallengeMember> {
+  // A8: data local do cliente, limitada a ±1 dia do UTC (fusos reais); o
+  // check-in não é retroativo.
+  if (localDate && !isWithinDateWindow(localDate, new Date(), { pastDays: 1, futureDays: 1 })) {
+    throw new AppError(400, 'INVALID_DATE', 'Data fora da janela permitida para check-in')
+  }
+
   const [member] = await fastify.db<{ id: string; status: string; last_check_in: string | null }[]>`
     SELECT id, status, last_check_in::TEXT AS last_check_in
     FROM challenge_members
@@ -220,7 +239,7 @@ export async function checkIn(
   if (member.status !== 'active')
     throw new AppError(409, 'MEMBERSHIP_INACTIVE', 'Sua participação neste desafio não está ativa')
 
-  const today = new Date().toISOString().slice(0, 10)
+  const today = localDate ?? utcTodayString()
   if (member.last_check_in === today)
     throw new AppError(409, 'ALREADY_CHECKED_IN', 'Você já fez check-in hoje neste desafio')
 

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { localDateSchema } from '../../shared/local-date.js'
 
 // ─── Responses ────────────────────────────────────────────────────────────────
 
@@ -24,6 +25,11 @@ export const addMealBodySchema = z.object({
   protein: z.number().min(0),
   carbs: z.number().min(0),
   fat: z.number().min(0),
+  /**
+   * Data local do cliente (Workstream A). Sem ela, CURRENT_DATE (UTC) — que
+   * "vira o dia" às 21h BRT; o app SEMPRE deve enviar.
+   */
+  date: localDateSchema.optional(),
 })
 
 export const mealParamsSchema = z.object({
