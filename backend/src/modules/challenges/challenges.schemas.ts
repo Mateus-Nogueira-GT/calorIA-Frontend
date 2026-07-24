@@ -9,6 +9,8 @@ export const memberStatusEnum = z.enum(['invited', 'active', 'quit', 'disqualifi
 // ─── Responses (camelCase — contrato com o frontend) ────────────────────────
 
 export const challengeSchema = z.object({
+  /** Derivado da data-fim (F3) — nenhum job muda status no banco. */
+  finished: z.boolean(),
   id: z.string().uuid(),
   title: z.string(),
   description: z.string(),

@@ -18,6 +18,7 @@ interface ChallengesState {
   load: () => Promise<void>;
   create: (input: CreateChallengeInput) => Promise<Challenge>;
   join: (challengeId: string) => Promise<void>;
+  checkIn: (challengeId: string) => Promise<boolean>;
   loadLeaderboard: (challengeId: string) => Promise<void>;
   resolveInvite: (code: string) => Promise<Challenge>;
   clear: () => void;
@@ -82,6 +83,27 @@ export const useChallengesStore = create<ChallengesState>((set, get) => ({
       }));
       Alert.alert('Não foi possível entrar no desafio', 'Tente novamente.');
       throw e;
+    }
+  },
+
+  // Check-in diário (a UI nunca tinha exposto isso — o ranking ficava sempre
+  // zerado). Recarrega o leaderboard do desafio após o sucesso.
+  checkIn: async (challengeId) => {
+    try {
+      await challengesService.checkIn(challengeId);
+      void get().loadLeaderboard(challengeId).catch(() => {});
+      return true;
+    } catch (e) {
+      const status = (e as { response?: { status?: number; data?: { error?: string } } })
+        .response;
+      if (status?.data?.error === 'ALREADY_CHECKED_IN') {
+        Alert.alert('Tudo certo por hoje', 'Você já fez o check-in de hoje neste desafio.');
+      } else if (status?.data?.error === 'CHALLENGE_ENDED') {
+        Alert.alert('Desafio encerrado', 'Este desafio já chegou ao fim.');
+      } else {
+        Alert.alert('Não foi possível fazer o check-in', 'Tente novamente.');
+      }
+      return false;
     }
   },
 

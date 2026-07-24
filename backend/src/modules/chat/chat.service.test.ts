@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildSystemPrompt, mapOpenAIError, normalizeHistory } from './chat.service.js'
+import { buildSystemPrompt, mapOpenAIError, normalizeHistory, windowedHistory } from './chat.service.js'
 
 describe('buildSystemPrompt (personality)', () => {
   it('inclui o tom da personalidade escolhida', () => {
@@ -57,5 +57,20 @@ describe('normalizeHistory (jsonb robusto)', () => {
     expect(normalizeHistory(null)).toEqual([])
     expect(normalizeHistory(undefined)).toEqual([])
     expect(normalizeHistory({ not: 'array' })).toEqual([])
+  })
+})
+
+describe('windowedHistory (G6)', () => {
+  it('mantém histórico curto intacto', () => {
+    const h = [1, 2, 3]
+    expect(windowedHistory(h, 30)).toEqual([1, 2, 3])
+  })
+
+  it('corta para as últimas N mensagens', () => {
+    const h = Array.from({ length: 40 }, (_, i) => i)
+    const w = windowedHistory(h, 30)
+    expect(w).toHaveLength(30)
+    expect(w[0]).toBe(10)
+    expect(w[29]).toBe(39)
   })
 })

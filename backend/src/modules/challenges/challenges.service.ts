@@ -18,6 +18,7 @@ interface DbChallengeRow {
   end_date: string
   participant_count: number
   joined_by_me: boolean
+  is_finished: boolean
 }
 
 function toChallenge(row: DbChallengeRow): Challenge {
@@ -32,21 +33,36 @@ function toChallenge(row: DbChallengeRow): Challenge {
     metric: 'streak',
     joinedByMe: row.joined_by_me,
     inviteCode: row.invite_code,
+    finished: row.is_finished,
   }
 }
 
 // Fragmento de colunas reutilizado (camelCase derivado: datas, contagem, joinedByMe).
+// `is_finished` é DERIVADO da data (F3 da spec) — nenhum cron muda status.
 function selectChallenge(fastify: FastifyInstance, userId: string) {
   return fastify.db`
     c.id, c.title, c.description, c.invite_code,
     c.starts_at::DATE::TEXT AS start_date,
     COALESCE(c.ends_at, c.starts_at + (c.duration_days || ' days')::interval)::DATE::TEXT AS end_date,
+    (COALESCE(c.ends_at, c.starts_at + (c.duration_days || ' days')::interval)::DATE < CURRENT_DATE) AS is_finished,
     (SELECT COUNT(*) FROM challenge_members cm WHERE cm.challenge_id = c.id AND cm.status = 'active')::INT AS participant_count,
     EXISTS (
       SELECT 1 FROM challenge_members me
       WHERE me.challenge_id = c.id AND me.user_id = ${userId} AND me.status = 'active'
     ) AS joined_by_me
   `
+}
+
+/** Data-fim efetiva (ends_at ou starts_at + duração) como 'YYYY-MM-DD'. */
+async function getChallengeEndDate(
+  fastify: FastifyInstance,
+  challengeId: string,
+): Promise<string | null> {
+  const [row] = await fastify.db<{ end_date: string | null }[]>`
+    SELECT COALESCE(ends_at, starts_at + (duration_days || ' days')::interval)::DATE::TEXT AS end_date
+    FROM challenges WHERE id = ${challengeId}
+  `
+  return row?.end_date ?? null
 }
 
 async function getChallengeById(
@@ -124,25 +140,35 @@ export async function joinChallenge(
   if (challenge.status !== 'active')
     throw new AppError(409, 'CHALLENGE_NOT_ACTIVE', 'Este desafio não está ativo')
 
+  // F2: não se entra em desafio que já terminou.
+  const endDate = await getChallengeEndDate(fastify, challengeId)
+  if (endDate && utcTodayString() > endDate)
+    throw new AppError(409, 'CHALLENGE_ENDED', 'Este desafio já foi encerrado')
+
   const [existing] = await fastify.db<{ id: string; status: string }[]>`
     SELECT id, status FROM challenge_members WHERE challenge_id = ${challengeId} AND user_id = ${userId}
   `
   if (existing?.status === 'active')
     throw new AppError(409, 'ALREADY_MEMBER', 'Você já participa deste desafio')
 
-  if (challenge.max_members) {
-    const [{ count }] = await fastify.db<{ count: number }[]>`
-      SELECT COUNT(*)::INT AS count FROM challenge_members WHERE challenge_id = ${challengeId} AND status = 'active'
-    `
-    if (count >= challenge.max_members)
-      throw new AppError(409, 'CHALLENGE_FULL', 'Este desafio já atingiu o limite de participantes')
-  }
-
-  if (existing) {
-    await fastify.db`UPDATE challenge_members SET status = 'active', updated_at = NOW() WHERE id = ${existing.id}`
-  } else {
-    await fastify.db`INSERT INTO challenge_members (challenge_id, user_id, status) VALUES (${challengeId}, ${userId}, 'active')`
-  }
+  // F4: a checagem de lotação entra na PRÓPRIA statement (check-then-insert
+  // permitia estourar max_members com joins concorrentes).
+  const capacity = challenge.max_members ?? 1_000_000
+  const result = existing
+    ? await fastify.db`
+        UPDATE challenge_members SET status = 'active', updated_at = NOW()
+        WHERE id = ${existing.id}
+          AND (SELECT COUNT(*) FROM challenge_members
+               WHERE challenge_id = ${challengeId} AND status = 'active') < ${capacity}
+      `
+    : await fastify.db`
+        INSERT INTO challenge_members (challenge_id, user_id, status)
+        SELECT ${challengeId}, ${userId}, 'active'
+        WHERE (SELECT COUNT(*) FROM challenge_members
+               WHERE challenge_id = ${challengeId} AND status = 'active') < ${capacity}
+      `
+  if (result.count === 0)
+    throw new AppError(409, 'CHALLENGE_FULL', 'Este desafio já atingiu o limite de participantes')
 
   try {
     await createSystemPost(
@@ -240,6 +266,12 @@ export async function checkIn(
     throw new AppError(409, 'MEMBERSHIP_INACTIVE', 'Sua participação neste desafio não está ativa')
 
   const today = localDate ?? utcTodayString()
+
+  // F2: check-in só até a data-fim — sem isso o desafio era "eterno".
+  const endDate = await getChallengeEndDate(fastify, challengeId)
+  if (endDate && today > endDate)
+    throw new AppError(409, 'CHALLENGE_ENDED', 'Este desafio já foi encerrado')
+
   if (member.last_check_in === today)
     throw new AppError(409, 'ALREADY_CHECKED_IN', 'Você já fez check-in hoje neste desafio')
 

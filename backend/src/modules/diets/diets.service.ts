@@ -141,6 +141,8 @@ export async function getDietWithDays(
   `
   if (!diet) throw new AppError(404, 'DIET_NOT_FOUND', 'Dieta não encontrada')
 
+  // G3 da spec: 3 queries fixas (dias, refeições, itens) em vez de
+  // 1 + dias + dias×refeições (~30+ para uma dieta de 7 dias).
   const dbDays = await fastify.db<DbDietDay[]>`
     SELECT id, diet_id, day_number, day_name,
            total_calories, total_protein, total_carbs, total_fat
@@ -148,35 +150,51 @@ export async function getDietWithDays(
     WHERE diet_id = ${dietId}
     ORDER BY day_number
   `
+  const dayIds = dbDays.map((d) => d.id)
 
-  const days: DietDay[] = []
+  const dbMeals = dayIds.length
+    ? await fastify.db<DbDietMeal[]>`
+        SELECT id, diet_day_id, meal_type, name, time_suggestion,
+               total_calories, total_protein, total_carbs, total_fat,
+               is_completed, completed_at::TEXT AS completed_at, sort_order
+        FROM diet_meals
+        WHERE diet_day_id = ANY(${dayIds})
+        ORDER BY sort_order
+      `
+    : []
+  const mealIds = dbMeals.map((m) => m.id)
 
-  for (const dbDay of dbDays) {
-    const dbMeals = await fastify.db<DbDietMeal[]>`
-      SELECT id, diet_day_id, meal_type, name, time_suggestion,
-             total_calories, total_protein, total_carbs, total_fat,
-             is_completed, completed_at::TEXT AS completed_at, sort_order
-      FROM diet_meals
-      WHERE diet_day_id = ${dbDay.id}
-      ORDER BY sort_order
-    `
-
-    const meals: DietMeal[] = []
-    for (const dbMeal of dbMeals) {
-      const items = await fastify.db<DbDietItem[]>`
+  const dbItems = mealIds.length
+    ? await fastify.db<DbDietItem[]>`
         SELECT id, diet_meal_id, food_name, quantity_g, unit,
                calories, protein_g, carbs_g, fat_g,
                preparation_tip, is_substitution, sort_order
         FROM diet_items
-        WHERE diet_meal_id = ${dbMeal.id}
+        WHERE diet_meal_id = ANY(${mealIds})
           AND is_substitution = FALSE
         ORDER BY sort_order
       `
-      meals.push({ ...dbMeal, items } as unknown as DietMeal)
-    }
+    : []
 
-    days.push({ ...dbDay, meals })
+  const itemsByMeal = new Map<string, DbDietItem[]>()
+  for (const item of dbItems) {
+    const list = itemsByMeal.get(item.diet_meal_id)
+    if (list) list.push(item)
+    else itemsByMeal.set(item.diet_meal_id, [item])
   }
+
+  const mealsByDay = new Map<string, DietMeal[]>()
+  for (const dbMeal of dbMeals) {
+    const meal = { ...dbMeal, items: itemsByMeal.get(dbMeal.id) ?? [] } as unknown as DietMeal
+    const list = mealsByDay.get(dbMeal.diet_day_id)
+    if (list) list.push(meal)
+    else mealsByDay.set(dbMeal.diet_day_id, [meal])
+  }
+
+  const days: DietDay[] = dbDays.map((dbDay) => ({
+    ...dbDay,
+    meals: mealsByDay.get(dbDay.id) ?? [],
+  }))
 
   return { ...diet, days }
 }

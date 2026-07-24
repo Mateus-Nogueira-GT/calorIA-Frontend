@@ -58,6 +58,17 @@ export function buildSystemPrompt(personality: string | null | undefined): strin
 // pra falhar com erro tratável antes de o gateway cortar em 502.
 const OPENAI_TIMEOUT_MS = 50_000
 
+/**
+ * G6 da spec: só as últimas N mensagens vão para o modelo — sem janela, o
+ * custo/latência cresciam linearmente com a conversa. O histórico COMPLETO
+ * continua persistido e disponível no GET /chat/history.
+ */
+export const CHAT_CONTEXT_WINDOW = 30
+
+export function windowedHistory<T>(history: T[], limit: number = CHAT_CONTEXT_WINDOW): T[] {
+  return history.length > limit ? history.slice(-limit) : history
+}
+
 /** Mapeia erros do SDK OpenAI para AppError com status/mensagem claros. */
 export function mapOpenAIError(err: unknown): AppError {
   const e = err as { status?: number; name?: string; code?: string }
@@ -155,7 +166,7 @@ export async function sendChatMessage(
     completion = await fastify.openai.chat.completions.create(
       {
         model: env.OPENAI_MODEL,
-        messages: [{ role: 'system', content: systemPrompt }, ...history],
+        messages: [{ role: 'system', content: systemPrompt }, ...windowedHistory(history)],
         tools: [COLLECT_DIET_DATA_TOOL],
         tool_choice: 'auto',
         // GPT-5 é reasoning model: não aceita temperature custom (só o default) e
@@ -252,7 +263,10 @@ async function handleDietGeneration(
     }
   }
 
-  // Atualiza perfil do usuário com os dados coletados
+  // Atualiza perfil do usuário com os dados coletados.
+  // birth_date: aproximação (1º de julho do ano correspondente à idade) gravada
+  // APENAS se ainda for NULL — permite pré-carregar a idade em conversas
+  // futuras sem sobrescrever uma data real informada pelo usuário (F6).
   await fastify.db`
     UPDATE profiles
     SET
@@ -263,6 +277,7 @@ async function handleDietGeneration(
       activity_level = ${userData.activity_level},
       dietary_restrictions = ${userData.dietary_restrictions},
       allergies      = ${userData.allergies},
+      birth_date     = COALESCE(birth_date, MAKE_DATE(EXTRACT(YEAR FROM NOW())::INT - ${userData.age}, 7, 1)),
       updated_at     = NOW()
     WHERE id = ${userId}
   `

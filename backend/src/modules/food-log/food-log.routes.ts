@@ -5,9 +5,11 @@ import {
   listMealsQuerySchema,
   addMealBodySchema,
   mealParamsSchema,
+  summaryQuerySchema,
+  daySummarySchema,
   errorSchema,
 } from './food-log.schemas.js'
-import { listMeals, addMeal, deleteMeal } from './food-log.service.js'
+import { listMeals, addMeal, deleteMeal, getSummary } from './food-log.service.js'
 import { z } from 'zod'
 
 const foodLogRoutes: FastifyPluginAsyncZod = async (fastify) => {
@@ -41,6 +43,28 @@ const foodLogRoutes: FastifyPluginAsyncZod = async (fastify) => {
     async (request, reply) => {
       const { sub: userId } = request.user as JwtPayload
       return reply.send(await listMeals(fastify, userId, request.query.date))
+    },
+  )
+
+  /**
+   * GET /food-log/summary?from=YYYY-MM-DD&to=YYYY-MM-DD
+   * Totais agregados por dia (G4) — 1 request para o gráfico semanal.
+   */
+  fastify.get(
+    '/summary',
+    {
+      schema: {
+        tags: ['FoodLog'],
+        summary: 'Resumo diário agregado por período',
+        security: [{ bearerAuth: [] }],
+        querystring: summaryQuerySchema,
+        response: { 200: z.array(daySummarySchema), 400: errorSchema, 401: errorSchema },
+      },
+    },
+    async (request, reply) => {
+      const { sub: userId } = request.user as JwtPayload
+      const { from, to } = request.query
+      return reply.send(await getSummary(fastify, userId, from, to))
     },
   )
 

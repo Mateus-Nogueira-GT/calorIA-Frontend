@@ -11,9 +11,17 @@ interface Props {
   onPress: () => void;
   onJoin: () => void;
   joining: boolean;
+  /** Check-in do dia (só para desafios ativos em que participo). */
+  onCheckIn?: () => void;
 }
 
-export function ChallengeCard({ challenge, onPress, onJoin, joining }: Props): React.JSX.Element {
+export function ChallengeCard({
+  challenge,
+  onPress,
+  onJoin,
+  joining,
+  onCheckIn,
+}: Props): React.JSX.Element {
   return (
     <Card onPress={onPress} style={styles.card} testID={`challenge-${challenge.id}`}>
       <View style={styles.header}>
@@ -24,11 +32,23 @@ export function ChallengeCard({ challenge, onPress, onJoin, joining }: Props): R
             {formatChipLabel(challenge.startDate)} – {formatChipLabel(challenge.endDate)} · {challenge.participantCount} participantes
           </Text>
         </View>
+        {challenge.finished ? (
+          <View style={styles.finishedBadge}>
+            <Text style={styles.finishedText}>Encerrado</Text>
+          </View>
+        ) : null}
       </View>
       <Text style={styles.description} numberOfLines={2}>{challenge.description}</Text>
-      {challenge.joinedByMe ? (
-        <View style={styles.joinedBadge}>
-          <Text style={styles.joinedText}>✓ Participando</Text>
+      {challenge.finished ? null : challenge.joinedByMe ? (
+        <View style={styles.actionsRow}>
+          <View style={styles.joinedBadge}>
+            <Text style={styles.joinedText}>✓ Participando</Text>
+          </View>
+          {onCheckIn ? (
+            <Button size='sm' onPress={onCheckIn} testID={`challenge-checkin-${challenge.id}`}>
+              Check-in de hoje
+            </Button>
+          ) : null}
         </View>
       ) : (
         <Button size='sm' onPress={onJoin} loading={joining}>Participar</Button>
@@ -47,4 +67,7 @@ const styles = StyleSheet.create({
   description: { fontSize: typography.fontSize.base, color: colors.brandText, lineHeight: 20 },
   joinedBadge: { alignSelf: 'flex-start', backgroundColor: colors.brandSupportSoft, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: 6 },
   joinedText: { fontSize: typography.fontSize.sm, color: colors.brandAnchor, fontFamily: typography.fontFamily.semiBold },
+  actionsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md },
+  finishedBadge: { backgroundColor: colors.brandDivider, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: 4 },
+  finishedText: { fontSize: 12, color: colors.brandTextMuted, fontFamily: typography.fontFamily.semiBold },
 });

@@ -42,6 +42,20 @@ export const mealParamsSchema = z.object({
   id: z.string().uuid(),
 })
 
+/** G4: resumo agregado por dia — evita 1 request por dia no gráfico semanal. */
+export const summaryQuerySchema = z.object({
+  from: localDateSchema,
+  to: localDateSchema,
+})
+
+export const daySummarySchema = z.object({
+  date: z.string(),
+  calories: z.number(),
+  protein: z.number(),
+  carbs: z.number(),
+  fat: z.number(),
+})
+
 export const errorSchema = z.object({
   error: z.string(),
   message: z.string(),
@@ -52,3 +66,5 @@ export const errorSchema = z.object({
 export type Meal = z.infer<typeof mealSchema>
 export type ListMealsQuery = z.infer<typeof listMealsQuerySchema>
 export type AddMealBody = z.infer<typeof addMealBodySchema>
+export type SummaryQuery = z.infer<typeof summaryQuerySchema>
+export type DaySummary = z.infer<typeof daySummarySchema>

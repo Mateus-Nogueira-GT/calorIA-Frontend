@@ -15,6 +15,8 @@ export interface Challenge {
   metric: ChallengeMetric;
   joinedByMe: boolean;
   inviteCode: string;
+  /** Derivado da data-fim no backend (F3) — separa ativos de encerrados. */
+  finished: boolean;
 }
 
 export interface LeaderboardEntry {

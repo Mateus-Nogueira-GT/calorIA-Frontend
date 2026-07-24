@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import { AppError } from '../../shared/errors.js'
 import { isWithinDateWindow } from '../../shared/local-date.js'
-import type { AddMealBody, Meal } from './food-log.schemas.js'
+import type { AddMealBody, DaySummary, Meal } from './food-log.schemas.js'
 
 /**
  * Refeições do "diário livre" são modeladas como uma linha em `meals` com um
@@ -96,6 +96,41 @@ export async function addMeal(
       mealType: data.mealType,
     }
   })
+}
+
+const SUMMARY_MAX_DAYS = 92
+
+/**
+ * G4: totais por dia num intervalo (1 query com GROUP BY) — o gráfico semanal
+ * do perfil fazia 7 requests, um por dia. Dias sem registro não voltam
+ * (o cliente preenche com zero).
+ */
+export async function getSummary(
+  fastify: FastifyInstance,
+  userId: string,
+  from: string,
+  to: string,
+): Promise<DaySummary[]> {
+  if (from > to) throw new AppError(400, 'INVALID_RANGE', 'Data inicial maior que a final')
+  const spanDays = (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000
+  if (spanDays > SUMMARY_MAX_DAYS)
+    throw new AppError(400, 'RANGE_TOO_LARGE', `Intervalo máximo de ${SUMMARY_MAX_DAYS} dias`)
+
+  const rows = await fastify.db<
+    { date: string; calories: number; protein: number; carbs: number; fat: number }[]
+  >`
+    SELECT
+      meal_date::TEXT AS date,
+      COALESCE(SUM(total_calories), 0)::INT AS calories,
+      COALESCE(SUM(total_protein), 0)::INT AS protein,
+      COALESCE(SUM(total_carbs), 0)::INT AS carbs,
+      COALESCE(SUM(total_fat), 0)::INT AS fat
+    FROM meals
+    WHERE user_id = ${userId} AND meal_date BETWEEN ${from} AND ${to}
+    GROUP BY meal_date
+    ORDER BY meal_date
+  `
+  return rows
 }
 
 export async function deleteMeal(

@@ -8,26 +8,28 @@ import type { Profile, UpdateProfileBody } from './users.schemas.js'
 export async function getUserProfile(fastify: FastifyInstance, userId: string): Promise<Profile> {
   const [profile] = await fastify.db<Profile[]>`
     SELECT
-      id,
-      username,
-      full_name,
-      avatar_url,
-      avatar_emoji,
-      weight_kg,
-      height_cm,
-      birth_date::TEXT AS birth_date,
-      gender,
-      goal,
-      activity_level,
-      body_type,
-      coach_personality,
-      coach_gender,
-      dietary_restrictions,
-      allergies,
-      created_at::TEXT AS created_at,
-      updated_at::TEXT AS updated_at
-    FROM profiles
-    WHERE id = ${userId}
+      p.id,
+      p.username,
+      p.full_name,
+      p.avatar_url,
+      p.avatar_emoji,
+      p.weight_kg,
+      p.height_cm,
+      p.birth_date::TEXT AS birth_date,
+      p.gender,
+      p.goal,
+      p.activity_level,
+      p.body_type,
+      p.coach_personality,
+      p.coach_gender,
+      p.dietary_restrictions,
+      p.allergies,
+      s.current_streak,
+      p.created_at::TEXT AS created_at,
+      p.updated_at::TEXT AS updated_at
+    FROM profiles p
+    LEFT JOIN streaks s ON s.user_id = p.id
+    WHERE p.id = ${userId}
   `
 
   if (!profile) {
