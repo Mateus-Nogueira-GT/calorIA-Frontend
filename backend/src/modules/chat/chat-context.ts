@@ -236,8 +236,7 @@ export function formatUserContext(data: UserContextData): string {
     const c = consumedToday(data)
     if (data.freeMeals.length > 0) {
       lines.push(
-        `Hoje (${data.date}): ${c.calories} kcal / ${c.protein}g prot no diário livre ` +
-          `(sem dieta ativa gerada).`,
+        `Hoje (${data.date}): ${c.calories} kcal / ${c.protein}g prot no diário livre (sem dieta ativa gerada).`,
       )
     }
   }
