@@ -29,10 +29,13 @@ interface CoachState {
   hasLoadedHistory: boolean;
   lastFailedAction: 'history' | 'send' | null;
   dietJob: DietJobState | null;
+  /** Job da geração corrente/última — necessário para o retry (B8). */
+  activeJobId: string | null;
   loadHistory: () => Promise<void>;
   sendMessage: (content: string) => Promise<boolean>;
   retryLastAction: () => Promise<void>;
   runDietGeneration: (jobId: string) => Promise<void>;
+  retryDietGeneration: () => Promise<void>;
   clear: () => void;
 }
 
@@ -57,6 +60,7 @@ export const useCoachStore = create<CoachState>()(
       hasLoadedHistory: false,
       lastFailedAction: null,
       dietJob: null,
+      activeJobId: null,
 
       loadHistory: async () => {
         const { conversationId } = get();
@@ -156,13 +160,13 @@ export const useCoachStore = create<CoachState>()(
       },
 
       // Polling da geração assíncrona: cada /step gera um dia; repetimos até
-      // completar. A UI pode ler `dietJob` para mostrar o progresso.
-      // Importante: um erro de rede no step NÃO significa falha — o servidor pode
-      // continuar processando (conexão caiu no meio). Nesses casos consultamos o
-      // status (getJob) e seguimos enquanto houver progresso.
+      // completar. A UI lê `dietJob` para mostrar o progresso (DietJobBanner).
+      // B9 da spec: NUNCA dois /step em voo — depois de um erro de step, só
+      // consultamos getJob até o dia avançar ou dar tempo do request antigo
+      // morrer no servidor; evita pagar 2 gerações concorrentes de IA.
       runDietGeneration: async (jobId: string) => {
         if (get().dietJob?.status === 'running') return;
-        set({ dietJob: { status: 'running', daysCompleted: 0, totalDays: 5 } });
+        set({ activeJobId: jobId, dietJob: { status: 'running', daysCompleted: 0, totalDays: 7 } });
         const apply = (s: {
           status: 'pending' | 'running' | 'completed' | 'failed';
           daysCompleted: number;
@@ -171,48 +175,64 @@ export const useCoachStore = create<CoachState>()(
           set({
             dietJob: { status: s.status, daysCompleted: s.daysCompleted, totalDays: s.totalDays },
           });
+        const finish = async (status: 'completed' | 'failed') => {
+          if (status === 'completed') await useDietStore.getState().loadCurrent();
+        };
         const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
         let networkMisses = 0;
-        // Guard: passos + folga pra retries de rede.
-        for (let i = 0; i < 20; i++) {
+        // 7 passos + folga pras janelas de recuperação.
+        for (let i = 0; i < 30; i++) {
           try {
             const s = await dietService.stepJob(jobId);
             networkMisses = 0;
             apply(s);
-            if (s.status === 'completed') {
-              await useDietStore.getState().loadCurrent();
-              return;
-            }
+            if (s.status === 'completed') return finish('completed');
             if (s.status === 'failed') return;
           } catch {
-            // Conexão caiu — o servidor pode estar gerando o dia ainda. Espera e
-            // verifica o progresso antes de desistir.
-            await sleep(20000);
-            try {
-              const g = await dietService.getJob(jobId);
-              apply(g);
-              if (g.status === 'completed') {
-                await useDietStore.getState().loadCurrent();
-                return;
+            // O step falhou NO CLIENTE (timeout/rede), mas o servidor pode ainda
+            // estar gerando (timeout lá: 120s). Poll de status até o dia avançar
+            // ou ~160s (chamada antiga certamente encerrada) antes de novo step.
+            const before = get().dietJob?.daysCompleted ?? 0;
+            for (let poll = 0; poll < 8; poll++) {
+              await sleep(20000);
+              try {
+                const g = await dietService.getJob(jobId);
+                networkMisses = 0;
+                apply(g);
+                if (g.status === 'completed') return finish('completed');
+                if (g.status === 'failed') return;
+                if (g.daysCompleted > before) break; // avançou → seguro voltar ao step
+              } catch {
+                networkMisses++;
+                if (networkMisses >= 4) {
+                  set((st) => ({
+                    dietJob: {
+                      status: 'failed',
+                      daysCompleted: st.dietJob?.daysCompleted ?? 0,
+                      totalDays: st.dietJob?.totalDays ?? 7,
+                    },
+                  }));
+                  return;
+                }
               }
-              if (g.status === 'failed') return;
-              networkMisses++;
-            } catch {
-              networkMisses++;
-            }
-            if (networkMisses >= 4) {
-              set((st) => ({
-                dietJob: {
-                  status: 'failed',
-                  daysCompleted: st.dietJob?.daysCompleted ?? 0,
-                  totalDays: st.dietJob?.totalDays ?? 5,
-                },
-              }));
-              return;
             }
           }
         }
+      },
+
+      // B8: reabre um job failed no servidor e religa o polling, continuando
+      // do dia em que parou (não regenera os dias já persistidos).
+      retryDietGeneration: async () => {
+        const jobId = get().activeJobId;
+        if (!jobId) return;
+        try {
+          await dietService.retryJob(jobId);
+        } catch {
+          return; // segue como failed; o botão permite tentar de novo
+        }
+        set({ dietJob: null });
+        await get().runDietGeneration(jobId);
       },
 
       clear: () =>
@@ -224,6 +244,7 @@ export const useCoachStore = create<CoachState>()(
           hasLoadedHistory: false,
           lastFailedAction: null,
           dietJob: null,
+          activeJobId: null,
         }),
     }),
     {

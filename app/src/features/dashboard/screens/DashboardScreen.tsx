@@ -73,7 +73,7 @@ export function DashboardScreen(): React.JSX.Element {
     }
   }, [today, setFoodLogLoading, setMeals, loadCurrentDiet]);
 
-  const completedPlannedMeals = (plan?.meals ?? []).filter((m) => m.completedAt !== null);
+  const completedPlannedMeals = (plan?.meals ?? []).filter((m) => m.completedToday);
   const useDietForTotals = plan != null;
 
   const totals = useDietForTotals

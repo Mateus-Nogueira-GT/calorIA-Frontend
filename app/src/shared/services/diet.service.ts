@@ -72,6 +72,9 @@ export const dietService = {
     // Body {} explícito: POST com Content-Type json e body vazio é rejeitado pelo Fastify.
     api.post<DietJobStatus>(`/diets/jobs/${jobId}/step`, {}, { timeout: 150000 }).then((r) => r.data),
   getJob: (jobId: string) => api.get<DietJobStatus>(`/diets/jobs/${jobId}`).then((r) => r.data),
+  /** Reabre um job failed — o /step continua do dia em que parou. */
+  retryJob: (jobId: string) =>
+    api.post<DietJobStatus>(`/diets/jobs/${jobId}/retry`, {}).then((r) => r.data),
   /**
    * Job pending/running mais recente — usado no boot para RETOMAR uma geração
    * interrompida (app fechado no meio). null quando não há job em andamento.

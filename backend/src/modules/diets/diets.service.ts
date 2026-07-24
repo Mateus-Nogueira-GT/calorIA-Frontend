@@ -322,25 +322,25 @@ export async function toggleMealCompleted(
   if (localDate && !isWithinDateWindow(localDate)) {
     throw new AppError(400, 'INVALID_DATE', 'Data fora da janela permitida')
   }
-  // Verifica que a refeição pertence ao usuário
-  const [meal] = await fastify.db<{ id: string; is_completed: boolean }[]>`
-    SELECT dm.id, dm.is_completed
-    FROM diet_meals dm
-    JOIN diet_days dd ON dd.id = dm.diet_day_id
+
+  // Toggle ATÔMICO (B10): uma única query com ownership no WHERE — o padrão
+  // select-then-update permitia double-toggle em taps rápidos.
+  const [meal] = await fastify.db<{ is_completed: boolean }[]>`
+    UPDATE diet_meals dm
+    SET is_completed = NOT dm.is_completed,
+        completed_at = CASE WHEN dm.is_completed THEN NULL ELSE NOW() END,
+        updated_at   = NOW()
+    FROM diet_days dd
     JOIN diets d ON d.id = dd.diet_id
-    WHERE dm.id = ${mealId} AND d.user_id = ${userId}
+    WHERE dm.id = ${mealId}
+      AND dd.id = dm.diet_day_id
+      AND d.user_id = ${userId}
+    RETURNING dm.is_completed
   `
 
   if (!meal) throw new AppError(404, 'MEAL_NOT_FOUND', 'Refeição não encontrada')
 
-  const newState = !meal.is_completed
-  await fastify.db`
-    UPDATE diet_meals
-    SET is_completed = ${newState},
-        completed_at = ${newState ? new Date().toISOString() : null},
-        updated_at   = NOW()
-    WHERE id = ${mealId}
-  `
+  const newState = meal.is_completed
 
   if (newState) {
     // Data local do cliente quando presente; fallback = CURRENT_DATE (UTC)

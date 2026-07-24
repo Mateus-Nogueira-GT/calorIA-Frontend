@@ -20,7 +20,7 @@ const MEAL_TYPE_LABEL: Record<MealType, string> = {
 };
 
 export function MealPlanCard({ meal, isToggling, onToggleComplete }: Props): React.JSX.Element {
-  const isDone = meal.completedAt !== null;
+  const isDone = meal.completedToday;
   return (
     <View style={[styles.card, isDone && styles.cardDone]}>
       <View style={styles.header}>

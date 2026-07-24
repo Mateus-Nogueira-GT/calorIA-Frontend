@@ -8,7 +8,7 @@ export function useDiet() {
   const loadCurrent = useDietStore((s) => s.loadCurrent);
 
   const meals = plan?.meals ?? [];
-  const completedCount = meals.filter((m) => m.completedAt !== null).length;
+  const completedCount = meals.filter((m) => m.completedToday).length;
   const totalCount = meals.length;
 
   return {

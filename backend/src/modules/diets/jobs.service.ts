@@ -11,7 +11,8 @@ import { env } from '../../shared/env.js'
 import { AppError } from '../../shared/errors.js'
 import { createSystemPost } from '../feed/feed.service.js'
 
-const TOTAL_DAYS = 5
+// B1 da spec: 7 dias — sábado/domingo ficavam sem plano com 5.
+const TOTAL_DAYS = 7
 const DAYS_PT = ['', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo']
 
 export interface JobStatus {
@@ -71,7 +72,9 @@ export function parseInput(raw: unknown): CollectedUserData | null {
 
 /**
  * Cria o job de geração e o cabeçalho da dieta (metas determinísticas), sem
- * gerar os dias ainda. Arquiva a dieta ativa anterior. Retorna o jobId.
+ * gerar os dias ainda. A dieta nasce como RASCUNHO (draft) — a ativa anterior
+ * só é substituída quando o último dia é gerado (B3 da spec). Se a geração
+ * falhar, o usuário mantém a dieta antiga intacta.
  */
 export async function createDietJob(
   fastify: FastifyInstance,
@@ -86,10 +89,6 @@ export async function createDietJob(
 
   await fastify.db.begin(async (sql) => {
     await sql`
-      UPDATE diets SET status = 'replaced', updated_at = NOW()
-      WHERE user_id = ${userId} AND status = 'active'
-    `
-    await sql`
       INSERT INTO diets (
         id, user_id, conversation_id, name, description,
         user_weight_kg, user_height_cm, user_age, user_gender, user_goal, user_activity_level,
@@ -100,7 +99,7 @@ export async function createDietJob(
         ${userData.weight_kg}, ${userData.height_cm}, ${userData.age},
         ${userData.gender}, ${userData.goal}, ${userData.activity_level},
         ${t.tdee}, ${t.targetCalories}, ${t.protein}, ${t.carbs}, ${t.fat},
-        'active', ${env.OPENAI_MODEL}
+        'draft', ${env.OPENAI_MODEL}
       )
     `
     await sql`
@@ -194,6 +193,33 @@ export async function getJob(
 }
 
 /**
+ * Reabre um job que falhou (B5 da spec): volta para 'running' mantendo
+ * days_completed — o próximo /step continua do dia seguinte, sem regenerar
+ * os dias já persistidos. Idempotente: job não-failed retorna o estado atual.
+ */
+export async function retryJob(
+  fastify: FastifyInstance,
+  userId: string,
+  jobId: string,
+): Promise<JobStatus> {
+  const job = await loadJob(fastify, userId, jobId)
+  if (job.status !== 'failed') return toStatus(job)
+
+  await fastify.db.begin(async (sql) => {
+    await sql`
+      UPDATE diet_jobs SET status = 'running', error = NULL, updated_at = NOW()
+      WHERE id = ${jobId}
+    `
+    await sql`
+      UPDATE diets SET status = 'draft', updated_at = NOW()
+      WHERE id = ${job.diet_id} AND status = 'failed'
+    `
+  })
+
+  return { ...toStatus(job), status: 'running', error: null }
+}
+
+/**
  * Job de geração em andamento (pending/running) mais recente do usuário.
  * Usado pelo app no boot para RETOMAR o polling de uma geração interrompida
  * (app fechado no meio) — sem isso a dieta ficava parcial para sempre.
@@ -270,6 +296,12 @@ export async function processJobStep(
       UPDATE diet_jobs SET status = 'failed', error = ${String(err).slice(0, 300)}, updated_at = NOW()
       WHERE id = ${jobId}
     `
+    // A draft vira 'failed' — a dieta ATIVA anterior permanece intocada, e o
+    // /retry consegue devolvê-la para 'draft' e continuar de onde parou.
+    await fastify.db`
+      UPDATE diets SET status = 'failed', updated_at = NOW()
+      WHERE id = ${job.diet_id} AND status = 'draft'
+    `
     throw new AppError(502, 'DIET_STEP_FAILED', 'Falha ao gerar um dia da dieta. Tente novamente.')
   }
 
@@ -319,10 +351,21 @@ export async function processJobStep(
     throw err
   }
 
-  // 3) Finaliza se foi o último dia.
+  // 3) Finaliza se foi o último dia — SÓ AGORA a dieta nova substitui a antiga
+  // (transação curta: arquiva a ativa + promove a draft + completa o job).
   const done = dayNumber >= job.total_days
   if (done) {
-    await fastify.db`UPDATE diet_jobs SET status = 'completed', updated_at = NOW() WHERE id = ${jobId}`
+    await fastify.db.begin(async (sql) => {
+      await sql`UPDATE diet_jobs SET status = 'completed', updated_at = NOW() WHERE id = ${jobId}`
+      await sql`
+        UPDATE diets SET status = 'replaced', updated_at = NOW()
+        WHERE user_id = ${userId} AND status = 'active' AND id <> ${job.diet_id}
+      `
+      await sql`
+        UPDATE diets SET status = 'active', updated_at = NOW()
+        WHERE id = ${job.diet_id} AND status IN ('draft', 'failed')
+      `
+    })
     if (job.conversation_id) {
       try {
         await fastify.db`

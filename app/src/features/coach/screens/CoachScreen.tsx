@@ -9,6 +9,7 @@ import { ChatBubble } from '../components/ChatBubble';
 import { ChatInput } from '../components/ChatInput';
 import { TypingIndicator } from '../components/TypingIndicator';
 import { GenerateDietButton } from '../components/GenerateDietButton';
+import { DietJobBanner } from '../components/DietJobBanner';
 import { Text } from '@shared/components';
 import { colors, typography, spacing, radius } from '@theme';
 import { CoachMark } from '../components/CoachMark';
@@ -73,6 +74,8 @@ export function CoachScreen(): React.JSX.Element {
           </View>
         </View>
       </View>
+
+      <DietJobBanner />
 
       <FlatList
         ref={listRef}

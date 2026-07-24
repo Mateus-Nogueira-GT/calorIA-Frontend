@@ -18,7 +18,7 @@ import {
   replaceDietItem,
   toggleMealCompleted,
 } from './diets.service.js'
-import { getActiveJob, getJob, processJobStep } from './jobs.service.js'
+import { getActiveJob, getJob, processJobStep, retryJob } from './jobs.service.js'
 
 const jobStatusSchema = z.object({
   jobId: z.string().uuid(),
@@ -228,6 +228,26 @@ const dietsRoutes: FastifyPluginAsyncZod = async (fastify) => {
     async (request, reply) => {
       const { sub: userId } = request.user as JwtPayload
       return reply.send(await getJob(fastify, userId, request.params.id))
+    },
+  )
+
+  /** POST /diets/jobs/:id/retry — reabre um job que falhou (continua do dia seguinte) */
+  fastify.post(
+    '/jobs/:id/retry',
+    {
+      schema: {
+        tags: ['Diets'],
+        summary: 'Tentar novamente a geração de dieta',
+        description:
+          'Reabre um job failed mantendo os dias já gerados; o polling de /step continua de onde parou.',
+        security: [{ bearerAuth: [] }],
+        params: z.object({ id: z.string().uuid() }),
+        response: { 200: jobStatusSchema, 401: errorSchema, 404: errorSchema },
+      },
+    },
+    async (request, reply) => {
+      const { sub: userId } = request.user as JwtPayload
+      return reply.send(await retryJob(fastify, userId, request.params.id))
     },
   )
 
