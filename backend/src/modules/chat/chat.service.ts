@@ -6,6 +6,7 @@ import { type CollectedUserData, collectedUserDataSchema } from '../../shared/di
 import { env } from '../../shared/env.js'
 import { AppError } from '../../shared/errors.js'
 import { createDietJob } from '../diets/jobs.service.js'
+import { fetchUserContext, formatKnownData, formatUserContext } from './chat-context.js'
 import type { ChatMessageBody, ChatResponse } from './chat.schemas.js'
 
 // ─── System prompt ─────────────────────────────────────────────────────────
@@ -52,6 +53,33 @@ const PERSONALITY_TONES: Record<string, string> = {
 export function buildSystemPrompt(personality: string | null | undefined): string {
   const tone = PERSONALITY_TONES[personality ?? 'motivational'] ?? PERSONALITY_TONES.motivational
   return `${CHAT_SYSTEM_PROMPT}\n\n## ${tone}`
+}
+
+const CONTEXT_INSTRUCTION =
+  'INSTRUÇÃO: quando o usuário perguntar sobre o dia, metas ou progresso, responda com os ' +
+  'números do CONTEXTO DO USUÁRIO acima. Nunca invente valores que não estejam nele.'
+
+const KNOWN_DATA_INSTRUCTION =
+  'INSTRUÇÃO: se TODOS os dados obrigatórios (peso, altura, idade, sexo, objetivo, nível de ' +
+  'atividade e refeições/dia) constam em DADOS JÁ CONHECIDOS, NÃO refaça as perguntas — envie ' +
+  'UMA mensagem confirmando esses dados e perguntando se algo mudou. Se o usuário confirmar, ' +
+  'chame collect_diet_data com esses valores. Pergunte individualmente apenas os campos ' +
+  'ausentes ou que o usuário disser que mudaram.'
+
+/** Junta prompt base + contexto/known-data + instruções (só quando há bloco). */
+export function assembleSystemPrompt(
+  base: string,
+  contextBlock: string,
+  knownData: string,
+): string {
+  const parts = [base]
+  if (contextBlock) {
+    parts.push(contextBlock, CONTEXT_INSTRUCTION)
+  }
+  if (knownData) {
+    parts.push(knownData, KNOWN_DATA_INSTRUCTION)
+  }
+  return parts.join('\n\n')
 }
 
 // Timeout do cliente OpenAI menor que o maxDuration da função (60s na Vercel),
@@ -158,7 +186,18 @@ export async function sendChatMessage(
   const [profile] = await fastify.db<{ coach_personality: string | null }[]>`
     SELECT coach_personality FROM profiles WHERE id = ${userId}
   `
-  const systemPrompt = buildSystemPrompt(profile?.coach_personality)
+
+  // I1/I2: contexto do usuário (progresso do dia, metas) + dados já conhecidos.
+  // Coleta tolerante a falha — nunca bloqueia o chat.
+  const context = await fetchUserContext(fastify, userId, {
+    date: data.date,
+    tzOffsetMinutes: data.tzOffsetMinutes,
+  })
+  const systemPrompt = assembleSystemPrompt(
+    buildSystemPrompt(profile?.coach_personality),
+    formatUserContext(context),
+    formatKnownData(context),
+  )
 
   // ── Chamada à OpenAI com suporte a function calling ──────────────────────
   let completion: Awaited<ReturnType<typeof fastify.openai.chat.completions.create>>
