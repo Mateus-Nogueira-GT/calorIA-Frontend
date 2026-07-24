@@ -11,6 +11,19 @@ export function todayString(): string {
   return dateToString(new Date());
 }
 
+/** Dia da semana LOCAL: 1=Segunda … 7=Domingo (contrato dayNumber da API). */
+export function todayDayNumber(d: Date = new Date()): number {
+  return ((d.getDay() + 6) % 7) + 1;
+}
+
+/**
+ * Offset do fuso na convenção da API: local = UTC + offset (BRT = -180).
+ * É o INVERSO do getTimezoneOffset() do JS.
+ */
+export function tzOffsetMinutes(d: Date = new Date()): number {
+  return -d.getTimezoneOffset();
+}
+
 export function last7Days(): string[] {
   const now = new Date();
   return Array.from({ length: 7 }, (_, i) => {

@@ -1,11 +1,30 @@
 import {
   dateToString,
   todayString,
+  todayDayNumber,
+  tzOffsetMinutes,
   last7Days,
   formatChipLabel,
   getMealGroup,
   timeAgo,
 } from './date';
+
+describe('todayDayNumber', () => {
+  it('mapeia 1=Segunda … 7=Domingo no fuso local', () => {
+    // 20/07/2026 é segunda; construído com Date(y,m,d) = meia-noite LOCAL
+    expect(todayDayNumber(new Date(2026, 6, 20))).toBe(1);
+    expect(todayDayNumber(new Date(2026, 6, 24))).toBe(5);
+    expect(todayDayNumber(new Date(2026, 6, 25))).toBe(6);
+    expect(todayDayNumber(new Date(2026, 6, 26))).toBe(7);
+  });
+});
+
+describe('tzOffsetMinutes', () => {
+  it('convenção local = UTC + offset (inverso do getTimezoneOffset)', () => {
+    const now = new Date();
+    expect(tzOffsetMinutes(now)).toBe(-now.getTimezoneOffset());
+  });
+});
 
 describe('dateToString', () => {
   it('formats date as YYYY-MM-DD', () => {

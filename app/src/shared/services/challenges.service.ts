@@ -1,4 +1,5 @@
 import api from './api';
+import { todayString } from '@shared/utils/date';
 import type { PostAuthor } from './feed.service';
 
 export type ChallengeMetric = 'streak';
@@ -30,6 +31,16 @@ export interface CreateChallengeInput {
   endDate: string;
 }
 
+export interface ChallengeMember {
+  id: string;
+  user_id: string;
+  status: string;
+  current_streak: number;
+  best_streak: number;
+  total_days: number;
+  last_check_in: string | null;
+}
+
 export const challengesService = {
   getChallenges: () => api.get<Challenge[]>('/challenges').then((r) => r.data),
   create: (input: CreateChallengeInput) =>
@@ -40,4 +51,9 @@ export const challengesService = {
     api.get<LeaderboardEntry[]>(`/challenges/${id}/leaderboard`).then((r) => r.data),
   resolveInvite: (code: string) =>
     api.get<Challenge>(`/challenges/invite/${code}`).then((r) => r.data),
+  /** Check-in diário — envia a data LOCAL (o servidor em UTC erraria o dia à noite). */
+  checkIn: (id: string) =>
+    api
+      .post<ChallengeMember>(`/challenges/${id}/checkin`, { date: todayString() })
+      .then((r) => r.data),
 };
