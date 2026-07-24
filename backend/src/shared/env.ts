@@ -17,6 +17,13 @@ const envSchema = z.object({
   SUPABASE_JWT_SECRET: z.string().optional(),
   DATABASE_URL: z.string(),
 
+  // URL da tela web de redefinição de senha (link do email de recovery).
+  // Vazio/ausente → o Supabase usa o Site URL configurado no projeto.
+  PASSWORD_RESET_REDIRECT_URL: z.preprocess(
+    (v) => (v === '' || v == null ? undefined : v),
+    z.string().url().optional(),
+  ),
+
   // IA via OpenRouter (API compatível com a OpenAI). OPENAI_API_KEY é a key do
   // OpenRouter; OPENAI_BASE_URL aponta para o endpoint do OpenRouter. Os modelos
   // vêm prefixados (ex: openai/gpt-5).

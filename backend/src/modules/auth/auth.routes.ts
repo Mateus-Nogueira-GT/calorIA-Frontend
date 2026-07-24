@@ -1,21 +1,26 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import {
-  registerBodySchema,
-  loginBodySchema,
-  refreshBodySchema,
-  googleBodySchema,
   appleBodySchema,
   authResponseSchema,
-  logoutResponseSchema,
   errorSchema,
+  forgotPasswordBodySchema,
+  googleBodySchema,
+  loginBodySchema,
+  logoutResponseSchema,
+  refreshBodySchema,
+  registerBodySchema,
+  resetPasswordBodySchema,
+  successResponseSchema,
 } from './auth.schemas.js'
 import {
-  registerUser,
-  loginUser,
-  refreshSession,
-  googleLogin,
   appleLogin,
+  forgotPassword,
+  googleLogin,
+  loginUser,
   logout,
+  refreshSession,
+  registerUser,
+  resetPassword,
 } from './auth.service.js'
 
 const authRoutes: FastifyPluginAsyncZod = async (fastify) => {
@@ -134,6 +139,50 @@ const authRoutes: FastifyPluginAsyncZod = async (fastify) => {
     async (request, reply) => {
       const { identityToken, fullName } = request.body
       return reply.send(await appleLogin(fastify, identityToken, fullName))
+    },
+  )
+
+  /**
+   * POST /auth/forgot-password
+   * Envia o email de recuperação. Resposta idêntica com ou sem conta.
+   */
+  fastify.post(
+    '/forgot-password',
+    {
+      config: { rateLimit: { max: 5, timeWindow: '1 minute' } },
+      schema: {
+        tags: ['Auth'],
+        summary: 'Solicitar recuperação de senha',
+        body: forgotPasswordBodySchema,
+        response: { 200: successResponseSchema },
+      },
+    },
+    async (request, reply) => {
+      return reply.send(await forgotPassword(fastify, request.body.email))
+    },
+  )
+
+  /**
+   * POST /auth/reset-password
+   * Define a nova senha a partir do token de recovery do link do email.
+   */
+  fastify.post(
+    '/reset-password',
+    {
+      config: { rateLimit: { max: 5, timeWindow: '1 minute' } },
+      schema: {
+        tags: ['Auth'],
+        summary: 'Redefinir senha',
+        body: resetPasswordBodySchema,
+        response: {
+          200: successResponseSchema,
+          401: errorSchema.describe('Token de recuperação inválido ou expirado'),
+        },
+      },
+    },
+    async (request, reply) => {
+      const { access_token, new_password } = request.body
+      return reply.send(await resetPassword(fastify, access_token, new_password))
     },
   )
 

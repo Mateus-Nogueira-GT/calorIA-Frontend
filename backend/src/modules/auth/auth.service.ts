@@ -1,7 +1,8 @@
-import type { FastifyInstance } from 'fastify'
 import type { Session, User } from '@supabase/supabase-js'
+import type { FastifyInstance } from 'fastify'
+import { env } from '../../shared/env.js'
 import { AppError } from '../../shared/errors.js'
-import type { RegisterBody, LoginBody, RefreshBody, AuthResponse } from './auth.schemas.js'
+import type { AuthResponse, LoginBody, RefreshBody, RegisterBody } from './auth.schemas.js'
 
 /** Mapeia uma sessão do Supabase para o shape de resposta de auth da API. */
 function sessionToAuthResponse(session: Session, user: User): AuthResponse {
@@ -201,5 +202,50 @@ export async function appleLogin(
  * Logout — stub seguro. O cliente já limpa o token local; sempre retorna 200.
  */
 export async function logout(): Promise<{ success: boolean }> {
+  return { success: true }
+}
+
+/**
+ * Envia o email de recuperação de senha via Supabase.
+ * SEMPRE responde sucesso — não revelar se o email existe (enumeração).
+ */
+export async function forgotPassword(
+  fastify: FastifyInstance,
+  email: string,
+): Promise<{ success: boolean }> {
+  const redirectTo = env.PASSWORD_RESET_REDIRECT_URL
+  const { error } = await fastify.supabaseAuth.auth.resetPasswordForEmail(
+    email,
+    redirectTo ? { redirectTo } : undefined,
+  )
+  if (error) {
+    // Loga mas não expõe: resposta é a mesma com ou sem conta.
+    fastify.log.warn({ err: error }, 'Falha ao enviar email de recuperação')
+  }
+  return { success: true }
+}
+
+/**
+ * Define a nova senha a partir do access_token de recovery (link do email).
+ * Valida o token consultando o próprio Supabase; token inválido/expirado → 401.
+ */
+export async function resetPassword(
+  fastify: FastifyInstance,
+  accessToken: string,
+  newPassword: string,
+): Promise<{ success: boolean }> {
+  const { data, error } = await fastify.supabaseAuth.auth.getUser(accessToken)
+  if (error || !data?.user) {
+    throw new AppError(401, 'INVALID_RESET_TOKEN', 'Link de recuperação inválido ou expirado')
+  }
+
+  const { error: updateError } = await fastify.supabase.auth.admin.updateUserById(data.user.id, {
+    password: newPassword,
+  })
+  if (updateError) {
+    fastify.log.error({ err: updateError }, 'Falha ao redefinir senha')
+    throw new AppError(500, 'RESET_FAILED', 'Não foi possível redefinir a senha. Tente novamente.')
+  }
+
   return { success: true }
 }

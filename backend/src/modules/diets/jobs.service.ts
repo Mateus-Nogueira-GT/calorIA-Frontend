@@ -1,14 +1,14 @@
-import type { FastifyInstance } from 'fastify'
 import { randomUUID } from 'node:crypto'
+import type { FastifyInstance } from 'fastify'
 import { zodResponseFormat } from 'openai/helpers/zod.js'
-import { env } from '../../shared/env.js'
-import { AppError } from '../../shared/errors.js'
 import {
-  aiSingleDaySchema,
-  collectedUserDataSchema,
   type AiSingleDay,
   type CollectedUserData,
+  aiSingleDaySchema,
+  collectedUserDataSchema,
 } from '../../shared/diet-ai-schema.js'
+import { env } from '../../shared/env.js'
+import { AppError } from '../../shared/errors.js'
 import { createSystemPost } from '../feed/feed.service.js'
 
 const TOTAL_DAYS = 5
@@ -176,11 +176,7 @@ function toStatus(job: JobRow): JobStatus {
   }
 }
 
-async function loadJob(
-  fastify: FastifyInstance,
-  userId: string,
-  jobId: string,
-): Promise<JobRow> {
+async function loadJob(fastify: FastifyInstance, userId: string, jobId: string): Promise<JobRow> {
   const [job] = await fastify.db<JobRow[]>`
     SELECT id, conversation_id, diet_id, status, input, total_days, days_completed, error
     FROM diet_jobs WHERE id = ${jobId} AND user_id = ${userId}
@@ -195,6 +191,23 @@ export async function getJob(
   jobId: string,
 ): Promise<JobStatus> {
   return toStatus(await loadJob(fastify, userId, jobId))
+}
+
+/**
+ * Job de geração em andamento (pending/running) mais recente do usuário.
+ * Usado pelo app no boot para RETOMAR o polling de uma geração interrompida
+ * (app fechado no meio) — sem isso a dieta ficava parcial para sempre.
+ */
+export async function getActiveJob(fastify: FastifyInstance, userId: string): Promise<JobStatus> {
+  const [job] = await fastify.db<JobRow[]>`
+    SELECT id, conversation_id, diet_id, status, input, total_days, days_completed, error
+    FROM diet_jobs
+    WHERE user_id = ${userId} AND status IN ('pending', 'running')
+    ORDER BY created_at DESC
+    LIMIT 1
+  `
+  if (!job) throw new AppError(404, 'NO_ACTIVE_JOB', 'Nenhuma geração de dieta em andamento')
+  return toStatus(job)
 }
 
 /**
@@ -219,7 +232,11 @@ export async function processJobStep(
   if (!userData) {
     fastify.log.error({ jobId, input: job.input }, 'Dados do job inválidos/irrecuperáveis')
     await fastify.db`UPDATE diet_jobs SET status = 'failed', error = 'invalid_input', updated_at = NOW() WHERE id = ${jobId}`
-    throw new AppError(422, 'INVALID_JOB_INPUT', 'Dados da geração inválidos. Refaça a conversa com o coach.')
+    throw new AppError(
+      422,
+      'INVALID_JOB_INPUT',
+      'Dados da geração inválidos. Refaça a conversa com o coach.',
+    )
   }
   const targets = computeTargets(userData)
 
@@ -317,9 +334,15 @@ export async function processJobStep(
       }
     }
     try {
-      await createSystemPost(fastify, userId, 'diet_generated', 'Nova dieta gerada com o Coach IA! 🥗', {
-        diet_id: job.diet_id,
-      })
+      await createSystemPost(
+        fastify,
+        userId,
+        'diet_generated',
+        'Nova dieta gerada com o Coach IA! 🥗',
+        {
+          diet_id: job.diet_id,
+        },
+      )
     } catch (err) {
       fastify.log.warn(err, 'Falha ao publicar post de dieta gerada')
     }

@@ -18,7 +18,7 @@ import {
   replaceDietItem,
   toggleMealCompleted,
 } from './diets.service.js'
-import { getJob, processJobStep } from './jobs.service.js'
+import { getActiveJob, getJob, processJobStep } from './jobs.service.js'
 
 const jobStatusSchema = z.object({
   jobId: z.string().uuid(),
@@ -193,6 +193,25 @@ const dietsRoutes: FastifyPluginAsyncZod = async (fastify) => {
   )
 
   // ─── Geração assíncrona (job dirigido por polling) ──────────────────────────
+
+  /** GET /diets/jobs/active — job em andamento (retomada no boot do app) */
+  fastify.get(
+    '/jobs/active',
+    {
+      schema: {
+        tags: ['Diets'],
+        summary: 'Geração de dieta em andamento',
+        description:
+          'Job pending/running mais recente do usuário — o app usa no boot para retomar o polling.',
+        security: [{ bearerAuth: [] }],
+        response: { 200: jobStatusSchema, 401: errorSchema, 404: errorSchema },
+      },
+    },
+    async (request, reply) => {
+      const { sub: userId } = request.user as JwtPayload
+      return reply.send(await getActiveJob(fastify, userId))
+    },
+  )
 
   /** GET /diets/jobs/:id — status do job de geração */
   fastify.get(

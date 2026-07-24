@@ -1,4 +1,6 @@
 import { create } from 'zustand';
+import { createJSONStorage, persist } from 'zustand/middleware';
+import { kvStorage } from '@shared/services/storage';
 import { useDietStore } from '@features/diet/store';
 import { useFoodLogStore } from '@features/food-log/store';
 import { useScannerStore } from '@features/scanner/store';
@@ -32,6 +34,9 @@ interface AuthState {
   isAuthenticated: boolean;
   pendingAuth: { token: string; refreshToken: string; user: User } | null;
   profilePreferences: ProfilePreferences;
+  /** true depois que o persist terminou de reidratar do storage (boot). */
+  hasHydrated: boolean;
+  setHasHydrated: (value: boolean) => void;
   setToken: (token: string, user: User, refreshToken?: string) => void;
   setPendingAuth: (token: string, user: User, refreshToken: string) => void;
   setProfilePreferences: (preferences: Partial<ProfilePreferences>) => void;
@@ -46,7 +51,9 @@ function canUseLocalStorage(): boolean {
 }
 
 function isGoalPreference(value: string | null | undefined): value is GoalPreference {
-  return value === 'lose_weight' || value === 'gain_muscle' || value === 'maintain' || value === 'health';
+  return (
+    value === 'lose_weight' || value === 'gain_muscle' || value === 'maintain' || value === 'health'
+  );
 }
 
 function isCoachPersonalityPreference(
@@ -137,79 +144,9 @@ function clearPreviewQueryOnWeb(): void {
   window.history.replaceState({}, '', nextUrl);
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
-  token: null,
-  refreshToken: null,
-  user: null,
-  isAuthenticated: false,
-  pendingAuth: null,
-  profilePreferences: {
-    goal: null,
-    coachPersonality: null,
-  },
-  setToken: (token, user, refreshToken) =>
-    set((state) => {
-      const profilePreferences = mergeProfilePreferences(user);
-      persistPreferencesForUser(user.id, profilePreferences);
-
-      return {
-        token,
-        refreshToken: refreshToken ?? state.pendingAuth?.refreshToken ?? state.refreshToken,
-        user,
-        isAuthenticated: true,
-        pendingAuth: null,
-        profilePreferences,
-      };
-    }),
-  setPendingAuth: (token, user, refreshToken) =>
-    set(() => {
-      const profilePreferences = mergeProfilePreferences(user);
-      persistPreferencesForUser(user.id, profilePreferences);
-
-      return {
-        pendingAuth: { token, refreshToken, user },
-        profilePreferences,
-      };
-    }),
-  setProfilePreferences: (preferences) =>
-    set((state) => ({
-      ...(state.user?.id || state.pendingAuth?.user.id
-        ? (() => {
-            const nextPreferences = {
-              ...state.profilePreferences,
-              ...preferences,
-            };
-            persistPreferencesForUser(state.user?.id ?? state.pendingAuth!.user.id, nextPreferences);
-            return {
-              profilePreferences: nextPreferences,
-            };
-          })()
-        : {
-            profilePreferences: {
-              ...state.profilePreferences,
-              ...preferences,
-            },
-          }),
-    })),
-  updateUser: (patch) =>
-    set((state) => {
-      if (!state.user) return {};
-      // Ignora chaves undefined (não sobrescreve dados existentes); null é mantido (limpa o campo).
-      const clean = Object.fromEntries(
-        Object.entries(patch).filter(([, value]) => value !== undefined),
-      );
-      return { user: { ...state.user, ...clean } };
-    }),
-  clearToken: () => {
-    useDietStore.getState().clear();
-    useFoodLogStore.getState().clear();
-    useScannerStore.getState().clear();
-    useWeightStore.getState().clear();
-    useFeedStore.getState().clear();
-    useChallengesStore.getState().clear();
-    useNotificationsStore.getState().clear();
-    clearPreviewQueryOnWeb();
-    set({
+export const useAuthStore = create<AuthState>()(
+  persist(
+    (set) => ({
       token: null,
       refreshToken: null,
       user: null,
@@ -219,6 +156,100 @@ export const useAuthStore = create<AuthState>((set) => ({
         goal: null,
         coachPersonality: null,
       },
-    });
-  },
-}));
+      hasHydrated: false,
+      setHasHydrated: (value) => set({ hasHydrated: value }),
+      setToken: (token, user, refreshToken) =>
+        set((state) => {
+          const profilePreferences = mergeProfilePreferences(user);
+          persistPreferencesForUser(user.id, profilePreferences);
+
+          return {
+            token,
+            refreshToken: refreshToken ?? state.pendingAuth?.refreshToken ?? state.refreshToken,
+            user,
+            isAuthenticated: true,
+            pendingAuth: null,
+            profilePreferences,
+          };
+        }),
+      setPendingAuth: (token, user, refreshToken) =>
+        set(() => {
+          const profilePreferences = mergeProfilePreferences(user);
+          persistPreferencesForUser(user.id, profilePreferences);
+
+          return {
+            pendingAuth: { token, refreshToken, user },
+            profilePreferences,
+          };
+        }),
+      setProfilePreferences: (preferences) =>
+        set((state) => ({
+          ...(state.user?.id || state.pendingAuth?.user.id
+            ? (() => {
+                const nextPreferences = {
+                  ...state.profilePreferences,
+                  ...preferences,
+                };
+                persistPreferencesForUser(
+                  state.user?.id ?? state.pendingAuth!.user.id,
+                  nextPreferences,
+                );
+                return {
+                  profilePreferences: nextPreferences,
+                };
+              })()
+            : {
+                profilePreferences: {
+                  ...state.profilePreferences,
+                  ...preferences,
+                },
+              }),
+        })),
+      updateUser: (patch) =>
+        set((state) => {
+          if (!state.user) return {};
+          // Ignora chaves undefined (não sobrescreve dados existentes); null é mantido (limpa o campo).
+          const clean = Object.fromEntries(
+            Object.entries(patch).filter(([, value]) => value !== undefined),
+          );
+          return { user: { ...state.user, ...clean } };
+        }),
+      clearToken: () => {
+        useDietStore.getState().clear();
+        useFoodLogStore.getState().clear();
+        useScannerStore.getState().clear();
+        useWeightStore.getState().clear();
+        useFeedStore.getState().clear();
+        useChallengesStore.getState().clear();
+        useNotificationsStore.getState().clear();
+        clearPreviewQueryOnWeb();
+        set({
+          token: null,
+          refreshToken: null,
+          user: null,
+          isAuthenticated: false,
+          pendingAuth: null,
+          profilePreferences: {
+            goal: null,
+            coachPersonality: null,
+          },
+        });
+      },
+    }),
+    {
+      name: 'caloria:auth',
+      storage: createJSONStorage(() => kvStorage),
+      // Persistimos só a sessão — preferências têm mecanismo próprio por usuário
+      // e pendingAuth é transitório do onboarding.
+      partialize: (state) => ({
+        token: state.token,
+        refreshToken: state.refreshToken,
+        user: state.user,
+        isAuthenticated: state.isAuthenticated,
+      }),
+      onRehydrateStorage: () => (state) => {
+        state?.setHasHydrated(true);
+      },
+    },
+  ),
+);

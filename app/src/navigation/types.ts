@@ -8,6 +8,8 @@ export type AuthStackParamList = {
   Register: undefined;
   Login: undefined;
   ForgotPassword: undefined;
+  /** Aberta pelo link do email de recuperação (web). */
+  ResetPassword: undefined;
   ProfileSetup: undefined;
 };
 
