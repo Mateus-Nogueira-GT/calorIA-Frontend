@@ -42,7 +42,24 @@ const envSchema = z.object({
     (v) => (v === '' || v == null ? undefined : v),
     z.string().default('openai/gpt-5'),
   ),
-})
+  // Modelo da GERAÇÃO DE DIAS da dieta. Default = OPENAI_MODEL (resolvido no
+  // transform abaixo): o custo só muda com opt-in explícito. Gerar um dia de
+  // cardápio estruturado não precisa do modelo topo — aponte para um médio.
+  OPENAI_DIET_MODEL: z.preprocess(
+    (v) => (v === '' || v == null ? undefined : v),
+    z.string().optional(),
+  ),
+  // Fallbacks do OpenRouter (CSV) — resiliência contra indisponibilidade do
+  // modelo primário. Vazio = comportamento atual (sem fallback).
+  OPENAI_FALLBACK_MODELS: z.preprocess(
+    (v) => (v === '' || v == null ? undefined : v),
+    z.string().optional(),
+  ),
+}).transform((e) => ({
+  ...e,
+  // Default derivado: sem OPENAI_DIET_MODEL, usa o modelo principal.
+  OPENAI_DIET_MODEL: e.OPENAI_DIET_MODEL || e.OPENAI_MODEL,
+}))
 
 export type Env = z.infer<typeof envSchema>
 

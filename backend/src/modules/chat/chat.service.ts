@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { FastifyInstance } from 'fastify'
 import type OpenAI from 'openai'
+import { buildModelsField, logAiUsage } from '../../shared/ai-usage.js'
 import { type CollectedUserData, collectedUserDataSchema } from '../../shared/diet-ai-schema.js'
 import { env } from '../../shared/env.js'
 import { AppError } from '../../shared/errors.js'
@@ -165,6 +166,8 @@ export async function sendChatMessage(
     completion = await fastify.openai.chat.completions.create(
       {
         model: env.OPENAI_MODEL,
+        // I5.2: fallbacks do OpenRouter (spread não dispara excess-property check).
+        ...buildModelsField(env.OPENAI_MODEL, env.OPENAI_FALLBACK_MODELS),
         messages: [{ role: 'system', content: systemPrompt }, ...windowedHistory(history)],
         tools: [COLLECT_DIET_DATA_TOOL],
         tool_choice: 'auto',
@@ -181,6 +184,8 @@ export async function sendChatMessage(
     fastify.log.error({ err }, 'Erro ao chamar OpenAI chat')
     throw mapOpenAIError(err)
   }
+
+  logAiUsage(fastify, { feature: 'chat', model: env.OPENAI_MODEL, userId, usage: completion.usage })
 
   const choice = completion.choices[0]
 

@@ -7,6 +7,7 @@ import {
   aiSingleDaySchema,
   collectedUserDataSchema,
 } from '../../shared/diet-ai-schema.js'
+import { buildModelsField, logAiUsage } from '../../shared/ai-usage.js'
 import { env } from '../../shared/env.js'
 import { AppError } from '../../shared/errors.js'
 import { createSystemPost } from '../feed/feed.service.js'
@@ -99,7 +100,7 @@ export async function createDietJob(
         ${userData.weight_kg}, ${userData.height_cm}, ${userData.age},
         ${userData.gender}, ${userData.goal}, ${userData.activity_level},
         ${t.tdee}, ${t.targetCalories}, ${t.protein}, ${t.carbs}, ${t.fat},
-        'draft', ${env.OPENAI_MODEL}
+        'draft', ${env.OPENAI_DIET_MODEL}
       )
     `
     await sql`
@@ -271,7 +272,10 @@ export async function processJobStep(
   try {
     const completion = await fastify.openai.beta.chat.completions.parse(
       {
-        model: env.OPENAI_MODEL,
+        // I5.1: modelo dedicado da geração de dias (default = OPENAI_MODEL).
+        model: env.OPENAI_DIET_MODEL,
+        // I5.2: fallbacks do OpenRouter (spread não dispara excess-property check).
+        ...buildModelsField(env.OPENAI_DIET_MODEL, env.OPENAI_FALLBACK_MODELS),
         messages: [
           { role: 'system', content: DAY_SYSTEM_PROMPT },
           { role: 'user', content: buildDayPrompt(userData, targets, dayNumber) },
@@ -287,6 +291,12 @@ export async function processJobStep(
       // Timeout explícito abaixo do maxDuration (300s) pra falhar tratável.
       { timeout: 120_000 },
     )
+    logAiUsage(fastify, {
+      feature: 'diet_day',
+      model: env.OPENAI_DIET_MODEL,
+      userId,
+      usage: completion.usage,
+    })
     const parsed = completion.choices[0]?.message?.parsed
     if (!parsed) throw new Error('IA retornou dia vazio')
     aiDay = parsed
