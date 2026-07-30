@@ -1,10 +1,10 @@
-import { Alert } from 'react-native';
 import { create } from 'zustand';
 import { scannerService } from '@shared/services/scanner.service';
 import type { ScanItem } from '@shared/services/scanner.service';
 import { foodLogService } from '@shared/services/food-log.service';
 import { useFoodLogStore } from '@features/food-log/store';
 import { todayString } from '@shared/utils/date';
+import { showAlert } from '@shared/utils/show-alert';
 
 interface ScannerState {
   image: string | null;
@@ -105,7 +105,7 @@ export const useScannerStore = create<ScannerState>((set, get) => ({
 
     const failures = results.filter((r) => r.status === 'rejected').length;
     if (failures > 0) {
-      Alert.alert(
+      showAlert(
         'Não foi possível adicionar tudo',
         `${failures} ${failures === 1 ? 'item não foi salvo' : 'itens não foram salvos'}. Tente novamente.`,
       );

@@ -33,7 +33,6 @@ export type TabParamList = {
   Coach: undefined;
   Community: NavigatorScreenParams<CommunityStackParamList>;
   Profile: undefined;
-  Evolution: undefined;
 };
 
 // Scanner Stack
@@ -50,7 +49,10 @@ export type RootStackParamList = {
   ProfileGoals: undefined;
   ProfileCoachPersonality: undefined;
   ProfileEdit: undefined;
-  Scanner: NavigatorScreenParams<ScannerStackParamList>;
+  /** Saiu da tab bar (7 abas truncavam em telas pequenas) — acessada pelo Perfil. */
+  Evolution: undefined;
+  // `| undefined`: navigate('Scanner') sem params é válido (abre a rota inicial).
+  Scanner: NavigatorScreenParams<ScannerStackParamList> | undefined;
 };
 
 // Screen props helpers

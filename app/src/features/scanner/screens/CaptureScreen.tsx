@@ -1,11 +1,12 @@
 import React from 'react';
-import { Alert, Platform, StyleSheet, Text, View } from 'react-native';
+import { Platform, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, typography, spacing } from '@theme';
 import { Button } from '@shared/components/Button';
 import { pickImage } from '@shared/services/image-picker.service';
 import { ScannerViewfinder } from '../components/ScannerViewfinder';
 import type { ScannerStackScreenProps } from '@navigation/types';
+import { showAlert } from '@shared/utils/show-alert';
 
 type Props = ScannerStackScreenProps<'Capture'>;
 
@@ -17,7 +18,7 @@ export function CaptureScreen({ navigation }: Props): React.JSX.Element {
       const image = await pickImage(source);
       if (image) go(image);
     } catch {
-      Alert.alert('Não foi possível acessar', 'Verifique as permissões de câmera/galeria.');
+      showAlert('Não foi possível acessar', 'Verifique as permissões de câmera/galeria.');
     }
   };
 

@@ -1,0 +1,67 @@
+# Hardening mobile — dívidas documentadas
+
+Itens conhecidos que **não** foram implementados no Workstream L por exigirem
+dependências nativas, credenciais ou migração de dados. Registrados aqui para
+não virarem conhecimento tácito.
+
+## 1. Tokens no Keychain / Keystore (pendente)
+
+Hoje `access_token` e `refresh_token` ficam em **AsyncStorage, em texto puro**
+(chave `caloria:auth`, via `kvStorage` + `zustand/persist`).
+
+Em device comprometido (root/jailbreak) ou backup não criptografado, esses
+tokens são legíveis. O padrão de mercado é o cofre do SO.
+
+**Como migrar:**
+1. `npm i react-native-keychain` + `pod install`.
+2. Criar um `StateStorage` alternativo em `src/shared/services/storage.ts`
+   que use `Keychain.setGenericPassword` / `getGenericPassword`.
+3. Apontar **apenas** o store de auth (`caloria:auth`) para ele — o resto
+   (preferências, coach) pode continuar no AsyncStorage.
+4. **Migração de sessão:** na primeira execução, ler do AsyncStorage,
+   regravar no Keychain e apagar a chave antiga. Sem isso, todo usuário
+   logado é deslogado no update.
+
+## 2. Crash reporting (pendente)
+
+Nenhum Sentry/Crashlytics: crashes de produção são **invisíveis** — só
+descobrimos por reclamação de usuário.
+
+O ponto de integração já existe e está isolado: o `componentDidCatch` de
+[`AppErrorBoundary`](../app/src/shared/components/AppErrorBoundary.tsx) hoje só
+faz `console.error`. Plugar `@sentry/react-native` ali cobre erros de render;
+para erros nativos e promises não tratadas, o SDK precisa também do init no
+`index.js`.
+
+## 3. Pods do iOS
+
+Toda dependência nativa nova (o AsyncStorage do Workstream C incluído) exige:
+
+```bash
+cd app/ios && bundle install && bundle exec pod install
+```
+
+Sem isso o build do iOS falha com "module not found" no Xcode.
+
+## 4. Limitações conhecidas no web
+
+- **Diálogos de confirmação** (sair da conta, remover amizade) usam
+  `Alert.alert` com array de botões, que é **no-op no react-native-web**.
+  O util [`showAlert`](../app/src/shared/utils/show-alert.ts) cobre só os
+  avisos de 1 botão; trocar os de confirmação exigiria adaptar o contrato de
+  callbacks para `window.confirm`. Hoje esses fluxos funcionam apenas no mobile.
+- **Scanner**: o envio de foto no app nativo usa o image-picker; no web há um
+  seletor próprio (`ScannerViewfinder`).
+
+## 5. Universal / App Links (follow-up do Workstream K)
+
+O scheme `caloria://` está registrado nas duas plataformas, mas links **https**
+ainda não abrem o app. Para isso:
+
+- iOS: hospedar `apple-app-site-association` em `https://<domínio>/.well-known/`
+  + capability Associated Domains (`applinks:<domínio>`).
+- Android: hospedar `assetlinks.json` em `/.well-known/` + `android:autoVerify="true"`
+  no intent-filter, com o SHA-256 do certificado de assinatura.
+
+Depende de ter um domínio próprio apontado para o deploy (o
+`APP_WEB_URL` do `.env` deve refletir esse domínio).

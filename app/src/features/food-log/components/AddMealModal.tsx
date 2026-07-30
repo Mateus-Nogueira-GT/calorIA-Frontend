@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import {
-  Alert,
   DimensionValue,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   View,
   TextInput,
   StyleSheet,
@@ -12,6 +13,7 @@ import {
 import { Text, Button } from '@shared/components';
 import { colors, typography, spacing, radius } from '@theme';
 import { AddMealPayload, AppMealType } from '@shared/services/food-log.service';
+import { showAlert } from '@shared/utils/show-alert';
 
 interface Props {
   visible: boolean;
@@ -86,7 +88,7 @@ export function AddMealModal({ visible, onClose, onSubmit }: Props): React.JSX.E
       setMealType('lunch');
       onClose();
     } catch {
-      Alert.alert('Nao foi possivel salvar a refeicao', 'Tente novamente em instantes.');
+      showAlert('Nao foi possivel salvar a refeicao', 'Tente novamente em instantes.');
     } finally {
       setLoading(false);
     }
@@ -94,7 +96,12 @@ export function AddMealModal({ visible, onClose, onSubmit }: Props): React.JSX.E
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={styles.overlay}>
+      {/* Sheet ancorado embaixo: sem isso o teclado numérico do iOS cobria os
+          campos de macros e o botão de salvar. */}
+      <KeyboardAvoidingView
+        style={styles.overlay}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
         <View style={styles.sheet}>
           <View style={styles.header}>
             <Text style={styles.headerTitle}>Registrar refeição</Text>
@@ -179,7 +186,7 @@ export function AddMealModal({ visible, onClose, onSubmit }: Props): React.JSX.E
             </Button>
           </ScrollView>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

@@ -13,6 +13,7 @@ describe('useAuthStore', () => {
         goal: null,
         coachPersonality: null,
       },
+      preferencesByUser: {},
     });
 
     if (originalWindow === undefined) {
@@ -146,5 +147,53 @@ describe('useAuthStore', () => {
       goal: 'gain_muscle',
       coachPersonality: 'scientific',
     });
+  });
+});
+
+describe('preferências por usuário sem localStorage (RN puro — L1)', () => {
+  const originalWindow = global.window;
+  const userA = { id: 'user-a', name: 'A', email: 'a@a.com' };
+  const userB = { id: 'user-b', name: 'B', email: 'b@b.com' };
+
+  beforeEach(() => {
+    // No React Native não existe window/localStorage: é aqui que as
+    // preferências sumiam a cada restart do app.
+    // @ts-expect-error simula o ambiente nativo
+    delete global.window;
+    useAuthStore.setState({
+      token: null,
+      user: null,
+      isAuthenticated: false,
+      pendingAuth: null,
+      profilePreferences: { goal: null, coachPersonality: null },
+      preferencesByUser: {},
+    });
+  });
+
+  afterEach(() => {
+    if (originalWindow !== undefined) {
+      Object.defineProperty(global, 'window', {
+        configurable: true,
+        value: originalWindow,
+      });
+    }
+  });
+
+  it('prefs sobrevivem a logout + novo login do mesmo usuário', () => {
+    useAuthStore.getState().setToken('t', userA, 'r');
+    useAuthStore.getState().setProfilePreferences({ goal: 'lose_weight' });
+    useAuthStore.getState().clearToken();
+    useAuthStore.getState().setToken('t2', userA, 'r2');
+
+    expect(useAuthStore.getState().profilePreferences.goal).toBe('lose_weight');
+  });
+
+  it('prefs não vazam entre usuários', () => {
+    useAuthStore.getState().setToken('t', userA, 'r');
+    useAuthStore.getState().setProfilePreferences({ goal: 'gain_muscle' });
+    useAuthStore.getState().clearToken();
+    useAuthStore.getState().setToken('t', userB, 'r');
+
+    expect(useAuthStore.getState().profilePreferences.goal).toBeNull();
   });
 });
