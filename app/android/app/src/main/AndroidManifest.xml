@@ -22,6 +22,15 @@
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
         </intent-filter>
+        <!-- Deep links caloria:// (convite de desafio, post, reset de senha).
+             Sem este filtro o linking declarado no RootNavigator nunca abria o
+             app. Universal Links (https) exigem domínio próprio + assetlinks. -->
+        <intent-filter>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="caloria" />
+        </intent-filter>
       </activity>
     </application>
 </manifest>
