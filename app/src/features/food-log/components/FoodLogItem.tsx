@@ -3,11 +3,14 @@ import { StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Text } from '@shared/components';
 import { colors, typography, spacing, radius } from '@theme';
 import { Meal } from '@shared/services/food-log.service';
+import { parseDbDate } from '@shared/utils/parse-db-date';
 
 interface Props { meal: Meal; onDelete: (id: string) => void | Promise<void>; hideBorder?: boolean }
 
 function formatTime(loggedAt: string): string {
-  const date = new Date(loggedAt);
+  const date = parseDbDate(loggedAt);
+  // No Hermes o timestamp do Postgres virava Invalid Date → "Invalid Date" na UI.
+  if (Number.isNaN(date.getTime())) return '';
   return date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 }
 
