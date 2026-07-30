@@ -1,5 +1,6 @@
 import React from 'react';
 import { Share } from 'react-native';
+import { APP_WEB_URL } from '@env';
 import { Button } from '@shared/components/Button';
 
 interface Props {
@@ -9,13 +10,13 @@ interface Props {
 
 export function InviteButton({ inviteCode, title }: Props): React.JSX.Element {
   const onPress = async () => {
-    // H1 da spec: URL https universal — o scheme caloria:// não abre para quem
-    // não tem o app instalado (o prefixo https já está no linking do app).
-    const url = `https://caloria.app/challenge/${inviteCode}`;
+    // https para quem NÃO tem o app (abre o web); caloria:// para quem tem
+    // (Universal Links exigiriam domínio próprio + assetlinks/AASA hospedados).
+    const webUrl = `${APP_WEB_URL || 'https://caloria.app'}/challenge/${inviteCode}`;
     try {
       await Share.share({
-        message: `Bora pro desafio "${title}" no CalorIA? Entre por aqui: ${url}`,
-        url,
+        message: `Bora pro desafio "${title}" no CalorIA? Entre por aqui: ${webUrl}\nJá tem o app? caloria://challenge/${inviteCode}`,
+        url: webUrl,
       });
     } catch {
       /* usuário cancelou o share */
