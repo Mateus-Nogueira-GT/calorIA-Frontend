@@ -62,3 +62,52 @@ describe('useNotificationPolling', () => {
     expect(notificationsService.getNotifications).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('useNotificationPolling — AppState em background (L4)', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    notificationsService.getNotifications.mockResolvedValue({ items: [], unreadCount: 0 });
+    useAuthStore.setState({ isAuthenticated: true } as never);
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+    jest.clearAllMocks();
+  });
+
+  it('em background NÃO faz polling (economiza bateria/dados)', () => {
+    const handlers: Array<(s: string) => void> = [];
+    jest.spyOn(AppState, 'addEventListener').mockImplementation((_event, cb) => {
+      handlers.push(cb as (s: string) => void);
+      return { remove: jest.fn() } as never;
+    });
+
+    renderHook(() => useNotificationPolling());
+    expect(notificationsService.getNotifications).toHaveBeenCalledTimes(1); // fetch do mount
+
+    handlers.forEach((cb) => cb('background'));
+    jest.advanceTimersByTime(45_000 * 3);
+
+    // Nenhuma chamada nova enquanto em background.
+    expect(notificationsService.getNotifications).toHaveBeenCalledTimes(1);
+  });
+
+  it('volta a fazer polling ao retornar para active', () => {
+    const handlers: Array<(s: string) => void> = [];
+    jest.spyOn(AppState, 'addEventListener').mockImplementation((_event, cb) => {
+      handlers.push(cb as (s: string) => void);
+      return { remove: jest.fn() } as never;
+    });
+
+    renderHook(() => useNotificationPolling());
+    handlers.forEach((cb) => cb('background'));
+    jest.advanceTimersByTime(45_000);
+    expect(notificationsService.getNotifications).toHaveBeenCalledTimes(1);
+
+    handlers.forEach((cb) => cb('active')); // refetch imediato
+    expect(notificationsService.getNotifications).toHaveBeenCalledTimes(2);
+    jest.advanceTimersByTime(45_000); // timer religado
+    expect(notificationsService.getNotifications).toHaveBeenCalledTimes(3);
+  });
+});
