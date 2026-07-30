@@ -2,7 +2,9 @@ import React, { useState } from 'react';
 import {
   Alert,
   DimensionValue,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   View,
   TextInput,
   StyleSheet,
@@ -94,7 +96,12 @@ export function AddMealModal({ visible, onClose, onSubmit }: Props): React.JSX.E
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={styles.overlay}>
+      {/* Sheet ancorado embaixo: sem isso o teclado numérico do iOS cobria os
+          campos de macros e o botão de salvar. */}
+      <KeyboardAvoidingView
+        style={styles.overlay}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
         <View style={styles.sheet}>
           <View style={styles.header}>
             <Text style={styles.headerTitle}>Registrar refeição</Text>
@@ -179,7 +186,7 @@ export function AddMealModal({ visible, onClose, onSubmit }: Props): React.JSX.E
             </Button>
           </ScrollView>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
