@@ -1,9 +1,26 @@
 import axios from 'axios';
+import { Platform } from 'react-native';
 import { API_BASE_URL, API_TIMEOUT } from '@env';
 import { useAuthStore } from '@features/auth/store';
 
+/**
+ * URL da API: o .env manda; sem ele, fallback de DEV por plataforma.
+ * No emulador Android, `localhost` é o PRÓPRIO emulador — o host da máquina
+ * é 10.0.2.2. Build de release deve SEMPRE ter API_BASE_URL https no .env
+ * (o ATS do iOS bloqueia http e o app ficaria inoperante).
+ */
+export function resolveBaseUrl(
+  envUrl: string | undefined,
+  platform: string = Platform.OS,
+): string {
+  if (envUrl) return envUrl;
+  return platform === 'android' ? 'http://10.0.2.2:3000' : 'http://localhost:3000';
+}
+
+const BASE_URL = resolveBaseUrl(API_BASE_URL);
+
 const api = axios.create({
-  baseURL: API_BASE_URL || 'http://localhost:3000',
+  baseURL: BASE_URL,
   timeout: Number(API_TIMEOUT) || 10000,
   headers: {
     'Content-Type': 'application/json',
@@ -35,7 +52,7 @@ async function refreshAccessToken(): Promise<RefreshResult> {
 
   try {
     const { data } = await axios.post(
-      `${API_BASE_URL || 'http://localhost:3000'}/auth/refresh`,
+      `${BASE_URL}/auth/refresh`,
       { refresh_token: currentRefreshToken },
       { timeout: Number(API_TIMEOUT) || 10000 },
     );
