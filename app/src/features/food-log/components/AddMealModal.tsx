@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import {
-  Alert,
   DimensionValue,
   KeyboardAvoidingView,
   Modal,
@@ -14,6 +13,7 @@ import {
 import { Text, Button } from '@shared/components';
 import { colors, typography, spacing, radius } from '@theme';
 import { AddMealPayload, AppMealType } from '@shared/services/food-log.service';
+import { showAlert } from '@shared/utils/show-alert';
 
 interface Props {
   visible: boolean;
@@ -88,7 +88,7 @@ export function AddMealModal({ visible, onClose, onSubmit }: Props): React.JSX.E
       setMealType('lunch');
       onClose();
     } catch {
-      Alert.alert('Nao foi possivel salvar a refeicao', 'Tente novamente em instantes.');
+      showAlert('Nao foi possivel salvar a refeicao', 'Tente novamente em instantes.');
     } finally {
       setLoading(false);
     }

@@ -1,7 +1,7 @@
-import { Alert } from 'react-native';
 import { create } from 'zustand';
 import { weightService } from '@shared/services/weight.service';
 import type { WeightEntry } from '@shared/services/weight.service';
+import { showAlert } from '@shared/utils/show-alert';
 
 interface WeightState {
   entries: WeightEntry[];
@@ -42,7 +42,7 @@ export const useWeightStore = create<WeightState>((set, get) => ({
       set((s) => ({ entries: upsert(s.entries.filter((e) => e.id !== optimistic.id), saved), isSaving: false }));
     } catch (e) {
       set({ entries: snapshot, isSaving: false });
-      Alert.alert('Não foi possível salvar o peso', 'Tente novamente.');
+      showAlert('Não foi possível salvar o peso', 'Tente novamente.');
       throw e;
     }
   },

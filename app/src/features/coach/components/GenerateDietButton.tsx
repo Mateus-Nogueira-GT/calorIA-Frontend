@@ -3,6 +3,7 @@ import { ActivityIndicator, Alert, StyleSheet, TouchableOpacity, View } from 're
 import { Text } from '@shared/components';
 import { colors, typography, spacing } from '@theme';
 import { useDietStore } from '@features/diet/store';
+import { showAlert } from '@shared/utils/show-alert';
 
 interface Props {
   onSuccess: () => void;
@@ -19,7 +20,7 @@ export function GenerateDietButton({ onSuccess }: Props): React.JSX.Element {
       await loadCurrent();
       onSuccess();
     } catch {
-      Alert.alert('Não foi possível abrir sua dieta', 'Tente novamente.');
+      showAlert('Não foi possível abrir sua dieta', 'Tente novamente.');
     }
   };
 

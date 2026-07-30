@@ -1,6 +1,6 @@
-import { Alert } from 'react-native';
 import { create } from 'zustand';
 import { dietService, DietPlan } from '@shared/services/diet.service';
+import { showAlert } from '@shared/utils/show-alert';
 
 interface DietState {
   plan: DietPlan | null | undefined;
@@ -77,7 +77,7 @@ export const useDietStore = create<DietState>((set, get) => ({
             }
           : s.plan,
       }));
-      Alert.alert('Não foi possível marcar a refeição', 'Tente novamente.');
+      showAlert('Não foi possível marcar a refeição', 'Tente novamente.');
       throw e;
     }
   },
