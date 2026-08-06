@@ -4,6 +4,8 @@ node_modules/
 .buckd
 .gradle
 *.keystore
+*.jks
+keystore.properties
 !debug.keystore
 local.properties
 *.log

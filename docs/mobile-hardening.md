@@ -65,3 +65,33 @@ ainda não abrem o app. Para isso:
 
 Depende de ter um domínio próprio apontado para o deploy (o
 `APP_WEB_URL` do `.env` deve refletir esse domínio).
+
+## 6. Publicação Android (Play Store)
+
+- **applicationId:** `br.com.caloriaoficial.app` — **imutável após a 1ª publicação**.
+  O `namespace` do Gradle segue `com.caloria` (pacote das classes Java/R); são
+  campos diferentes e podem divergir sem problema.
+- **Keystore de upload:** `app/android/app/caloria-upload.keystore`
+  (alias `caloria-upload`, válido até 2053). **Não está no git** (`.gitignore`).
+  As credenciais ficam em `~/.gradle/gradle.properties` (chmod 600).
+  ⚠️ Faça backup do arquivo + senha num gerenciador: sem eles não há como
+  publicar atualizações (com Play App Signing dá para resetar a upload key).
+- **`versionCode` precisa ser incrementado a cada upload** (1 → 2 → 3…).
+- **Toolchain local:** JDK 17 (`/opt/homebrew/opt/openjdk@17`), Android SDK em
+  `~/Library/Android/sdk` (platform 35, build-tools 35.0.0, NDK 26.1.10909125).
+- **`@react-native-community/cli` é obrigatório** como devDependency: o Gradle
+  o invoca em `createBundleReleaseJsAndAssets`; sem ele o build de release
+  falha com "Process 'command 'node'' finished with non-zero exit value 1".
+- **O `.env` é lido no momento do build** (react-native-dotenv inlineia os
+  valores no bundle). Antes de gerar um `.aab` de produção, confirme:
+  `API_BASE_URL=https://calor-ia-frontend.vercel.app/api` (https obrigatório —
+  o Android 9+ bloqueia cleartext e o app não tem exceção configurada).
+
+### Comando
+
+```bash
+export JAVA_HOME=/opt/homebrew/opt/openjdk@17
+export ANDROID_HOME="$HOME/Library/Android/sdk"
+cd app/android && ./gradlew bundleRelease
+# saída: app/build/outputs/bundle/release/app-release.aab
+```

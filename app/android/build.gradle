@@ -5,6 +5,11 @@ buildscript {
         compileSdkVersion = 35
         targetSdkVersion = 34
         ndkVersion = "26.1.10909125"
+        // Kotlin fica em 1.9.x: o react-native-gradle-plugin do RN 0.76 foi
+        // compilado contra ele e quebra com KGP 2.x
+        // ("Found interface KotlinTopLevelExtension, but class was expected").
+        // Por isso o AsyncStorage está fixado na série 2.x — a 3.x exige
+        // Kotlin >= 2.1 (ver docs/mobile-hardening.md).
         kotlinVersion = "1.9.25"
     }
     repositories {
@@ -14,6 +19,7 @@ buildscript {
     dependencies {
         classpath("com.android.tools.build:gradle")
         classpath("com.facebook.react:react-native-gradle-plugin")
+        // Sem versão: quem manda é o react-native-gradle-plugin (RN 0.76 → 1.9.x).
         classpath("org.jetbrains.kotlin:kotlin-gradle-plugin")
     }
 }
