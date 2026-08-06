@@ -12,7 +12,9 @@ import type { CommunityStackScreenProps } from '@navigation/types';
 type Props = CommunityStackScreenProps<'ChallengeLeaderboard'>;
 
 export function ChallengeLeaderboardScreen({ route }: Props): React.JSX.Element {
-  const { challengeId, code } = route.params;
+  // Sem o fallback, navegação sem params ou deep link malformado dava
+  // TypeError na desestruturação e derrubava a tela.
+  const { challengeId, code } = route.params ?? {};
   const challenges = useChallengesStore((s) => s.challenges);
   const leaderboardByChallenge = useChallengesStore((s) => s.leaderboardByChallenge);
   const loadingId = useChallengesStore((s) => s.loadingLeaderboardId);
@@ -55,6 +57,18 @@ export function ChallengeLeaderboardScreen({ route }: Props): React.JSX.Element 
     setHasError(false);
     void init();
   };
+
+  if (!challengeId && !code) {
+    return (
+      <SafeAreaView style={styles.safe} edges={['bottom']}>
+        <ErrorState
+          title="Desafio não encontrado"
+          subtitle="Abra o desafio pela lista ou por um convite válido."
+          onRetry={reload}
+        />
+      </SafeAreaView>
+    );
+  }
 
   if (hasError) {
     return (

@@ -101,3 +101,19 @@ describe('timeAgo', () => {
     expect(timeAgo('2026-06-22T12:00:00Z', now)).toBe('há 2d');
   });
 });
+
+describe('datas no formato Postgres (Hermes-safe — K1)', () => {
+  it('timeAgo aceita o formato do banco', () => {
+    const now = new Date('2026-07-24T16:00:00Z');
+    expect(timeAgo('2026-07-24 15:30:00.000+00', now)).toBe('há 30min');
+  });
+
+  it('timeAgo com data inválida retorna vazio (não "há NaNd")', () => {
+    expect(timeAgo('lixo')).toBe('');
+  });
+
+  it('getMealGroup aceita o formato do banco (não cai sempre em Jantar)', () => {
+    // 08:30 local — construído sem timezone para o teste ser determinístico
+    expect(getMealGroup('2026-07-24 08:30:00')).toBe('Café da manhã');
+  });
+});

@@ -1,4 +1,3 @@
-import { Alert } from 'react-native';
 import { create } from 'zustand';
 import { challengesService } from '@shared/services/challenges.service';
 import type {
@@ -6,6 +5,7 @@ import type {
   LeaderboardEntry,
   CreateChallengeInput,
 } from '@shared/services/challenges.service';
+import { showAlert } from '@shared/utils/show-alert';
 
 interface ChallengesState {
   challenges: Challenge[];
@@ -55,7 +55,7 @@ export const useChallengesStore = create<ChallengesState>((set, get) => ({
       return created;
     } catch (e) {
       set({ isCreating: false });
-      Alert.alert('Não foi possível criar o desafio', 'Tente novamente.');
+      showAlert('Não foi possível criar o desafio', 'Tente novamente.');
       throw e;
     }
   },
@@ -81,7 +81,7 @@ export const useChallengesStore = create<ChallengesState>((set, get) => ({
         joiningId: null,
         challenges: s.challenges.map((c) => (c.id === challengeId ? { ...c, ...snapshot } : c)),
       }));
-      Alert.alert('Não foi possível entrar no desafio', 'Tente novamente.');
+      showAlert('Não foi possível entrar no desafio', 'Tente novamente.');
       throw e;
     }
   },
@@ -97,11 +97,11 @@ export const useChallengesStore = create<ChallengesState>((set, get) => ({
       const status = (e as { response?: { status?: number; data?: { error?: string } } })
         .response;
       if (status?.data?.error === 'ALREADY_CHECKED_IN') {
-        Alert.alert('Tudo certo por hoje', 'Você já fez o check-in de hoje neste desafio.');
+        showAlert('Tudo certo por hoje', 'Você já fez o check-in de hoje neste desafio.');
       } else if (status?.data?.error === 'CHALLENGE_ENDED') {
-        Alert.alert('Desafio encerrado', 'Este desafio já chegou ao fim.');
+        showAlert('Desafio encerrado', 'Este desafio já chegou ao fim.');
       } else {
-        Alert.alert('Não foi possível fazer o check-in', 'Tente novamente.');
+        showAlert('Não foi possível fazer o check-in', 'Tente novamente.');
       }
       return false;
     }

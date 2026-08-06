@@ -1,4 +1,3 @@
-import { Alert } from 'react-native';
 import { create } from 'zustand';
 import {
   feedService,
@@ -6,6 +5,7 @@ import {
   Comment,
   PostAchievement,
 } from '@shared/services/feed.service';
+import { showAlert } from '@shared/utils/show-alert';
 
 interface FeedState {
   posts: Post[];
@@ -114,7 +114,7 @@ export const useFeedStore = create<FeedState>((set, get) => ({
       set((s) => ({
         posts: s.posts.map((p) => (p.id === postId ? { ...p, ...snapshot } : p)),
       }));
-      Alert.alert('Não foi possível curtir', 'Tente novamente.');
+      showAlert('Não foi possível curtir', 'Tente novamente.');
       throw e;
     }
   },
@@ -169,7 +169,7 @@ export const useFeedStore = create<FeedState>((set, get) => ({
           p.id === postId ? { ...p, commentCount: Math.max(0, p.commentCount - 1) } : p,
         ),
       }));
-      Alert.alert('Não foi possível comentar', 'Tente novamente.');
+      showAlert('Não foi possível comentar', 'Tente novamente.');
       throw e;
     }
     void target; // contador já ajustado acima
