@@ -73,3 +73,35 @@ describe('logAiUsage', () => {
     )
   })
 })
+
+describe('logAiUsage — persistência (M3)', () => {
+  it('grava a linha em ai_usage', async () => {
+    const db = vi.fn().mockResolvedValue([])
+    const fastify = { log: { info: vi.fn(), warn: vi.fn() }, db } as unknown as FastifyInstance
+
+    logAiUsage(fastify, {
+      feature: 'diet_day',
+      model: 'openai/gpt-5',
+      userId: 'u1',
+      usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+    })
+
+    // A gravação é disparada sem await (não bloqueia a request);
+    // esperamos um tick para a promise resolver.
+    await new Promise((r) => setImmediate(r))
+    expect(db).toHaveBeenCalled()
+  })
+
+  it('erro de banco NÃO propaga (best-effort) e não derruba a request', async () => {
+    const db = vi.fn().mockRejectedValue(new Error('tabela ausente'))
+    const warn = vi.fn()
+    const fastify = { log: { info: vi.fn(), warn }, db } as unknown as FastifyInstance
+
+    expect(() =>
+      logAiUsage(fastify, { feature: 'chat', model: 'm', userId: 'u1' }),
+    ).not.toThrow()
+
+    await new Promise((r) => setImmediate(r))
+    expect(warn).toHaveBeenCalled()
+  })
+})

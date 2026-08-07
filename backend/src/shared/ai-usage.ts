@@ -19,7 +19,15 @@ interface AiUsageParams {
   } | null
 }
 
-/** Loga o uso de tokens de uma completion. NUNCA lança (best-effort). */
+/**
+ * Registra o uso de tokens de uma completion: log estruturado + linha em
+ * ai_usage (o log sozinho não é consultável por SQL, então o painel admin
+ * não conseguia mostrar custo).
+ *
+ * NUNCA lança e NUNCA bloqueia: a gravação é disparada sem await e qualquer
+ * falha vira warn. Uma indisponibilidade da tabela não pode derrubar a
+ * geração de uma dieta nem uma mensagem do coach.
+ */
 export function logAiUsage(fastify: FastifyInstance, params: AiUsageParams): void {
   try {
     fastify.log.info(
@@ -35,6 +43,18 @@ export function logAiUsage(fastify: FastifyInstance, params: AiUsageParams): voi
       },
       'ai_usage',
     )
+
+    void fastify.db`
+      INSERT INTO ai_usage (user_id, feature, model, prompt_tokens, completion_tokens, total_tokens)
+      VALUES (
+        ${params.userId}, ${params.feature}, ${params.model},
+        ${params.usage?.prompt_tokens ?? null},
+        ${params.usage?.completion_tokens ?? null},
+        ${params.usage?.total_tokens ?? null}
+      )
+    `.catch((err: unknown) => {
+      fastify.log.warn(err, 'Falha ao persistir ai_usage (telemetria best-effort)')
+    })
   } catch {
     // Telemetria nunca deve derrubar a request.
   }
