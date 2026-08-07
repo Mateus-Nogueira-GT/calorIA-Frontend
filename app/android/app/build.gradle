@@ -85,7 +85,10 @@ android {
         applicationId "br.com.caloriaoficial.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
+        // A Play Console identifica cada upload pelo versionCode — nunca pelo
+        // conteúdo do arquivo. Todo .aab enviado precisa de um número NOVO e
+        // crescente, mesmo que a versão anterior tenha sido descartada.
+        versionCode 2
         versionName "1.0"
     }
     signingConfigs {
