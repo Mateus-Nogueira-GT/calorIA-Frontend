@@ -28,11 +28,25 @@ export async function isAdminUser(fastify: FastifyInstance, userId: string): Pro
  *
  * Responde 404 em vez de 403 de propósito: não revelamos que a rota existe
  * para quem não pode usá-la.
+ *
+ * Defensivo contra request.user ausente ou malformado (rede de segurança):
+ * se o user não existir ou não tiver um sub, nega imediatamente com 404.
  */
 export function registerAdminGuard(fastify: FastifyInstance): void {
   fastify.addHook('preHandler', async (request, reply) => {
-    const { sub: userId } = request.user as JwtPayload
-    if (!(await isAdminUser(fastify, userId))) {
+    try {
+      const user = request.user as JwtPayload | undefined
+      const userId = user?.sub
+
+      if (!userId || typeof userId !== 'string') {
+        return reply.status(404).send({ error: 'NOT_FOUND', message: 'Recurso não encontrado' })
+      }
+
+      if (!(await isAdminUser(fastify, userId))) {
+        return reply.status(404).send({ error: 'NOT_FOUND', message: 'Recurso não encontrado' })
+      }
+    } catch (err) {
+      fastify.log.warn(err, 'Erro no guard de admin — negando acesso')
       return reply.status(404).send({ error: 'NOT_FOUND', message: 'Recurso não encontrado' })
     }
   })
