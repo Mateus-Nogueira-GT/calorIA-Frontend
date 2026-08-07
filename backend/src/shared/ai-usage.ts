@@ -53,7 +53,16 @@ export function logAiUsage(fastify: FastifyInstance, params: AiUsageParams): voi
         ${params.usage?.total_tokens ?? null}
       )
     `.catch((err: unknown) => {
-      fastify.log.warn(err, 'Falha ao persistir ai_usage (telemetria best-effort)')
+      // Envolvemos log.warn em try/catch porque um erro ao serializar `err` ou
+      // ao escrever o warn pode gerar uma promise rejeitada. Como esta função
+      // roda sem await (void), qualquer rejeição pendente vira unhandled rejection,
+      // que pode derrubar o processo Node. O try/catch interno captura tudo.
+      try {
+        fastify.log.warn(err, 'Falha ao persistir ai_usage (telemetria best-effort)')
+      } catch {
+        // Telemetria de telemetria também falhou; impossível fazer mais nada
+        // sem derrubar a request. Silenciamos.
+      }
     })
   } catch {
     // Telemetria nunca deve derrubar a request.

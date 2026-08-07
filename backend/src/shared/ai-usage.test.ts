@@ -97,11 +97,32 @@ describe('logAiUsage — persistência (M3)', () => {
     const warn = vi.fn()
     const fastify = { log: { info: vi.fn(), warn }, db } as unknown as FastifyInstance
 
-    expect(() =>
-      logAiUsage(fastify, { feature: 'chat', model: 'm', userId: 'u1' }),
-    ).not.toThrow()
+    expect(() => logAiUsage(fastify, { feature: 'chat', model: 'm', userId: 'u1' })).not.toThrow()
 
     await new Promise((r) => setImmediate(r))
+    expect(warn).toHaveBeenCalled()
+  })
+
+  it('db rejeita E log.warn lança — nenhuma rejeição escapa (unhandled rejection)', async () => {
+    // Dupla falha: o banco rejeita E o log.warn lança (ex.: erro patológico
+    // que quebra a serialização do pino). Mesmo assim, não há unhandled rejection.
+    const db = vi.fn().mockRejectedValue(new Error('conexão perdida'))
+    const warn = vi.fn().mockImplementation(() => {
+      throw new Error('log.warn explodiu (serialização?)')
+    })
+    const fastify = { log: { info: vi.fn(), warn }, db } as unknown as FastifyInstance
+
+    // A chamada é síncrona e não lança.
+    expect(() =>
+      logAiUsage(fastify, { feature: 'diet_day', model: 'm', userId: 'u' }),
+    ).not.toThrow()
+
+    // Aguardamos um tick para a promise do .catch() resolver/rejeitar.
+    // Sem o try/catch interno do .catch(), este await falharia com
+    // unhandled rejection. Com ele, nada escapa.
+    await new Promise((r) => setImmediate(r))
+
+    // O warn foi chamado (mesmo que tenha lançado).
     expect(warn).toHaveBeenCalled()
   })
 })
