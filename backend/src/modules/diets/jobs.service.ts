@@ -1,17 +1,19 @@
-import type { FastifyInstance } from 'fastify'
 import { randomUUID } from 'node:crypto'
+import type { FastifyInstance } from 'fastify'
 import { zodResponseFormat } from 'openai/helpers/zod.js'
-import { env } from '../../shared/env.js'
-import { AppError } from '../../shared/errors.js'
+import { buildModelsField, logAiUsage } from '../../shared/ai-usage.js'
 import {
-  aiSingleDaySchema,
-  collectedUserDataSchema,
   type AiSingleDay,
   type CollectedUserData,
+  aiSingleDaySchema,
+  collectedUserDataSchema,
 } from '../../shared/diet-ai-schema.js'
+import { env } from '../../shared/env.js'
+import { AppError } from '../../shared/errors.js'
 import { createSystemPost } from '../feed/feed.service.js'
 
-const TOTAL_DAYS = 5
+// B1 da spec: 7 dias — sábado/domingo ficavam sem plano com 5.
+const TOTAL_DAYS = 7
 const DAYS_PT = ['', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo']
 
 export interface JobStatus {
@@ -71,7 +73,9 @@ export function parseInput(raw: unknown): CollectedUserData | null {
 
 /**
  * Cria o job de geração e o cabeçalho da dieta (metas determinísticas), sem
- * gerar os dias ainda. Arquiva a dieta ativa anterior. Retorna o jobId.
+ * gerar os dias ainda. A dieta nasce como RASCUNHO (draft) — a ativa anterior
+ * só é substituída quando o último dia é gerado (B3 da spec). Se a geração
+ * falhar, o usuário mantém a dieta antiga intacta.
  */
 export async function createDietJob(
   fastify: FastifyInstance,
@@ -86,10 +90,6 @@ export async function createDietJob(
 
   await fastify.db.begin(async (sql) => {
     await sql`
-      UPDATE diets SET status = 'replaced', updated_at = NOW()
-      WHERE user_id = ${userId} AND status = 'active'
-    `
-    await sql`
       INSERT INTO diets (
         id, user_id, conversation_id, name, description,
         user_weight_kg, user_height_cm, user_age, user_gender, user_goal, user_activity_level,
@@ -100,7 +100,7 @@ export async function createDietJob(
         ${userData.weight_kg}, ${userData.height_cm}, ${userData.age},
         ${userData.gender}, ${userData.goal}, ${userData.activity_level},
         ${t.tdee}, ${t.targetCalories}, ${t.protein}, ${t.carbs}, ${t.fat},
-        'active', ${env.OPENAI_MODEL}
+        'draft', ${env.OPENAI_DIET_MODEL}
       )
     `
     await sql`
@@ -119,13 +119,45 @@ const DAY_SYSTEM_PROMPT =
   'brasileiros comuns e acessíveis, respeitando as metas e restrições informadas. ' +
   'Some as calorias/macros dos itens de forma coerente com a meta diária.'
 
-function buildDayPrompt(u: CollectedUserData, t: DietTargets, dayNumber: number): string {
+// ─── Variedade entre dias (I3) ────────────────────────────────────────────────
+
+const PREV_DAYS_MAX_FOODS = 8
+const PREV_DAYS_MAX_CHARS = 600
+
+/**
+ * Resume os alimentos dos dias já gerados para o prompt do próximo dia — sem
+ * isso cada `/step` gera às cegas e "varie os alimentos" é impossível de
+ * obedecer (frango 5 dias seguidos). Até 8 alimentos por dia, teto de 600 chars.
+ */
+export function summarizePreviousDays(rows: { day_name: string; foods: string[] }[]): string {
+  if (rows.length === 0) return ''
+  const lines: string[] = []
+  let used = 0
+  for (const row of rows) {
+    const foods = row.foods.slice(0, PREV_DAYS_MAX_FOODS).join(', ')
+    const line = `${row.day_name}: ${foods}`
+    if (used + line.length + 1 > PREV_DAYS_MAX_CHARS) break
+    lines.push(line)
+    used += line.length + 1
+  }
+  return lines.join('\n')
+}
+
+function buildDayPrompt(
+  u: CollectedUserData,
+  t: DietTargets,
+  dayNumber: number,
+  previousDays = '',
+): string {
   const goalLabels: Record<string, string> = {
     lose_weight: 'perda de peso',
     maintain: 'manutenção',
     gain_muscle: 'ganho de massa',
     gain_weight: 'ganho de peso',
   }
+  const varietySection = previousDays
+    ? `\nDIAS JÁ GERADOS — para garantir variedade, evite repetir a mesma proteína principal do almoço/jantar em dias consecutivos e varie os carboidratos:\n${previousDays}\n`
+    : ''
   return `Gere o dia ${dayNumber} de ${TOTAL_DAYS} (${DAYS_PT[dayNumber] ?? `Dia ${dayNumber}`}) de um plano alimentar.
 
 Perfil: ${u.weight_kg}kg, ${u.height_cm}cm, ${u.age} anos, ${u.gender}, objetivo ${goalLabels[u.goal] ?? u.goal}.
@@ -134,7 +166,7 @@ Refeições por dia: ${u.meals_per_day}.
 ${u.dietary_restrictions?.length ? `Restrições: ${u.dietary_restrictions.join(', ')}.` : ''}
 ${u.allergies?.length ? `Alergias (EVITAR): ${u.allergies.join(', ')}.` : ''}
 ${u.food_preferences ? `Preferências: ${u.food_preferences}.` : ''}
-
+${varietySection}
 Regras: varie os alimentos (evite repetir em relação a um dia típico), especifique quantidade em gramas e calorias/macros por item. Distribua as ${u.meals_per_day} refeições ao longo do dia.`
 }
 
@@ -152,6 +184,64 @@ function dayTotals(day: AiSingleDay) {
     }
   }
   return { cal: Math.round(cal), p: Math.round(p), c: Math.round(c), f: Math.round(f) }
+}
+
+// ─── Reconciliação com a meta (I4) ────────────────────────────────────────────
+
+const RECONCILE_TOLERANCE = 0.1 // ±10% da meta é aceitável
+const RECONCILE_MIN_FACTOR = 0.6
+const RECONCILE_MAX_FACTOR = 1.6
+
+/** Arredonda preservando frações pequenas: ≥10 → inteiro; <10 → 1 casa. */
+function roundSmart(n: number): number {
+  if (n >= 10) return Math.round(n)
+  return Math.round(n * 10) / 10
+}
+
+/**
+ * Escala determinística do dia para bater a meta de calorias (I4). O modelo às
+ * vezes entrega um dia 20-40% fora da meta; em vez de re-chamar a IA (caro/lento
+ * e não-determinístico), reescalamos as quantidades proporcionalmente.
+ * - Desvio ≤ 10% → intacto.
+ * - Fora disso → fator = meta/total, limitado a [0.6, 1.6] (evita distorção
+ *   absurda quando a geração vem muito errada).
+ */
+export function reconcileDay(
+  day: AiSingleDay,
+  targetCalories: number,
+): { day: AiSingleDay; scaled: boolean; factor: number } {
+  let total = 0
+  for (const meal of day.meals) for (const it of meal.items) total += it.calories
+
+  if (total <= 0 || targetCalories <= 0) return { day, scaled: false, factor: 1 }
+  if (Math.abs(total - targetCalories) / targetCalories <= RECONCILE_TOLERANCE) {
+    return { day, scaled: false, factor: 1 }
+  }
+
+  const factor = Math.min(
+    RECONCILE_MAX_FACTOR,
+    Math.max(RECONCILE_MIN_FACTOR, targetCalories / total),
+  )
+
+  const scaledDay: AiSingleDay = {
+    ...day,
+    meals: day.meals.map((meal) => {
+      const items = meal.items.map((it) => ({
+        ...it,
+        quantity_g: roundSmart(it.quantity_g * factor),
+        calories: roundSmart(it.calories * factor),
+        protein_g: roundSmart(it.protein_g * factor),
+        carbs_g: roundSmart(it.carbs_g * factor),
+        fat_g: roundSmart(it.fat_g * factor),
+      }))
+      return {
+        ...meal,
+        items,
+        total_calories: roundSmart(items.reduce((s, i) => s + i.calories, 0)),
+      }
+    }),
+  }
+  return { day: scaledDay, scaled: true, factor }
 }
 
 interface JobRow {
@@ -176,11 +266,7 @@ function toStatus(job: JobRow): JobStatus {
   }
 }
 
-async function loadJob(
-  fastify: FastifyInstance,
-  userId: string,
-  jobId: string,
-): Promise<JobRow> {
+async function loadJob(fastify: FastifyInstance, userId: string, jobId: string): Promise<JobRow> {
   const [job] = await fastify.db<JobRow[]>`
     SELECT id, conversation_id, diet_id, status, input, total_days, days_completed, error
     FROM diet_jobs WHERE id = ${jobId} AND user_id = ${userId}
@@ -195,6 +281,50 @@ export async function getJob(
   jobId: string,
 ): Promise<JobStatus> {
   return toStatus(await loadJob(fastify, userId, jobId))
+}
+
+/**
+ * Reabre um job que falhou (B5 da spec): volta para 'running' mantendo
+ * days_completed — o próximo /step continua do dia seguinte, sem regenerar
+ * os dias já persistidos. Idempotente: job não-failed retorna o estado atual.
+ */
+export async function retryJob(
+  fastify: FastifyInstance,
+  userId: string,
+  jobId: string,
+): Promise<JobStatus> {
+  const job = await loadJob(fastify, userId, jobId)
+  if (job.status !== 'failed') return toStatus(job)
+
+  await fastify.db.begin(async (sql) => {
+    await sql`
+      UPDATE diet_jobs SET status = 'running', error = NULL, updated_at = NOW()
+      WHERE id = ${jobId}
+    `
+    await sql`
+      UPDATE diets SET status = 'draft', updated_at = NOW()
+      WHERE id = ${job.diet_id} AND status = 'failed'
+    `
+  })
+
+  return { ...toStatus(job), status: 'running', error: null }
+}
+
+/**
+ * Job de geração em andamento (pending/running) mais recente do usuário.
+ * Usado pelo app no boot para RETOMAR o polling de uma geração interrompida
+ * (app fechado no meio) — sem isso a dieta ficava parcial para sempre.
+ */
+export async function getActiveJob(fastify: FastifyInstance, userId: string): Promise<JobStatus> {
+  const [job] = await fastify.db<JobRow[]>`
+    SELECT id, conversation_id, diet_id, status, input, total_days, days_completed, error
+    FROM diet_jobs
+    WHERE user_id = ${userId} AND status IN ('pending', 'running')
+    ORDER BY created_at DESC
+    LIMIT 1
+  `
+  if (!job) throw new AppError(404, 'NO_ACTIVE_JOB', 'Nenhuma geração de dieta em andamento')
+  return toStatus(job)
 }
 
 /**
@@ -219,19 +349,39 @@ export async function processJobStep(
   if (!userData) {
     fastify.log.error({ jobId, input: job.input }, 'Dados do job inválidos/irrecuperáveis')
     await fastify.db`UPDATE diet_jobs SET status = 'failed', error = 'invalid_input', updated_at = NOW() WHERE id = ${jobId}`
-    throw new AppError(422, 'INVALID_JOB_INPUT', 'Dados da geração inválidos. Refaça a conversa com o coach.')
+    throw new AppError(
+      422,
+      'INVALID_JOB_INPUT',
+      'Dados da geração inválidos. Refaça a conversa com o coach.',
+    )
   }
   const targets = computeTargets(userData)
+
+  // I3: resumo dos dias já gerados para orientar a variedade do próximo.
+  const prevRows = await fastify.db<{ day_name: string; foods: string[] }[]>`
+    SELECT dd.day_name,
+           ARRAY_AGG(di.food_name ORDER BY di.calories DESC) AS foods
+    FROM diet_days dd
+    JOIN diet_meals dm ON dm.diet_day_id = dd.id
+    JOIN diet_items di ON di.diet_meal_id = dm.id AND di.is_substitution = FALSE
+    WHERE dd.diet_id = ${job.diet_id}
+    GROUP BY dd.day_number, dd.day_name
+    ORDER BY dd.day_number
+  `
+  const previousDays = summarizePreviousDays(prevRows)
 
   // 1) Gera o dia (chamada longa — SEM segurar transação/lock).
   let aiDay: AiSingleDay
   try {
     const completion = await fastify.openai.beta.chat.completions.parse(
       {
-        model: env.OPENAI_MODEL,
+        // I5.1: modelo dedicado da geração de dias (default = OPENAI_MODEL).
+        model: env.OPENAI_DIET_MODEL,
+        // I5.2: fallbacks do OpenRouter (spread não dispara excess-property check).
+        ...buildModelsField(env.OPENAI_DIET_MODEL, env.OPENAI_FALLBACK_MODELS),
         messages: [
           { role: 'system', content: DAY_SYSTEM_PROMPT },
-          { role: 'user', content: buildDayPrompt(userData, targets, dayNumber) },
+          { role: 'user', content: buildDayPrompt(userData, targets, dayNumber, previousDays) },
         ],
         response_format: zodResponseFormat(aiSingleDaySchema, 'diet_day'),
         // Reasoning tokens consomem este mesmo orçamento no GPT-5; 6000 truncava
@@ -244,14 +394,34 @@ export async function processJobStep(
       // Timeout explícito abaixo do maxDuration (300s) pra falhar tratável.
       { timeout: 120_000 },
     )
+    logAiUsage(fastify, {
+      feature: 'diet_day',
+      model: env.OPENAI_DIET_MODEL,
+      userId,
+      usage: completion.usage,
+    })
     const parsed = completion.choices[0]?.message?.parsed
     if (!parsed) throw new Error('IA retornou dia vazio')
-    aiDay = parsed
+    // I4: reescala determinística se o dia veio >10% fora da meta de calorias.
+    const reconciled = reconcileDay(parsed, targets.targetCalories)
+    if (reconciled.scaled) {
+      fastify.log.info(
+        { jobId, dayNumber, factor: Number(reconciled.factor.toFixed(3)) },
+        'Dia reescalonado para a meta',
+      )
+    }
+    aiDay = reconciled.day
   } catch (err) {
     fastify.log.error({ err, jobId, dayNumber }, 'Falha ao gerar dia da dieta')
     await fastify.db`
       UPDATE diet_jobs SET status = 'failed', error = ${String(err).slice(0, 300)}, updated_at = NOW()
       WHERE id = ${jobId}
+    `
+    // A draft vira 'failed' — a dieta ATIVA anterior permanece intocada, e o
+    // /retry consegue devolvê-la para 'draft' e continuar de onde parou.
+    await fastify.db`
+      UPDATE diets SET status = 'failed', updated_at = NOW()
+      WHERE id = ${job.diet_id} AND status = 'draft'
     `
     throw new AppError(502, 'DIET_STEP_FAILED', 'Falha ao gerar um dia da dieta. Tente novamente.')
   }
@@ -273,7 +443,7 @@ export async function processJobStep(
           INSERT INTO diet_meals (id, diet_day_id, meal_type, name, time_suggestion,
                                   total_calories, total_protein, total_carbs, total_fat, sort_order)
           VALUES (${mealId}, ${dayId}, ${meal.meal_type}, ${meal.name}, ${meal.time_suggestion},
-                  ${meal.total_calories},
+                  ${meal.items.reduce((s, i) => s + i.calories, 0)},
                   ${meal.items.reduce((s, i) => s + i.protein_g, 0)},
                   ${meal.items.reduce((s, i) => s + i.carbs_g, 0)},
                   ${meal.items.reduce((s, i) => s + i.fat_g, 0)}, ${mi})
@@ -302,10 +472,21 @@ export async function processJobStep(
     throw err
   }
 
-  // 3) Finaliza se foi o último dia.
+  // 3) Finaliza se foi o último dia — SÓ AGORA a dieta nova substitui a antiga
+  // (transação curta: arquiva a ativa + promove a draft + completa o job).
   const done = dayNumber >= job.total_days
   if (done) {
-    await fastify.db`UPDATE diet_jobs SET status = 'completed', updated_at = NOW() WHERE id = ${jobId}`
+    await fastify.db.begin(async (sql) => {
+      await sql`UPDATE diet_jobs SET status = 'completed', updated_at = NOW() WHERE id = ${jobId}`
+      await sql`
+        UPDATE diets SET status = 'replaced', updated_at = NOW()
+        WHERE user_id = ${userId} AND status = 'active' AND id <> ${job.diet_id}
+      `
+      await sql`
+        UPDATE diets SET status = 'active', updated_at = NOW()
+        WHERE id = ${job.diet_id} AND status IN ('draft', 'failed')
+      `
+    })
     if (job.conversation_id) {
       try {
         await fastify.db`
@@ -317,9 +498,15 @@ export async function processJobStep(
       }
     }
     try {
-      await createSystemPost(fastify, userId, 'diet_generated', 'Nova dieta gerada com o Coach IA! 🥗', {
-        diet_id: job.diet_id,
-      })
+      await createSystemPost(
+        fastify,
+        userId,
+        'diet_generated',
+        'Nova dieta gerada com o Coach IA! 🥗',
+        {
+          diet_id: job.diet_id,
+        },
+      )
     } catch (err) {
       fastify.log.warn(err, 'Falha ao publicar post de dieta gerada')
     }

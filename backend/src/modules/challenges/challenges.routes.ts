@@ -2,20 +2,21 @@ import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { z } from 'zod'
 import type { JwtPayload } from '../../shared/types.js'
 import {
-  challengeSchema,
-  leaderboardEntrySchema,
   challengeMemberSchema,
+  challengeSchema,
+  checkInBodySchema,
   createChallengeBodySchema,
   errorSchema,
+  leaderboardEntrySchema,
 } from './challenges.schemas.js'
 import {
-  createChallenge,
-  listMyChallenges,
-  joinChallenge,
-  resolveInvite,
-  getLeaderboard,
-  leaveChallenge,
   checkIn,
+  createChallenge,
+  getLeaderboard,
+  joinChallenge,
+  leaveChallenge,
+  listMyChallenges,
+  resolveInvite,
 } from './challenges.service.js'
 
 const challengesRoutes: FastifyPluginAsyncZod = async (fastify) => {
@@ -126,14 +127,23 @@ const challengesRoutes: FastifyPluginAsyncZod = async (fastify) => {
       schema: {
         tags: ['Challenges'],
         summary: 'Check-in diário',
+        description:
+          'O app envia a data LOCAL do usuário (janela de ±1 dia do UTC); sem ela, usa a data UTC (legado).',
         security: [{ bearerAuth: [] }],
         params: z.object({ id: z.string().uuid() }),
-        response: { 200: challengeMemberSchema, 401: errorSchema, 404: errorSchema, 409: errorSchema },
+        body: checkInBodySchema,
+        response: {
+          200: challengeMemberSchema,
+          400: errorSchema,
+          401: errorSchema,
+          404: errorSchema,
+          409: errorSchema,
+        },
       },
     },
     async (request, reply) => {
       const { sub: userId } = request.user as JwtPayload
-      return reply.send(await checkIn(fastify, userId, request.params.id))
+      return reply.send(await checkIn(fastify, userId, request.params.id, request.body?.date))
     },
   )
 

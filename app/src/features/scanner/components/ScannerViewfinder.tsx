@@ -1,8 +1,9 @@
 /// <reference lib="dom" />
 import React from 'react';
-import { Alert, View, TouchableOpacity, StyleSheet, Platform } from 'react-native';
+import { View, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import { Text } from '@shared/components';
 import { colors, radius, typography } from '@theme';
+import { showAlert } from '@shared/utils/show-alert';
 
 interface Props { onPickImage: (dataUrl: string) => void; isAnalyzing: boolean }
 
@@ -44,7 +45,7 @@ async function fileToDownscaledDataUrl(file: File): Promise<string> {
 export function ScannerViewfinder({ onPickImage, isAnalyzing }: Props): React.JSX.Element {
   function handlePress() {
     if (Platform.OS !== 'web') {
-      Alert.alert(
+      showAlert(
         'Scanner indisponivel',
         'O envio de foto ainda nao esta disponivel no app nativo.',
       );
@@ -59,7 +60,7 @@ export function ScannerViewfinder({ onPickImage, isAnalyzing }: Props): React.JS
       if (!file) return;
       fileToDownscaledDataUrl(file)
         .then(onPickImage)
-        .catch(() => Alert.alert('Erro', 'Não foi possível ler a imagem escolhida.'));
+        .catch(() => showAlert('Erro', 'Não foi possível ler a imagem escolhida.'));
     };
     input.click();
   }

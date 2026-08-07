@@ -1,6 +1,6 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import type { JwtPayload } from '../../shared/types.js'
-import { analyzePhotoBodySchema, scanResponseSchema, errorSchema } from './scanner.schemas.js'
+import { analyzePhotoBodySchema, errorSchema, scanResponseSchema } from './scanner.schemas.js'
 import { analyzePhoto } from './scanner.service.js'
 
 const scannerRoutes: FastifyPluginAsyncZod = async (fastify) => {
@@ -47,9 +47,8 @@ const scannerRoutes: FastifyPluginAsyncZod = async (fastify) => {
       },
     },
     async (request, reply) => {
-      // userId não é usado na análise em si, mas a rota é protegida.
-      const { sub: _userId } = request.user as JwtPayload
-      return reply.send(await analyzePhoto(fastify, request.body.image))
+      const { sub: userId } = request.user as JwtPayload
+      return reply.send(await analyzePhoto(fastify, request.body.image, userId))
     },
   )
 }

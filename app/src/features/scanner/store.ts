@@ -1,8 +1,10 @@
-import { Alert } from 'react-native';
 import { create } from 'zustand';
 import { scannerService } from '@shared/services/scanner.service';
 import type { ScanItem } from '@shared/services/scanner.service';
 import { foodLogService } from '@shared/services/food-log.service';
+import { useFoodLogStore } from '@features/food-log/store';
+import { todayString } from '@shared/utils/date';
+import { showAlert } from '@shared/utils/show-alert';
 
 interface ScannerState {
   image: string | null;
@@ -36,8 +38,17 @@ export const useScannerStore = create<ScannerState>((set, get) => ({
     try {
       const res = await scannerService.analyzePhoto(image);
       set({ items: res.items, isAnalyzing: false });
-    } catch {
-      set({ isAnalyzing: false, error: 'Não foi possível analisar a imagem.' });
+    } catch (e) {
+      // H5 da spec: 422 NOT_FOOD merece orientação, não erro genérico.
+      const backendError = (e as { response?: { data?: { error?: string } } }).response?.data
+        ?.error;
+      set({
+        isAnalyzing: false,
+        error:
+          backendError === 'NOT_FOOD'
+            ? 'Não identificamos comida nesta foto — tente outro ângulo ou mais luz.'
+            : 'Não foi possível analisar a imagem.',
+      });
     }
   },
 
@@ -50,29 +61,57 @@ export const useScannerStore = create<ScannerState>((set, get) => ({
     set((s) => ({
       items: [
         ...s.items,
-        { id: `manual-${manualSeq++}`, name: '', calories: 0, protein: 0, carbs: 0, fat: 0, confidence: 1 },
+        {
+          id: `manual-${manualSeq++}`,
+          name: '',
+          calories: 0,
+          protein: 0,
+          carbs: 0,
+          fat: 0,
+          confidence: 1,
+        },
       ],
     })),
 
   confirm: async () => {
     const valid = get().items.filter((i) => i.name.trim().length > 0);
-    try {
-      await Promise.all(
-        valid.map((i) =>
-          foodLogService.addMeal({
+    // D2 da spec: allSettled + remoção incremental — item salvo SAI da lista na
+    // hora, então um retry após falha parcial reenvia só o que faltou (antes o
+    // Promise.all re-salvava os já persistidos, duplicando no diário).
+    const results = await Promise.allSettled(
+      valid.map((i) =>
+        foodLogService
+          .addMeal({
             name: i.name.trim(),
             calories: i.calories,
             protein: i.protein,
             carbs: i.carbs,
             fat: i.fat,
-          }),
-        ),
-      );
-      set({ ...initialState });
-    } catch (e) {
-      Alert.alert('Não foi possível adicionar ao diário', 'Tente novamente.');
-      throw e;
+          })
+          .then((meal) => ({ scanItemId: i.id, meal })),
+      ),
+    );
+
+    const savedIds = new Set<string>();
+    for (const r of results) {
+      if (r.status === 'fulfilled') {
+        savedIds.add(r.value.scanItemId);
+        // D3: reflete no diário/dashboard imediatamente (o cache do dia já
+        // carregado não refazia fetch e os itens escaneados "sumiam").
+        useFoodLogStore.getState().addMeal(todayString(), r.value.meal);
+      }
     }
+    set((s) => ({ items: s.items.filter((i) => !savedIds.has(i.id)) }));
+
+    const failures = results.filter((r) => r.status === 'rejected').length;
+    if (failures > 0) {
+      showAlert(
+        'Não foi possível adicionar tudo',
+        `${failures} ${failures === 1 ? 'item não foi salvo' : 'itens não foram salvos'}. Tente novamente.`,
+      );
+      throw new Error('SCAN_CONFIRM_PARTIAL');
+    }
+    set({ ...initialState });
   },
 
   reset: () => set({ ...initialState }),

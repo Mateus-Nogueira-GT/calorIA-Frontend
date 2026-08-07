@@ -77,9 +77,12 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
+    // namespace = pacote das classes geradas (R, BuildConfig) — segue o das
+    // classes Java existentes. O applicationId é o identificador na Play Store
+    // e pode ser diferente; é ele que NÃO pode mudar após a 1ª publicação.
     namespace "com.caloria"
     defaultConfig {
-        applicationId "com.caloria"
+        applicationId "br.com.caloriaoficial.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
@@ -92,15 +95,26 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
+        // Assinatura de RELEASE. As credenciais vêm de ~/.gradle/gradle.properties
+        // (fora do repositório) — nunca commitar keystore nem senha.
+        // O build só é assinado se as 4 propriedades existirem; caso contrário
+        // o Gradle falha explicitamente em vez de gerar um artefato inválido.
+        release {
+            if (project.hasProperty('CALORIA_UPLOAD_STORE_FILE')) {
+                storeFile file(CALORIA_UPLOAD_STORE_FILE)
+                storePassword CALORIA_UPLOAD_STORE_PASSWORD
+                keyAlias CALORIA_UPLOAD_KEY_ALIAS
+                keyPassword CALORIA_UPLOAD_KEY_PASSWORD
+            }
+        }
     }
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
         }
         release {
-            // Caution! In production, you need to generate your own keystore file.
-            // see https://reactnative.dev/docs/signed-apk-android.
-            signingConfig signingConfigs.debug
+            // A Play Store REJEITA artefatos assinados com o certificado de debug.
+            signingConfig signingConfigs.release
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
         }

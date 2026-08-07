@@ -1,3 +1,5 @@
+import { parseDbDate } from './parse-db-date';
+
 const MONTHS = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 
 export function dateToString(d: Date): string {
@@ -9,6 +11,19 @@ export function dateToString(d: Date): string {
 
 export function todayString(): string {
   return dateToString(new Date());
+}
+
+/** Dia da semana LOCAL: 1=Segunda … 7=Domingo (contrato dayNumber da API). */
+export function todayDayNumber(d: Date = new Date()): number {
+  return ((d.getDay() + 6) % 7) + 1;
+}
+
+/**
+ * Offset do fuso na convenção da API: local = UTC + offset (BRT = -180).
+ * É o INVERSO do getTimezoneOffset() do JS.
+ */
+export function tzOffsetMinutes(d: Date = new Date()): number {
+  return -d.getTimezoneOffset();
 }
 
 export function last7Days(): string[] {
@@ -34,15 +49,33 @@ export function formatChipLabel(dateStr: string): string {
 export type MealGroup = 'Café da manhã' | 'Almoço' | 'Lanche' | 'Jantar';
 
 export function getMealGroup(loggedAt: string): MealGroup {
-  const hour = new Date(loggedAt).getHours();
+  const hour = parseDbDate(loggedAt).getHours();
   if (hour >= 5 && hour < 11) return 'Café da manhã';
   if (hour >= 11 && hour < 15) return 'Almoço';
   if (hour >= 15 && hour < 18) return 'Lanche';
   return 'Jantar';
 }
 
+const TYPE_TO_GROUP: Record<string, MealGroup> = {
+  breakfast: 'Café da manhã',
+  lunch: 'Almoço',
+  snack: 'Lanche',
+  dinner: 'Jantar',
+};
+
+/**
+ * Grupo do diário: usa o tipo escolhido pelo usuário quando existir;
+ * registros antigos/'other' caem no heurístico por horário.
+ */
+export function getMealGroupFor(mealType: string | undefined, loggedAt: string): MealGroup {
+  return TYPE_TO_GROUP[mealType ?? ''] ?? getMealGroup(loggedAt);
+}
+
 export function timeAgo(iso: string, now: Date = new Date()): string {
-  const diffMs = now.getTime() - new Date(iso).getTime();
+  const then = parseDbDate(iso).getTime();
+  // Sem o guard, uma data irrecuperável virava "há NaNd" no feed.
+  if (Number.isNaN(then)) return '';
+  const diffMs = now.getTime() - then;
   const min = Math.floor(diffMs / 60000);
   if (min < 1) return 'agora';
   if (min < 60) return `há ${min}min`;

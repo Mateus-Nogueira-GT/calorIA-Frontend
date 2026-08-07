@@ -3,11 +3,11 @@ import { z } from 'zod'
 import type { JwtPayload } from '../../shared/types.js'
 import {
   chatMessageBodySchema,
-  chatResponseSchema,
   chatMessageSchema,
+  chatResponseSchema,
   errorSchema,
 } from './chat.schemas.js'
-import { sendChatMessage, getChatHistory } from './chat.service.js'
+import { getChatHistory, sendChatMessage } from './chat.service.js'
 
 const chatRoutes: FastifyPluginAsyncZod = async (fastify) => {
   // Todas as rotas de chat exigem autenticação

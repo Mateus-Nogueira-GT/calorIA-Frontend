@@ -8,6 +8,8 @@ export type AuthStackParamList = {
   Register: undefined;
   Login: undefined;
   ForgotPassword: undefined;
+  /** Aberta pelo link do email de recuperação (web). */
+  ResetPassword: undefined;
   ProfileSetup: undefined;
 };
 
@@ -20,6 +22,7 @@ export type CommunityStackParamList = {
   CreateChallenge: undefined;
   ChallengeLeaderboard: { challengeId?: string; code?: string };
   Notifications: undefined;
+  Friends: { initialTab?: 'friends' | 'requests' | 'search' } | undefined;
 };
 
 // Tab Navigator
@@ -30,7 +33,6 @@ export type TabParamList = {
   Coach: undefined;
   Community: NavigatorScreenParams<CommunityStackParamList>;
   Profile: undefined;
-  Evolution: undefined;
 };
 
 // Scanner Stack
@@ -47,7 +49,10 @@ export type RootStackParamList = {
   ProfileGoals: undefined;
   ProfileCoachPersonality: undefined;
   ProfileEdit: undefined;
-  Scanner: NavigatorScreenParams<ScannerStackParamList>;
+  /** Saiu da tab bar (7 abas truncavam em telas pequenas) — acessada pelo Perfil. */
+  Evolution: undefined;
+  // `| undefined`: navigate('Scanner') sem params é válido (abre a rota inicial).
+  Scanner: NavigatorScreenParams<ScannerStackParamList> | undefined;
 };
 
 // Screen props helpers

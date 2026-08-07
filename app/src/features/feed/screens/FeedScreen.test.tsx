@@ -50,6 +50,6 @@ describe('FeedScreen', () => {
     const { getByText } = render(
       <FeedScreen navigation={navigation} route={{ key: 'k', name: 'Feed' }} />,
     );
-    await waitFor(() => expect(getByText('Ainda não há posts')).toBeTruthy());
+    await waitFor(() => expect(getByText('Seu feed está vazio')).toBeTruthy());
   });
 });

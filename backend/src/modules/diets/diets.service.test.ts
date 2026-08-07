@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { toPlannedMealType } from './diets.service.js'
 
 describe('toPlannedMealType (6 tipos do banco -> 4 do app)', () => {

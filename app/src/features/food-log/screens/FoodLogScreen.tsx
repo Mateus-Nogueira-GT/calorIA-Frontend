@@ -8,7 +8,7 @@ import { DayMacroSummary } from '../components/DayMacroSummary';
 import { MealSection } from '../components/MealSection';
 import { AddMealModal } from '../components/AddMealModal';
 import { CalorieProgressBar } from '../components/CalorieProgressBar';
-import { formatChipLabel, getMealGroup, last7Days } from '@shared/utils/date';
+import { formatChipLabel, getMealGroupFor, last7Days } from '@shared/utils/date';
 import { getDailyCalorieGoal, sumCalories } from '@shared/utils/calories';
 import { useDietStore } from '@features/diet/store';
 
@@ -49,7 +49,9 @@ export function FoodLogScreen(): React.JSX.Element {
   const grouped = useMemo(
     () =>
       GROUPS.reduce<Record<string, typeof meals>>((acc, group) => {
-        acc[group] = meals.filter((meal) => getMealGroup(meal.loggedAt) === group);
+        acc[group] = meals.filter(
+          (meal) => getMealGroupFor(meal.mealType, meal.loggedAt) === group,
+        );
         return acc;
       }, {}),
     [meals],

@@ -1,17 +1,44 @@
+import { randomUUID } from 'node:crypto'
 import type { FastifyInstance } from 'fastify'
 import type { AiDietPlan, CollectedUserData } from '../../shared/diet-ai-schema.js'
 import { AppError } from '../../shared/errors.js'
+import {
+  completedOnDate,
+  isWithinDateWindow,
+  utcDayNumber,
+  utcTodayString,
+} from '../../shared/local-date.js'
 import { createSystemPost } from '../feed/feed.service.js'
 import type {
   Diet,
   DietDay,
   DietMeal,
   DietWithDays,
+  PlannedMealType,
   ReplaceDietItemBody,
   TodayPlan,
-  PlannedMealType,
+  TodayQuery,
 } from './diets.schemas.js'
-import { randomUUID } from 'node:crypto'
+
+/**
+ * Resolve os parâmetros locais do cliente (Workstream A). Tudo opcional:
+ * sem eles, mantém o comportamento UTC anterior (retrocompatível).
+ * Data fora da janela de sanidade → 400 INVALID_DATE.
+ */
+export function resolveTodayContext(query: TodayQuery = {}): {
+  dayNumber: number
+  date: string
+  tzOffsetMinutes: number
+} {
+  if (query.date && !isWithinDateWindow(query.date)) {
+    throw new AppError(400, 'INVALID_DATE', 'Data fora da janela permitida')
+  }
+  return {
+    dayNumber: query.dayNumber ?? utcDayNumber(),
+    date: query.date ?? utcTodayString(),
+    tzOffsetMinutes: query.tzOffsetMinutes ?? 0,
+  }
+}
 
 /** Mapeia os 6 tipos de refeição do banco para os 4 do app (lanches viram 'snack'). */
 export function toPlannedMealType(mealType: string): PlannedMealType {
@@ -62,95 +89,10 @@ interface DbDietDay {
   total_fat: number
 }
 
-// ─── Persistência da dieta gerada pela IA ────────────────────────────────────
-
-/**
- * Salva no banco a dieta gerada pela IA.
- * Insere diets → diet_days → diet_meals → diet_items em transação.
- */
-export async function saveDietToDb(
-  fastify: FastifyInstance,
-  userId: string,
-  conversationId: string,
-  userData: CollectedUserData,
-  dietPlan: AiDietPlan,
-): Promise<string> {
-  const dietId = randomUUID()
-
-  await fastify.db.begin(async (sql) => {
-    // Arquiva dieta ativa anterior
-    await sql`
-      UPDATE diets SET status = 'replaced', updated_at = NOW()
-      WHERE user_id = ${userId} AND status = 'active'
-    `
-
-    // Insere dieta
-    await sql`
-      INSERT INTO diets (
-        id, user_id, conversation_id,
-        name, description,
-        user_weight_kg, user_height_cm, user_age, user_gender, user_goal, user_activity_level,
-        tdee_calories, target_calories, target_protein_g, target_carbs_g, target_fat_g,
-        status, ai_model
-      ) VALUES (
-        ${dietId}, ${userId}, ${conversationId},
-        ${dietPlan.name}, ${dietPlan.description},
-        ${userData.weight_kg}, ${userData.height_cm}, ${userData.age},
-        ${userData.gender}, ${userData.goal}, ${userData.activity_level},
-        ${dietPlan.tdee_calories}, ${dietPlan.target_calories},
-        ${dietPlan.target_protein_g}, ${dietPlan.target_carbs_g}, ${dietPlan.target_fat_g},
-        'active', 'gpt-4o'
-      )
-    `
-
-    for (const day of dietPlan.days) {
-      const dayId = randomUUID()
-
-      await sql`
-        INSERT INTO diet_days (id, diet_id, day_number, day_name, total_calories, total_protein, total_carbs, total_fat)
-        VALUES (${dayId}, ${dietId}, ${day.day_number}, ${day.day_name},
-                ${day.total_calories}, ${day.total_protein}, ${day.total_carbs}, ${day.total_fat})
-      `
-
-      for (let mealIdx = 0; mealIdx < day.meals.length; mealIdx++) {
-        const meal = day.meals[mealIdx]
-        const mealId = randomUUID()
-
-        await sql`
-          INSERT INTO diet_meals (id, diet_day_id, meal_type, name, time_suggestion,
-                                  total_calories, total_protein, total_carbs, total_fat, sort_order)
-          VALUES (${mealId}, ${dayId}, ${meal.meal_type}, ${meal.name}, ${meal.time_suggestion},
-                  ${meal.total_calories}, ${meal.items.reduce((s, i) => s + i.protein_g, 0)},
-                  ${meal.items.reduce((s, i) => s + i.carbs_g, 0)},
-                  ${meal.items.reduce((s, i) => s + i.fat_g, 0)}, ${mealIdx})
-        `
-
-        for (let itemIdx = 0; itemIdx < meal.items.length; itemIdx++) {
-          const item = meal.items[itemIdx]
-          await sql`
-            INSERT INTO diet_items (id, diet_meal_id, food_name, quantity_g, unit,
-                                    calories, protein_g, carbs_g, fat_g, preparation_tip, sort_order)
-            VALUES (${randomUUID()}, ${mealId}, ${item.food_name}, ${item.quantity_g}, ${item.unit},
-                    ${item.calories}, ${item.protein_g}, ${item.carbs_g}, ${item.fat_g},
-                    ${item.preparation_tip}, ${itemIdx})
-          `
-        }
-      }
-    }
-
-    // Atualiza chat_history com a dieta gerada
-    await sql`
-      UPDATE chat_history
-      SET status = 'completed', diet_id = ${dietId}, updated_at = NOW()
-      WHERE id = ${conversationId}
-    `
-
-    // Atualiza streak do usuário
-    await sql`SELECT update_user_streak(${userId})`
-  })
-
-  return dietId
-}
+// A persistência da dieta gerada acontece 1 dia por vez no jobs.service
+// (createDietJob/processJobStep). O caminho síncrono antigo (saveDietToDb, que
+// gerava tudo numa chamada e arquivava a dieta ativa antes da nova existir)
+// foi removido — não tinha mais nenhum consumidor.
 
 // ─── Consultas ────────────────────────────────────────────────────────────────
 
@@ -199,6 +141,8 @@ export async function getDietWithDays(
   `
   if (!diet) throw new AppError(404, 'DIET_NOT_FOUND', 'Dieta não encontrada')
 
+  // G3 da spec: 3 queries fixas (dias, refeições, itens) em vez de
+  // 1 + dias + dias×refeições (~30+ para uma dieta de 7 dias).
   const dbDays = await fastify.db<DbDietDay[]>`
     SELECT id, diet_id, day_number, day_name,
            total_calories, total_protein, total_carbs, total_fat
@@ -206,45 +150,65 @@ export async function getDietWithDays(
     WHERE diet_id = ${dietId}
     ORDER BY day_number
   `
+  const dayIds = dbDays.map((d) => d.id)
 
-  const days: DietDay[] = []
+  const dbMeals = dayIds.length
+    ? await fastify.db<DbDietMeal[]>`
+        SELECT id, diet_day_id, meal_type, name, time_suggestion,
+               total_calories, total_protein, total_carbs, total_fat,
+               is_completed, completed_at::TEXT AS completed_at, sort_order
+        FROM diet_meals
+        WHERE diet_day_id = ANY(${dayIds})
+        ORDER BY sort_order
+      `
+    : []
+  const mealIds = dbMeals.map((m) => m.id)
 
-  for (const dbDay of dbDays) {
-    const dbMeals = await fastify.db<DbDietMeal[]>`
-      SELECT id, diet_day_id, meal_type, name, time_suggestion,
-             total_calories, total_protein, total_carbs, total_fat,
-             is_completed, completed_at::TEXT AS completed_at, sort_order
-      FROM diet_meals
-      WHERE diet_day_id = ${dbDay.id}
-      ORDER BY sort_order
-    `
-
-    const meals: DietMeal[] = []
-    for (const dbMeal of dbMeals) {
-      const items = await fastify.db<DbDietItem[]>`
+  const dbItems = mealIds.length
+    ? await fastify.db<DbDietItem[]>`
         SELECT id, diet_meal_id, food_name, quantity_g, unit,
                calories, protein_g, carbs_g, fat_g,
                preparation_tip, is_substitution, sort_order
         FROM diet_items
-        WHERE diet_meal_id = ${dbMeal.id}
+        WHERE diet_meal_id = ANY(${mealIds})
           AND is_substitution = FALSE
         ORDER BY sort_order
       `
-      meals.push({ ...dbMeal, items } as unknown as DietMeal)
-    }
+    : []
 
-    days.push({ ...dbDay, meals })
+  const itemsByMeal = new Map<string, DbDietItem[]>()
+  for (const item of dbItems) {
+    const list = itemsByMeal.get(item.diet_meal_id)
+    if (list) list.push(item)
+    else itemsByMeal.set(item.diet_meal_id, [item])
   }
+
+  const mealsByDay = new Map<string, DietMeal[]>()
+  for (const dbMeal of dbMeals) {
+    const meal = { ...dbMeal, items: itemsByMeal.get(dbMeal.id) ?? [] } as unknown as DietMeal
+    const list = mealsByDay.get(dbMeal.diet_day_id)
+    if (list) list.push(meal)
+    else mealsByDay.set(dbMeal.diet_day_id, [meal])
+  }
+
+  const days: DietDay[] = dbDays.map((dbDay) => ({
+    ...dbDay,
+    meals: mealsByDay.get(dbDay.id) ?? [],
+  }))
 
   return { ...diet, days }
 }
 
 /** Retorna só o dia atual da dieta ativa (para a tela principal). */
-export async function getTodayDiet(fastify: FastifyInstance, userId: string): Promise<DietDay> {
+export async function getTodayDiet(
+  fastify: FastifyInstance,
+  userId: string,
+  query: TodayQuery = {},
+): Promise<DietDay> {
   const diet = await getActiveDiet(fastify, userId)
 
-  // Dia da semana: 1=Segunda, 2=Terça, ..., 7=Domingo
-  const todayDayNumber = ((new Date().getDay() + 6) % 7) + 1
+  // Dia da semana: 1=Segunda, ..., 7=Domingo — o do cliente quando informado
+  const todayDayNumber = resolveTodayContext(query).dayNumber
 
   const [dbDay] = await fastify.db<DbDietDay[]>`
     SELECT id, diet_id, day_number, day_name,
@@ -290,16 +254,17 @@ export async function getTodayDiet(fastify: FastifyInstance, userId: string): Pr
 export async function getTodayPlan(
   fastify: FastifyInstance,
   userId: string,
+  query: TodayQuery = {},
 ): Promise<TodayPlan | null> {
+  // Valida a query ANTES do lookup da dieta (data inválida → 400, não null)
+  const { dayNumber: todayDayNumber, date: today, tzOffsetMinutes } = resolveTodayContext(query)
+
   let diet: Diet
   try {
     diet = await getActiveDiet(fastify, userId)
   } catch {
     return null
   }
-
-  const todayDayNumber = ((new Date().getDay() + 6) % 7) + 1
-  const today = new Date().toISOString().slice(0, 10)
 
   const [dbDay] = await fastify.db<DbDietDay[]>`
     SELECT id, diet_id, day_number, day_name,
@@ -347,6 +312,8 @@ export async function getTodayPlan(
     carbs: Number(dbMeal.total_carbs),
     fat: Number(dbMeal.total_fat),
     completedAt: dbMeal.completed_at,
+    // Derivado por dia local — refeição marcada semana passada não conta hoje
+    completedToday: completedOnDate(dbMeal.completed_at, today, tzOffsetMinutes),
   }))
 
   return {
@@ -368,29 +335,36 @@ export async function toggleMealCompleted(
   fastify: FastifyInstance,
   userId: string,
   mealId: string,
+  localDate?: string,
 ): Promise<{ is_completed: boolean }> {
-  // Verifica que a refeição pertence ao usuário
-  const [meal] = await fastify.db<{ id: string; is_completed: boolean }[]>`
-    SELECT dm.id, dm.is_completed
-    FROM diet_meals dm
-    JOIN diet_days dd ON dd.id = dm.diet_day_id
+  if (localDate && !isWithinDateWindow(localDate)) {
+    throw new AppError(400, 'INVALID_DATE', 'Data fora da janela permitida')
+  }
+
+  // Toggle ATÔMICO (B10): uma única query com ownership no WHERE — o padrão
+  // select-then-update permitia double-toggle em taps rápidos.
+  const [meal] = await fastify.db<{ is_completed: boolean }[]>`
+    UPDATE diet_meals dm
+    SET is_completed = NOT dm.is_completed,
+        completed_at = CASE WHEN dm.is_completed THEN NULL ELSE NOW() END,
+        updated_at   = NOW()
+    FROM diet_days dd
     JOIN diets d ON d.id = dd.diet_id
-    WHERE dm.id = ${mealId} AND d.user_id = ${userId}
+    WHERE dm.id = ${mealId}
+      AND dd.id = dm.diet_day_id
+      AND d.user_id = ${userId}
+    RETURNING dm.is_completed
   `
 
   if (!meal) throw new AppError(404, 'MEAL_NOT_FOUND', 'Refeição não encontrada')
 
-  const newState = !meal.is_completed
-  await fastify.db`
-    UPDATE diet_meals
-    SET is_completed = ${newState},
-        completed_at = ${newState ? new Date().toISOString() : null},
-        updated_at   = NOW()
-    WHERE id = ${mealId}
-  `
+  const newState = meal.is_completed
 
   if (newState) {
-    await fastify.db`SELECT update_user_streak(${userId})`
+    // Data local do cliente quando presente; fallback = CURRENT_DATE (UTC)
+    await fastify.db`
+      SELECT update_user_streak(${userId}, COALESCE(${localDate ?? null}::date, CURRENT_DATE))
+    `
 
     const [streak] = await fastify.db<{ current_streak: number }[]>`
       SELECT current_streak FROM streaks WHERE user_id = ${userId}

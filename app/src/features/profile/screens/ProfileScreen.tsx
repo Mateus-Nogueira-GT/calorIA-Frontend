@@ -60,6 +60,12 @@ export function ProfileScreen({ navigation }: TabScreenProps<'Profile'>): React.
           onPress={() => navigation.navigate('ProfileCoachPersonality')}
           testID="profile-coach-personality-btn"
         />
+        <ProfileMenuItem
+          label="📈 Evolução"
+          description="Acompanhe seu peso e o histórico de calorias"
+          onPress={() => navigation.navigate('Evolution')}
+          testID="profile-evolution-btn"
+        />
         <ProfileMenuItem label="🚪 Sair" onPress={confirmLogout} destructive testID="logout-btn" />
       </View>
     </ScrollView>

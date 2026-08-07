@@ -2,11 +2,15 @@ import { z } from 'zod'
 
 // ─── Enums ────────────────────────────────────────────────────────────────────
 
+import { localDateSchema } from '../../shared/local-date.js'
+
 export const memberStatusEnum = z.enum(['invited', 'active', 'quit', 'disqualified'])
 
 // ─── Responses (camelCase — contrato com o frontend) ────────────────────────
 
 export const challengeSchema = z.object({
+  /** Derivado da data-fim (F3) — nenhum job muda status no banco. */
+  finished: z.boolean(),
   id: z.string().uuid(),
   title: z.string(),
   description: z.string(),
@@ -54,6 +58,9 @@ export const createChallengeBodySchema = z.object({
   startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data deve estar no formato YYYY-MM-DD'),
   endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data deve estar no formato YYYY-MM-DD'),
 })
+
+/** Body opcional do check-in — data LOCAL do usuário (Workstream A / A8). */
+export const checkInBodySchema = z.object({ date: localDateSchema.optional() }).nullish()
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

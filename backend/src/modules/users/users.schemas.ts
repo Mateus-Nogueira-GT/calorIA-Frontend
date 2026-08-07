@@ -34,6 +34,8 @@ export const profileSchema = z.object({
   coach_gender: coachGenderEnum.nullable(),
   dietary_restrictions: z.array(z.string()).nullable(),
   allergies: z.array(z.string()).nullable(),
+  /** Streak canônico do backend (G5) — o app não deve recalcular localmente. */
+  current_streak: z.number().int().nullable(),
   created_at: z.string(),
   updated_at: z.string(),
 })
