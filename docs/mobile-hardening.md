@@ -76,7 +76,7 @@ Depende de ter um domínio próprio apontado para o deploy (o
   As credenciais ficam em `~/.gradle/gradle.properties` (chmod 600).
   ⚠️ Faça backup do arquivo + senha num gerenciador: sem eles não há como
   publicar atualizações (com Play App Signing dá para resetar a upload key).
-- **`versionCode` precisa ser incrementado a cada upload** (1 → 2 → 3…).
+- **`versionCode` precisa ser incrementado a cada upload** (atual: 3 — próximo upload usa 4).
 - **Toolchain local:** JDK 17 (`/opt/homebrew/opt/openjdk@17`), Android SDK em
   `~/Library/Android/sdk` (platform 35, build-tools 35.0.0, NDK 26.1.10909125).
 - **`@react-native-community/cli` é obrigatório** como devDependency: o Gradle
@@ -86,6 +86,19 @@ Depende de ter um domínio próprio apontado para o deploy (o
   valores no bundle). Antes de gerar um `.aab` de produção, confirme:
   `API_BASE_URL=https://calor-ia-frontend.vercel.app/api` (https obrigatório —
   o Android 9+ bloqueia cleartext e o app não tem exceção configurada).
+- **R8 está ATIVO** (`enableProguardInReleaseBuilds = true` + `shrinkResources`):
+  o dex é minificado/ofuscado e o `mapping.txt` de desofuscação vai **embutido
+  no próprio .aab** (`BUNDLE-METADATA/.../proguard.map`) — nada a subir à parte.
+- **Smoke test de release é obrigatório antes de todo upload**: R8 quebra em
+  runtime (reflection), não em build. Roteiro: abrir app → login → dashboard →
+  registrar refeição → scanner → deep link `caloria://` → logout
+  (`npx react-native run-android --mode release`). Crash de R8 aparece no
+  logcat como ClassNotFoundException/NoSuchMethodError → keep rule específica
+  em `proguard-rules.pro`.
+- **Logs em release**: `console.log/debug/info` são removidos pelo Babel
+  (env `production`); `console.error`/`warn` permanecem de propósito.
+- **Release sem `API_BASE_URL` no .env agora LANÇA na inicialização**
+  (fail-fast) em vez de apontar silenciosamente para localhost.
 
 ### Comando
 
