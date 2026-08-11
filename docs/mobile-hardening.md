@@ -68,9 +68,10 @@ Depende de ter um domínio próprio apontado para o deploy (o
 
 ## 6. Publicação Android (Play Store)
 
-- ⚠️ **Antes de gerar o próximo `.aab`, ver item 7** — `targetSdkVersion` está em
-  34 e a Play pode estar exigindo 35 para apps novos, o que sozinho derruba o
-  upload independente do trabalho de R8 feito neste workstream.
+- ⚠️ **`targetSdkVersion` está em 35 (item 7)** — exigência da Play para apps
+  novos. O bump já foi aplicado, mas o edge-to-edge que ele força no Android 15
+  ainda **não foi verificado em device**: rodar a checagem visual do item 7
+  junto com o smoke test abaixo antes de promover para produção.
 - **applicationId:** `br.com.caloriaoficial.app` — **imutável após a 1ª publicação**.
   O `namespace` do Gradle segue `com.caloria` (pacote das classes Java/R); são
   campos diferentes e podem divergir sem problema.
@@ -132,41 +133,37 @@ cd app/android && ./gradlew bundleRelease
 # saída: app/build/outputs/bundle/release/app-release.aab
 ```
 
-## 7. `targetSdkVersion` atrás do mínimo exigido pela Play (pendente, bloqueia publicação)
+## 7. `targetSdkVersion = 35` — aplicado, verificação visual pendente
 
-`app/android/build.gradle:6` define `targetSdkVersion = 34`, enquanto
-`compileSdkVersion` (linha 5) já está em 35. Confirmado no manifest do
-artefato gerado: `app/android/app/build/intermediates/bundle_manifest/release/processApplicationManifestReleaseForBundle/AndroidManifest.xml`
-traz `android:targetSdkVersion="34"`.
+`app/android/build.gradle:6` está em `targetSdkVersion = 35`, alinhado ao
+`compileSdkVersion`. **A mudança de código está feita; o que continua em
+aberto é a verificação visual do edge-to-edge** descrita abaixo.
 
-A Google Play passou a exigir **API 35** para apps novos e atualizações de
-apps existentes a partir de 31/08/2025 — **confirmar a exigência vigente no
-Play Console antes de agir**, essa data não deve ser tomada como definitiva.
-O agravante aqui: este app **nunca foi publicado com sucesso** (os
-`versionCode` 1 e 2 já foram consumidos por tentativas de upload rejeitadas —
-ver item 6), então ele é enviado como **app novo**, não como atualização de
-app existente. Na prática isso significa que o **próximo upload pode ser
-rejeitado só pelo target API**, independente de todo o trabalho de R8 feito
-no Workstream N para resolver o aviso de "Otimização do app: Baixa" — é hoje
-a causa mais provável de uma nova rejeição.
+Por que foi necessária: a Google Play exige **API 35** para apps novos e
+atualizações a partir de 31/08/2025 (**confirmar a exigência vigente no Play
+Console** — essa data não deve ser tomada como definitiva). Como este app
+**nunca foi publicado com sucesso** (os `versionCode` 1 e 2 foram consumidos
+por tentativas rejeitadas — ver item 6), ele é enviado como **app novo**. Com
+`targetSdk 34` o upload seria rejeitado só pelo target API, independente de
+todo o trabalho de R8 do Workstream N.
 
-**Bumping não é um one-liner:** apps com `targetSdkVersion = 35` passam a ter
-o **edge-to-edge forçado pelo Android 15** — a UI passa a desenhar atrás das
-barras de sistema por padrão (deixa de ser opt-in), o que muda como os
-window insets chegam em toda a árvore. O app já depende de
-`react-native-safe-area-context`, o que deve absorver a maior parte, mas
-precisa de re-checagem visual em: header, tab bar e qualquer UI posicionada
-com `position: absolute` perto do topo/rodapé da tela (ex.: overlays do
-scanner, toasts). Por isso este bump merece ser sua própria mudança, com seu
-próprio orçamento de verificação visual (as duas plataformas, os dois temas)
-— não deve pegar carona numa branch com outro escopo.
+**O que o bump traz junto:** apps com `targetSdkVersion = 35` têm
+**edge-to-edge forçado pelo Android 15** — a UI passa a desenhar atrás das
+barras de sistema por padrão (deixa de ser opt-in), o que muda como os window
+insets chegam em toda a árvore. O app depende de
+`react-native-safe-area-context`, que deve absorver a maior parte, mas isso
+**não foi verificado em device** — nenhum emulador ou aparelho estava
+disponível quando a mudança foi feita.
 
-**Como migrar:**
-1. Confirmar no Play Console a exigência atual de target API para o app
-   (não assumir 35 sem checar — políticas da Play mudam).
-2. Em branch dedicada, subir `targetSdkVersion` para o valor exigido em
-   `app/android/build.gradle:6`.
-3. Rodar o smoke test de release do item 6 inteiro, mais uma passada visual
-   focada em insets: header, tab bar, overlays do scanner, teclado abrindo
-   sobre inputs perto do rodapé — iOS e Android, tema claro e escuro.
-4. Só então consumir o próximo `versionCode` com esse `.aab`.
+**O que falta verificar (antes de promover para produção):**
+1. Header, tab bar e qualquer UI com `position: absolute` perto do topo ou
+   do rodapé (overlays do scanner, toasts) — não podem ficar sob a barra de
+   status nem sob a barra de navegação.
+2. Teclado abrindo sobre inputs perto do rodapé (o `AddMealModal` é o caso
+   mais sensível).
+3. iOS e Android, tema claro e escuro.
+4. O smoke test de release do item 6 inteiro, na mesma passada.
+
+Se aparecer sobreposição, o ajuste é local (`useSafeAreaInsets` no
+componente afetado), não uma reversão do `targetSdk` — voltar para 34
+reintroduz a rejeição na Play.

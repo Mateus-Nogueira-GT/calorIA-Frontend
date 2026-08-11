@@ -3,7 +3,9 @@ buildscript {
         buildToolsVersion = "35.0.0"
         minSdkVersion = 24
         compileSdkVersion = 35
-        targetSdkVersion = 34
+        // A Play Store exige targetSdk 35 (Android 15) para apps novos e
+        // atualizações — upload com 34 é rejeitado na validação.
+        targetSdkVersion = 35
         ndkVersion = "26.1.10909125"
         // Kotlin fica em 1.9.x: o react-native-gradle-plugin do RN 0.76 foi
         // compilado contra ele e quebra com KGP 2.x
