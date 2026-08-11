@@ -57,7 +57,11 @@ react {
 /**
  * Set this to true to Run Proguard on Release builds to minify the Java bytecode.
  */
-def enableProguardInReleaseBuilds = false
+// R8 ativo: minifica/ofusca o dex e habilita shrinkResources. O Play Console
+// acusava "Otimização: Baixa" com isso desligado. Mudança aqui exige repetir
+// o smoke test de release (docs/mobile-hardening.md §6) — R8 quebra em
+// runtime (reflection), nunca em build.
+def enableProguardInReleaseBuilds = true
 
 /**
  * The preferred build flavor of JavaScriptCore (JSC)
@@ -116,6 +120,7 @@ android {
             // A Play Store REJEITA artefatos assinados com o certificado de debug.
             signingConfig signingConfigs.release
             minifyEnabled enableProguardInReleaseBuilds
+            shrinkResources enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
         }
     }
