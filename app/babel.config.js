@@ -27,4 +27,12 @@ module.exports = {
       },
     ],
   ],
+  // O Metro compila com env 'production' quando --dev false (build de release):
+  // console.log/debug/info saem do bundle; error/warn ficam — o AppErrorBoundary
+  // usa console.error e removê-lo cegaria o diagnóstico local via logcat.
+  env: {
+    production: {
+      plugins: [['transform-remove-console', { exclude: ['error', 'warn'] }]],
+    },
+  },
 };
