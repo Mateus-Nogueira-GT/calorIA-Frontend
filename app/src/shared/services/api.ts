@@ -6,7 +6,8 @@ import { useAuthStore } from '@features/auth/store';
 /**
  * URL da API: o .env manda; sem ele, fallback de DEV por plataforma.
  * No emulador Android, `localhost` é o PRÓPRIO emulador — o host da máquina
- * é 10.0.2.2. Build de release deve SEMPRE ter API_BASE_URL https no .env
+ * é 10.0.2.2. Em release, a ausência de API_BASE_URL lança na inicialização
+ * (fail-fast) — o fallback de dev só existe sob __DEV__.
  * (o ATS do iOS bloqueia http e o app ficaria inoperante).
  */
 export function resolveBaseUrl(
@@ -14,7 +15,12 @@ export function resolveBaseUrl(
   platform: string = Platform.OS,
 ): string {
   if (envUrl) return envUrl;
-  return platform === 'android' ? 'http://10.0.2.2:3000' : 'http://localhost:3000';
+  if (typeof __DEV__ !== 'undefined' && __DEV__) {
+    return platform === 'android' ? 'http://10.0.2.2:3000' : 'http://localhost:3000';
+  }
+  throw new Error(
+    'API_BASE_URL ausente no build de release — configure app/.env antes de gerar o bundle.',
+  );
 }
 
 const BASE_URL = resolveBaseUrl(API_BASE_URL);
