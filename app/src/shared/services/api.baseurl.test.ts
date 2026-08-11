@@ -16,4 +16,19 @@ describe('resolveBaseUrl', () => {
     expect(resolveBaseUrl(undefined, 'ios')).toBe('http://localhost:3000');
     expect(resolveBaseUrl(undefined, 'web')).toBe('http://localhost:3000');
   });
+
+  it('release (__DEV__=false) sem env lança em vez de apontar para localhost', () => {
+    const g = globalThis as { __DEV__?: boolean };
+    g.__DEV__ = false;
+    try {
+      expect(() => resolveBaseUrl(undefined, 'android')).toThrow(/API_BASE_URL/);
+      expect(() => resolveBaseUrl('', 'ios')).toThrow(/API_BASE_URL/);
+      // com env presente, release funciona normalmente
+      expect(resolveBaseUrl('https://caloria.vercel.app/api', 'android')).toBe(
+        'https://caloria.vercel.app/api',
+      );
+    } finally {
+      g.__DEV__ = true;
+    }
+  });
 });
