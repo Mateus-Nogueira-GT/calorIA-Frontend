@@ -89,7 +89,15 @@ android {
         applicationId "br.com.caloriaoficial.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 3
+        // O versionCode é QUEIMADO assim que o Play aceita o upload — mesmo que
+        // a versão nunca seja lançada e mesmo que você a descarte. Reenviar um
+        // número já usado faz o Play ignorar o arquivo em silêncio: a versão fica
+        // sem pacote e o console acusa "não adiciona nem remove pacotes de apps"
+        // + "não permite que usuários existentes atualizem".
+        // Conferir os números já gastos em: Versão > Explorador de pacotes de apps.
+        // Para subir sem editar este arquivo:
+        //   ./gradlew bundleRelease -PcaloriaVersionCode=5
+        versionCode (project.findProperty('caloriaVersionCode') ?: 4) as Integer
         versionName "1.0"
     }
     signingConfigs {
