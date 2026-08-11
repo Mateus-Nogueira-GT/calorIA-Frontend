@@ -126,6 +126,40 @@ android {
     }
 }
 
+// O throw em resolveBaseUrl (api.ts) já barra o app SEM API_BASE_URL — mas só
+// no device, na abertura, sem UI nenhuma. Este task antecipa a falha para a
+// máquina de build: se app/.env não tiver uma linha ATIVA (não comentada) de
+// API_BASE_URL com valor https://, o bundleRelease para aqui, com mensagem
+// acionável, em vez de gerar um .aab que morre na inicialização.
+// Só se aplica ao release: dev usa http/localhost legitimamente.
+tasks.register("verifyReleaseApiBaseUrl") {
+    doLast {
+        def envFile = file("${rootProject.projectDir}/../.env")
+        def hasValidUrl = false
+        if (envFile.exists()) {
+            envFile.eachLine { line ->
+                def trimmed = line.trim()
+                if (trimmed.startsWith("API_BASE_URL=") && trimmed.contains("https://")) {
+                    hasValidUrl = true
+                }
+            }
+        }
+        if (!hasValidUrl) {
+            throw new GradleException(
+                "app/.env sem API_BASE_URL ativo (https://...) — obrigatório para build de " +
+                "release. Descomente/preencha API_BASE_URL=https://SEU-DEPLOY.vercel.app/api " +
+                "em app/.env antes de rodar bundleRelease."
+            )
+        }
+    }
+}
+
+afterEvaluate {
+    tasks.matching { it.name == "createBundleReleaseJsAndAssets" }.configureEach {
+        dependsOn "verifyReleaseApiBaseUrl"
+    }
+}
+
 dependencies {
     // The version of react-native is set by the React Native Gradle Plugin
     implementation("com.facebook.react:react-android")

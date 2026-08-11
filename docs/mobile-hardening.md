@@ -88,7 +88,8 @@ Depende de ter um domínio próprio apontado para o deploy (o
   o Android 9+ bloqueia cleartext e o app não tem exceção configurada).
 - **R8 está ATIVO** (`enableProguardInReleaseBuilds = true` + `shrinkResources`):
   o dex é minificado/ofuscado e o `mapping.txt` de desofuscação vai **embutido
-  no próprio .aab** (`BUNDLE-METADATA/.../proguard.map`) — nada a subir à parte.
+  no próprio .aab** (`BUNDLE-METADATA/.../proguard.map`) — não precisa subir
+  separado no Play Console. Mas a cópia local não é permanente, ver abaixo.
 - **Smoke test de release é obrigatório antes de todo upload**: R8 quebra em
   runtime (reflection), não em build. Roteiro: abrir app → login → dashboard →
   registrar refeição → scanner → deep link `caloria://` → logout
@@ -96,9 +97,28 @@ Depende de ter um domínio próprio apontado para o deploy (o
   logcat como ClassNotFoundException/NoSuchMethodError → keep rule específica
   em `proguard-rules.pro`.
 - **Logs em release**: `console.log/debug/info` são removidos pelo Babel
-  (env `production`); `console.error`/`warn` permanecem de propósito.
+  (bloco `env.production` do `app/babel.config.js`) — isso vale para o release
+  Android **e também para o build web de produção**, já que o `babel-loader`
+  do `app/web/webpack.config.js` não passa `configFile: false` e portanto
+  herda o mesmo `babel.config.js`, e o Vercel builda com `NODE_ENV=production`.
+  Na prática, hoje isso não remove nenhum log próprio: `app/src` tem exatamente
+  um `console.*` (o `console.error` do `AppErrorBoundary`, deixado de propósito
+  fora do strip); tudo que a regra remove hoje vem de `node_modules` — é defesa
+  contra log futuro, não limpeza de log existente.
 - **Release sem `API_BASE_URL` no .env agora LANÇA na inicialização**
-  (fail-fast) em vez de apontar silenciosamente para localhost.
+  (fail-fast) em vez de apontar silenciosamente para localhost. Além disso, o
+  `bundleRelease` tem uma checagem em build-time (task `verifyReleaseApiBaseUrl`
+  em `app/android/app/build.gradle`, só para release): sem uma linha ATIVA
+  (não comentada) `API_BASE_URL=https://...` no `app/.env`, o Gradle falha
+  antes de empacotar o JS, com mensagem acionável — a máquina de build pega o
+  problema antes do device.
+- **`mapping.txt` (desofuscação do R8) some no próximo build**: ele vai
+  embutido no `.aab` (`BUNDLE-METADATA/.../proguard.map`), mas o arquivo local
+  `app/android/app/build/outputs/mapping/release/mapping.txt` não é
+  versionado — o próximo `bundleRelease` sobrescreve. Depois disso, o `.aab`
+  já enviado é a única cópia. Recomenda-se arquivar esse arquivo por
+  `versionCode` (ex.: copiar para `mapping-v<N>.txt` num local fora do
+  `.gitignore` antes de subir a próxima versão).
 
 ### Comando
 

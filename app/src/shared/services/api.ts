@@ -15,7 +15,7 @@ export function resolveBaseUrl(
   platform: string = Platform.OS,
 ): string {
   if (envUrl) return envUrl;
-  if (__DEV__) {
+  if (typeof __DEV__ !== 'undefined' && __DEV__) {
     return platform === 'android' ? 'http://10.0.2.2:3000' : 'http://localhost:3000';
   }
   throw new Error(
