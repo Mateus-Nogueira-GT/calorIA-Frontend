@@ -82,7 +82,7 @@ Depende de ter um domínio próprio apontado para o deploy (o
   As credenciais ficam em `~/.gradle/gradle.properties` (chmod 600).
   ⚠️ Faça backup do arquivo + senha num gerenciador: sem eles não há como
   publicar atualizações (com Play App Signing dá para resetar a upload key).
-- **`versionCode` precisa ser incrementado a cada upload** (atual: 3 — próximo upload usa 4).
+- **`versionCode` precisa ser incrementado a cada upload** (atual: 6 — próximo upload usa 7).
 - **Toolchain local:** JDK 17 (`/opt/homebrew/opt/openjdk@17`), Android SDK em
   `~/Library/Android/sdk` (platform 35, build-tools 35.0.0, NDK 26.1.10909125).
 - **`@react-native-community/cli` é obrigatório** como devDependency: o Gradle
@@ -149,12 +149,13 @@ passou a pedir 36, com a mensagem "O app precisa segmentar Android 16 (nível
 36 da API) ou mais recentes"). Como o app **nunca foi publicado com sucesso**,
 ele é enviado como **app novo**, e a exigência vale de imediato.
 
-**Toolchain:** `compileSdk` precisa ser >= `targetSdk`. O AGP 8.6 (fixado pelo
-RN 0.76) não foi testado com `compileSdk 36` e emite o aviso
+**Toolchain:** `compileSdk` precisa ser >= `targetSdk`. O AGP fixado pelo RN
+(8.7.2 na 0.77.3) não foi testado com `compileSdk 36` e emite o aviso
 `We recommend using a newer Android Gradle plugin to use compileSdk = 36` a
-cada build. **O aviso é esperado e foi deixado à vista de propósito** — ele
-some quando o RN for atualizado para uma versão com AGP mais novo. Não
-suprimir com `android.suppressUnsupportedCompileSdk` sem revalidar o release.
+cada build. **O aviso é esperado e foi deixado à vista de propósito** — ele só
+encerra com AGP >= 8.9; a migração para o RN 0.77 (item 8) **não** o eliminou,
+ao contrário do que se previa. Não suprimir com
+`android.suppressUnsupportedCompileSdk` sem revalidar o release.
 A plataforma `android-36` do SDK é baixada automaticamente pelo Gradle na
 primeira build (as licenças já estão aceitas em `~/Library/Android/sdk/licenses`).
 
@@ -184,3 +185,71 @@ então não há nada que o sistema vá passar por cima.
 Se aparecer sobreposição, o ajuste é local (`useSafeAreaInsets` no
 componente afetado), não uma reversão do `targetSdk` — baixar o target
 reintroduz a rejeição na Play.
+
+## 8. Páginas de 16 KB — resolvido com a migração para RN 0.77.3 (Workstream O)
+
+O Play recusa o `.aab` com *"Seu app não é compatível com tamanhos de página de
+16 KB de memória"*. Desde 01/11/2025 o Google exige que apps que segmentam
+Android 15+ funcionem em aparelhos com página de memória de 16 KB — e este app
+segmenta 36.
+
+**Medição (não é suposição).** Todas as 13 bibliotecas nativas do `.aab` têm
+segmentos `LOAD` alinhados em `0x1000` (4 KB); o exigido é `0x4000` (16 KB).
+Para reproduzir:
+
+```bash
+R="$ANDROID_HOME/ndk/26.1.10909125/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-readelf"
+unzip -q -o app-release.aab 'base/lib/arm64-v8a/*'
+for f in base/lib/arm64-v8a/*.so; do
+  echo "$f: $("$R" -l "$f" | awk '/LOAD/ {print $NF}' | sort -u)"
+done
+```
+
+**Por que não dá para corrigir por configuração.** Só 4 das 13 libs são
+compiladas aqui (`libappmodules`, `librnscreens`, `libreact_codegen_*`) — essas
+um NDK r27+ resolveria. As outras 9 (`libreactnative`, `libhermes`,
+`libhermestooling`, `libjsi`, `libfbjni`, `libc++_shared`, e as três do Fresco)
+vêm **prontas dentro dos AARs**. Confirmado na origem: o
+`libreactnative.so` dentro de
+`~/.gradle/caches/.../react-android/0.76.9/react-android-0.76.9-release.aar`
+já vem em `0x1000`. Nenhuma flag de build local altera um binário pré-compilado.
+
+**O caminho é atualizar o React Native.** O suporte a 16 KB entrou no
+**RN 0.77**; a 0.76.x não recebeu backport. O projeto está em **0.76.9**.
+
+**Atenção ao planejar:** é migração, não bump. A superfície inclui a New
+Architecture, os 4 pacotes nativos autolinkados e o toolchain inteiro (Gradle,
+AGP, Kotlin, NDK). Merece spec e plano próprios, e o smoke test dos itens 6 e 7
+roda depois — não antes.
+
+### Resolução (12/08/2026, Workstream O)
+
+Migrado para **RN 0.77.3** + **NDK 27.1.12297006** + **Kotlin 2.0.21**, com
+`react-native-screens` **4.12.0**. Auditoria do `.aab` v6: **as 13 libs, nas
+duas ABIs de 64 bits (`arm64-v8a` e `x86_64`), em `0x4000`** — inclusive as três
+do Fresco, que eram o risco em aberto. O comando de medição acima continua
+válido para auditar releases futuros.
+
+**Por que o screens ficou em 4.12.0 e não numa 4.13+.** A 4.13.1 introduziu os
+módulos `fabric/BottomTabs*` e `fabric/gamma/*`, cujo codegen o
+`@react-native/babel-plugin-codegen` do RN 0.77 não parseia
+(`Could not find component config for native component`). O efeito é
+**exclusivo do build web**: o Metro empacota os mesmos arquivos sem reclamar, e
+o `npm run build:web` falha com 6 erros. Verificado que não é o alias
+`react-native → react-native-web` do webpack — removê-lo não muda nada — e que
+os módulos culpados entram exatamente na 4.13.1 (as versões 4.5.0–4.12.0 não os
+têm). Ao subir o screens, rodar `npm run build:web` antes de assumir sucesso: o
+build Android sozinho não detecta essa classe de quebra.
+
+**Duas correções de expectativa que esta migração produziu:**
+
+- O aviso do AGP (item 7) **não** sumiu: o RN 0.77 fixa AGP **8.7.2**, e o aviso
+  só encerra com AGP >= 8.9. Fica para um upgrade futuro do RN.
+- O AsyncStorage segue na série 2.x, mas agora **por escolha** (a API da 3.x é
+  equivalente), não por incompatibilidade — o Kotlin 2.0.21 destravou isso.
+
+**Nota de auditoria:** no `usage.txt`, o R8 lista `PackageList` como parcialmente
+removido — são apenas o construtor sobrecarregado e os campos `mConfig`/
+`application`, não usados. A classe e o `getPackages()` sobrevivem (conferir no
+`mapping.txt`), e os 4 pacotes autolinkados continuam registrados. Ver
+`PackageList` no `usage.txt` **não** indica autolinking quebrado.
