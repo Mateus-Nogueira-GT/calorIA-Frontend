@@ -96,8 +96,8 @@ android {
         // + "não permite que usuários existentes atualizem".
         // Conferir os números já gastos em: Versão > Explorador de pacotes de apps.
         // Para subir sem editar este arquivo:
-        //   ./gradlew bundleRelease -PcaloriaVersionCode=5
-        versionCode (project.findProperty('caloriaVersionCode') ?: 5) as Integer
+        //   ./gradlew bundleRelease -PcaloriaVersionCode=6
+        versionCode (project.findProperty('caloriaVersionCode') ?: 6) as Integer
         versionName "1.0"
     }
     signingConfigs {

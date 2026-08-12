@@ -69,15 +69,15 @@ Expected: `API_BASE_URL=https://calor-ia-frontend.vercel.app/api`. Diferente dis
 
 **Interfaces:**
 - Consumes: branch da Task 1.
-- Produces: `node_modules` com RN 0.77.3 — insumo do build da Task 4. Versões exatas que a Task 4 assume: `react-native@0.77.3`, `react-native-screens@4.13.1`, `@react-native-community/cli@^16.0.0`, `@react-native/*@^0.77.3`.
+- Produces: `node_modules` com RN 0.77.3 — insumo do build da Task 4. Versões exatas que a Task 4 assume: `react-native@0.77.3`, `react-native-screens@4.12.0`, `@react-native-community/cli@^16.0.0`, `@react-native/*@^0.77.3`.
 
 - [ ] **Step 1: Aplicar os bumps**
 
-O pin exato do screens em **4.13.1** é deliberado: a janela compatível com RN 0.77 é 4.5–4.13 (tabela Fabric oficial: 4.14.0+ exige RN 0.79); um range `^4.5.0` resolveria para 4.26+, que exige RN 0.84+.
+O pin exato do screens em **4.12.0** é deliberado. Um range `^4.5.0` resolveria para 4.26+, que exige RN 0.84+. E a 4.13.1 — pin original desta spec — introduziu `fabric/BottomTabs*` e `fabric/gamma/*`, cujo codegen o babel-plugin-codegen do RN 0.77 não parseia: quebra o `build:web` com 6 erros, embora o Metro empacote sem reclamar. A 4.12.0 é a mais nova sem esses módulos.
 
 ```bash
 cd /Users/mateusnascimentonogueiradasilva/CalorIA/app
-npm i react-native@0.77.3 react-native-screens@4.13.1 --save-exact
+npm i react-native@0.77.3 react-native-screens@4.12.0 --save-exact
 npm i -D @react-native/babel-preset@^0.77.3 @react-native/eslint-config@^0.77.3 \
   @react-native/metro-config@^0.77.3 @react-native/typescript-config@^0.77.3 \
   @react-native-community/cli@^16.0.0
@@ -212,7 +212,7 @@ Rodar em FOREGROUND com timeout de pelo menos 30 minutos (1800000 ms). Expected:
 
 | Sintoma | Causa provável | Ação |
 |---|---|---|
-| Erro de codegen citando `rnscreens`/`RNSScreen` | screens incompatível | Conferir que `node_modules/react-native-screens/package.json` marca exatamente `4.13.1` (Task 2 pina); se o erro persistir com a versão certa, testar a borda inferior da janela (`4.5.0`) e documentar |
+| Erro de codegen citando `rnscreens`/`RNSScreen` | screens incompatível | Conferir que `node_modules/react-native-screens/package.json` marca exatamente `4.12.0` (Task 2 pina); se o erro persistir com a versão certa, testar a borda inferior da janela (`4.5.0`) e documentar |
 | Erro Kotlin em `async-storage`/`image-picker`/`safe-area` | lib antiga vs KGP 2 | Anotar a lib e o erro exatos; subir SÓ essa lib para a menor versão que compile; documentar no relatório |
 | `CMake`/`ninja`/`No space left on device` | disco | Reportar — o gate da Task 1 falhou em prever; usuário decide |
 | Erro do AGP sobre compileSdk | aviso esperado virou erro | NÃO usar `suppressUnsupportedCompileSdk` sem reportar antes |

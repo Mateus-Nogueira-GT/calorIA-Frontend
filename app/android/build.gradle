@@ -2,10 +2,10 @@ buildscript {
     ext {
         buildToolsVersion = "35.0.0"
         minSdkVersion = 24
-        // compileSdk precisa ser >= targetSdk. O AGP 8.6 (fixado pelo RN 0.76)
-        // avisa "tested up to compileSdk = 35" a cada build — o aviso é
-        // esperado e foi deixado à vista de propósito: ele some quando o RN
-        // for atualizado para uma versão com AGP mais novo. NÃO suprimir com
+        // compileSdk precisa ser >= targetSdk. O AGP fixado pelo RN 0.77 (8.7.x)
+        // ainda avisa "tested up to compileSdk = 35" a cada build — o aviso é
+        // esperado e foi deixado à vista de propósito: só some com AGP >= 8.9,
+        // que virá num upgrade futuro do RN. NÃO suprimir com
         // android.suppressUnsupportedCompileSdk sem revalidar o release.
         compileSdkVersion = 36
         // A Play Store exige que o targetSdk esteja no máximo 1 ano atrás da
@@ -13,13 +13,16 @@ buildscript {
         // (Android 16) — com 35 o upload é recusado na validação da versão.
         // Confirmar a exigência vigente no Play Console: essa régua se move.
         targetSdkVersion = 36
-        ndkVersion = "26.1.10909125"
-        // Kotlin fica em 1.9.x: o react-native-gradle-plugin do RN 0.76 foi
-        // compilado contra ele e quebra com KGP 2.x
-        // ("Found interface KotlinTopLevelExtension, but class was expected").
-        // Por isso o AsyncStorage está fixado na série 2.x — a 3.x exige
-        // Kotlin >= 2.1 (ver docs/mobile-hardening.md).
-        kotlinVersion = "1.9.25"
+        // NDK r27+ é o que alinha a páginas de 16 KB as libs compiladas AQUI
+        // (appmodules, rnscreens, codegen). As pré-compiladas vêm alinhadas dos
+        // AARs do RN 0.77+. Baixar o r26 daqui reintroduz a recusa na Play —
+        // ver docs/mobile-hardening.md item 8.
+        ndkVersion = "27.1.12297006"
+        // Kotlin 2.0.21 é o do template do RN 0.77 (a trava em 1.9.x era do
+        // react-native-gradle-plugin do RN 0.76). O AsyncStorage permanece na
+        // série 2.x por escolha — a API é idêntica à 3.x —, não mais por
+        // incompatibilidade de Kotlin.
+        kotlinVersion = "2.0.21"
     }
     repositories {
         google()
