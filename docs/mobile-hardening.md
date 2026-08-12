@@ -184,3 +184,45 @@ então não há nada que o sistema vá passar por cima.
 Se aparecer sobreposição, o ajuste é local (`useSafeAreaInsets` no
 componente afetado), não uma reversão do `targetSdk` — baixar o target
 reintroduz a rejeição na Play.
+
+## 8. Páginas de 16 KB — bloqueia publicação, exige upgrade do React Native
+
+O Play recusa o `.aab` com *"Seu app não é compatível com tamanhos de página de
+16 KB de memória"*. Desde 01/11/2025 o Google exige que apps que segmentam
+Android 15+ funcionem em aparelhos com página de memória de 16 KB — e este app
+segmenta 36.
+
+**Medição (não é suposição).** Todas as 13 bibliotecas nativas do `.aab` têm
+segmentos `LOAD` alinhados em `0x1000` (4 KB); o exigido é `0x4000` (16 KB).
+Para reproduzir:
+
+```bash
+R="$ANDROID_HOME/ndk/26.1.10909125/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-readelf"
+unzip -q -o app-release.aab 'base/lib/arm64-v8a/*'
+for f in base/lib/arm64-v8a/*.so; do
+  echo "$f: $("$R" -l "$f" | awk '/LOAD/ {print $NF}' | sort -u)"
+done
+```
+
+**Por que não dá para corrigir por configuração.** Só 4 das 13 libs são
+compiladas aqui (`libappmodules`, `librnscreens`, `libreact_codegen_*`) — essas
+um NDK r27+ resolveria. As outras 9 (`libreactnative`, `libhermes`,
+`libhermestooling`, `libjsi`, `libfbjni`, `libc++_shared`, e as três do Fresco)
+vêm **prontas dentro dos AARs**. Confirmado na origem: o
+`libreactnative.so` dentro de
+`~/.gradle/caches/.../react-android/0.76.9/react-android-0.76.9-release.aar`
+já vem em `0x1000`. Nenhuma flag de build local altera um binário pré-compilado.
+
+**O caminho é atualizar o React Native.** O suporte a 16 KB entrou no
+**RN 0.77**; a 0.76.x não recebeu backport. O projeto está em **0.76.9**.
+
+**O que o upgrade provavelmente destrava junto** (ver itens 6 e 7): o RN 0.77+
+traz AGP mais novo, o que deve encerrar o aviso `AGP tested up to compileSdk = 35`,
+e possivelmente libera o Kotlin da série 1.9 — o que por sua vez remove a trava
+do AsyncStorage em 2.x. Ou seja, três dívidas deste documento se resolvem no
+mesmo movimento.
+
+**Atenção ao planejar:** é migração, não bump. A superfície inclui a New
+Architecture, os 4 pacotes nativos autolinkados e o toolchain inteiro (Gradle,
+AGP, Kotlin, NDK). Merece spec e plano próprios, e o smoke test dos itens 6 e 7
+roda depois — não antes.
