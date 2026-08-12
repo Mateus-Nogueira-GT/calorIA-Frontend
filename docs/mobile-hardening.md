@@ -68,10 +68,12 @@ Depende de ter um domínio próprio apontado para o deploy (o
 
 ## 6. Publicação Android (Play Store)
 
-- ⚠️ **`targetSdkVersion` está em 35 (item 7)** — exigência da Play para apps
-  novos. O bump já foi aplicado, mas o edge-to-edge que ele força no Android 15
-  ainda **não foi verificado em device**: rodar a checagem visual do item 7
-  junto com o smoke test abaixo antes de promover para produção.
+- ⚠️ **`targetSdkVersion` está em 36 / Android 16 (item 7)** — exigência da
+  Play, que **já mudou duas vezes** durante a publicação deste app: confirme a
+  régua vigente no console antes de gerar o `.aab`. O bump está aplicado, mas o
+  edge-to-edge que ele força ainda **não foi verificado em device**: rodar a
+  checagem visual do item 7 junto com o smoke test abaixo antes de promover
+  para produção.
 - **applicationId:** `br.com.caloriaoficial.app` — **imutável após a 1ª publicação**.
   O `namespace` do Gradle segue `com.caloria` (pacote das classes Java/R); são
   campos diferentes e podem divergir sem problema.
@@ -133,27 +135,42 @@ cd app/android && ./gradlew bundleRelease
 # saída: app/build/outputs/bundle/release/app-release.aab
 ```
 
-## 7. `targetSdkVersion = 35` — aplicado, verificação visual pendente
+## 7. `targetSdkVersion = 36` — aplicado, verificação visual pendente
 
-`app/android/build.gradle:6` está em `targetSdkVersion = 35`, alinhado ao
-`compileSdkVersion`. **A mudança de código está feita; o que continua em
-aberto é a verificação visual do edge-to-edge** descrita abaixo.
+`app/android/build.gradle` está em `compileSdkVersion = 36` e
+`targetSdkVersion = 36` (Android 16). **A mudança de código está feita; o que
+continua em aberto é a verificação visual do edge-to-edge** descrita abaixo.
 
-Por que foi necessária: a Google Play exige **API 35** para apps novos e
-atualizações a partir de 31/08/2025 (**confirmar a exigência vigente no Play
-Console** — essa data não deve ser tomada como definitiva). Como este app
-**nunca foi publicado com sucesso** (os `versionCode` 1 e 2 foram consumidos
-por tentativas rejeitadas — ver item 6), ele é enviado como **app novo**. Com
-`targetSdk 34` o upload seria rejeitado só pelo target API, independente de
-todo o trabalho de R8 do Workstream N.
+**A régua do Play se move — confirme sempre no console.** O requisito é que o
+target API esteja no máximo **um ano atrás** da versão mais recente do
+Android. Este app já foi recusado duas vezes por isso: primeiro com
+`targetSdk 34` (o console pedia 35), depois com `targetSdk 35` (o console
+passou a pedir 36, com a mensagem "O app precisa segmentar Android 16 (nível
+36 da API) ou mais recentes"). Como o app **nunca foi publicado com sucesso**,
+ele é enviado como **app novo**, e a exigência vale de imediato.
 
-**O que o bump traz junto:** apps com `targetSdkVersion = 35` têm
-**edge-to-edge forçado pelo Android 15** — a UI passa a desenhar atrás das
-barras de sistema por padrão (deixa de ser opt-in), o que muda como os window
-insets chegam em toda a árvore. O app depende de
-`react-native-safe-area-context`, que deve absorver a maior parte, mas isso
-**não foi verificado em device** — nenhum emulador ou aparelho estava
-disponível quando a mudança foi feita.
+**Toolchain:** `compileSdk` precisa ser >= `targetSdk`. O AGP 8.6 (fixado pelo
+RN 0.76) não foi testado com `compileSdk 36` e emite o aviso
+`We recommend using a newer Android Gradle plugin to use compileSdk = 36` a
+cada build. **O aviso é esperado e foi deixado à vista de propósito** — ele
+some quando o RN for atualizado para uma versão com AGP mais novo. Não
+suprimir com `android.suppressUnsupportedCompileSdk` sem revalidar o release.
+A plataforma `android-36` do SDK é baixada automaticamente pelo Gradle na
+primeira build (as licenças já estão aceitas em `~/Library/Android/sdk/licenses`).
+
+**O que o bump traz junto:** apps com `targetSdkVersion = 36` têm
+**edge-to-edge forçado pelo Android 15/16 sem opt-out** — a UI desenha atrás
+das barras de sistema por padrão, o que muda como os window insets chegam em
+toda a árvore (no Android 16 a escotilha de saída
+`windowOptOutEdgeToEdgeEnforcement` deixa de valer). O app depende de
+`react-native-safe-area-context` — 13 das 37 telas o usam diretamente, o resto
+herda os insets dos headers/tab bar do React Navigation — mas isso **não foi
+verificado em device**: nenhum emulador ou aparelho estava disponível.
+
+Um segundo efeito do API 36 **não se aplica aqui**: restrições de orientação e
+redimensionamento passam a ser ignoradas em telas grandes (>600dp). O
+`AndroidManifest.xml` não declara `screenOrientation` nem `resizeableActivity`,
+então não há nada que o sistema vá passar por cima.
 
 **O que falta verificar (antes de promover para produção):**
 1. Header, tab bar e qualquer UI com `position: absolute` perto do topo ou
@@ -165,5 +182,5 @@ disponível quando a mudança foi feita.
 4. O smoke test de release do item 6 inteiro, na mesma passada.
 
 Se aparecer sobreposição, o ajuste é local (`useSafeAreaInsets` no
-componente afetado), não uma reversão do `targetSdk` — voltar para 34
+componente afetado), não uma reversão do `targetSdk` — baixar o target
 reintroduz a rejeição na Play.

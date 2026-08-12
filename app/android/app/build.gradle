@@ -97,7 +97,7 @@ android {
         // Conferir os números já gastos em: Versão > Explorador de pacotes de apps.
         // Para subir sem editar este arquivo:
         //   ./gradlew bundleRelease -PcaloriaVersionCode=5
-        versionCode (project.findProperty('caloriaVersionCode') ?: 4) as Integer
+        versionCode (project.findProperty('caloriaVersionCode') ?: 5) as Integer
         versionName "1.0"
     }
     signingConfigs {

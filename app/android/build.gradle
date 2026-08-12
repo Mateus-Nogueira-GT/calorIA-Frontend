@@ -2,10 +2,17 @@ buildscript {
     ext {
         buildToolsVersion = "35.0.0"
         minSdkVersion = 24
-        compileSdkVersion = 35
-        // A Play Store exige targetSdk 35 (Android 15) para apps novos e
-        // atualizações — upload com 34 é rejeitado na validação.
-        targetSdkVersion = 35
+        // compileSdk precisa ser >= targetSdk. O AGP 8.6 (fixado pelo RN 0.76)
+        // avisa "tested up to compileSdk = 35" a cada build — o aviso é
+        // esperado e foi deixado à vista de propósito: ele some quando o RN
+        // for atualizado para uma versão com AGP mais novo. NÃO suprimir com
+        // android.suppressUnsupportedCompileSdk sem revalidar o release.
+        compileSdkVersion = 36
+        // A Play Store exige que o targetSdk esteja no máximo 1 ano atrás da
+        // versão mais recente do Android. Em 08/2026 isso significa API 36
+        // (Android 16) — com 35 o upload é recusado na validação da versão.
+        // Confirmar a exigência vigente no Play Console: essa régua se move.
+        targetSdkVersion = 36
         ndkVersion = "26.1.10909125"
         // Kotlin fica em 1.9.x: o react-native-gradle-plugin do RN 0.76 foi
         // compilado contra ele e quebra com KGP 2.x
