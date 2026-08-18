@@ -2,7 +2,7 @@ import React from 'react';
 import { render, fireEvent } from '@testing-library/react-native';
 import { ProfileScreen } from './ProfileScreen';
 import { useAuthStore } from '@features/auth/store';
-import { Alert } from 'react-native';
+import { Alert, Linking } from 'react-native';
 import type { AlertButton } from 'react-native';
 import { profileService } from '@shared/services/profile.service';
 
@@ -90,6 +90,17 @@ describe('ProfileScreen', () => {
     segundo.find((b) => b.text === 'Excluir conta')?.onPress?.();
     expect(profileService.deleteAccount).toHaveBeenCalledTimes(1);
 
+    spy.mockRestore();
+  });
+
+  it('abre a política de privacidade no navegador', async () => {
+    const spy = jest.spyOn(Linking, 'openURL').mockResolvedValue(true);
+    const navigation = { navigate: jest.fn() } as never;
+    const { findByTestId } = render(<ProfileScreen navigation={navigation} route={{} as never} />);
+
+    fireEvent.press(await findByTestId('privacy-policy-btn'));
+
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining('politica-de-privacidade'));
     spy.mockRestore();
   });
 });
