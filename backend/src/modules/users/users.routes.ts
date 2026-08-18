@@ -1,4 +1,5 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
+import { z } from 'zod'
 import type { JwtPayload } from '../../shared/types.js'
 import {
   errorSchema,
@@ -6,7 +7,12 @@ import {
   updateProfileBodySchema,
   uploadAvatarBodySchema,
 } from './users.schemas.js'
-import { getUserProfile, updateUserProfile, uploadUserAvatar } from './users.service.js'
+import {
+  deleteUserAccount,
+  getUserProfile,
+  updateUserProfile,
+  uploadUserAvatar,
+} from './users.service.js'
 
 const usersRoutes: FastifyPluginAsyncZod = async (fastify) => {
   // Todas as rotas deste módulo exigem autenticação via JWT
@@ -103,6 +109,34 @@ const usersRoutes: FastifyPluginAsyncZod = async (fastify) => {
       const { sub: userId } = request.user as JwtPayload
       const profile = await uploadUserAvatar(fastify, userId, request.body.image)
       return reply.send(profile)
+    },
+  )
+
+  /**
+   * DELETE /users/me
+   * Exclui permanentemente a conta e todos os dados do usuário autenticado.
+   * Exigência da política do Google Play para apps com criação de conta.
+   */
+  fastify.delete(
+    '/me',
+    {
+      schema: {
+        tags: ['Users'],
+        summary: 'Excluir minha conta',
+        description:
+          'Exclui permanentemente a conta e todos os dados associados. Ação irreversível.',
+        security: [{ bearerAuth: [] }],
+        response: {
+          204: z.null(),
+          401: errorSchema,
+          502: errorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { sub: userId } = request.user as JwtPayload
+      await deleteUserAccount(fastify, userId)
+      return reply.status(204).send(null)
     },
   )
 }

@@ -64,5 +64,16 @@ export function useProfile() {
     try { await authService.logout(); } finally { clearToken(); }
   }, [clearToken]);
 
-  return { user, weeklyData, streak, loading, handleLogout };
+  /**
+   * Exclui a conta. Diferente do logout, aqui um erro NÃO pode cair no
+   * `finally` limpando o token: se a exclusão falhou, a conta continua viva e
+   * derrubar a sessão faria o usuário acreditar que ela foi apagada. Só limpa
+   * o token quando o backend confirma.
+   */
+  const handleDeleteAccount = useCallback(async () => {
+    await profileService.deleteAccount();
+    clearToken();
+  }, [clearToken]);
+
+  return { user, weeklyData, streak, loading, handleLogout, handleDeleteAccount };
 }

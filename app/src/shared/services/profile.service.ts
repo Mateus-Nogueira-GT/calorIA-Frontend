@@ -26,4 +26,10 @@ export const profileService = {
   /** Envia a foto (data URL base64) e retorna o perfil com a nova avatar_url. */
   uploadAvatar: (image: string) =>
     api.post<BackendProfile>('/users/me/avatar', { image }).then((r) => r.data),
+
+  /**
+   * Exclui a conta permanentemente. Irreversível: o backend remove o usuário e,
+   * por cascata, todos os dados. Não há logout depois — a sessão morre junto.
+   */
+  deleteAccount: () => api.delete<void>('/users/me').then(() => undefined),
 };
