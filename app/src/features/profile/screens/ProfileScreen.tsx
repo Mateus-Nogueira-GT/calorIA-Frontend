@@ -24,7 +24,7 @@ const coachPersonalityLabels = {
 } as const;
 
 export function ProfileScreen({ navigation }: TabScreenProps<'Profile'>): React.JSX.Element {
-  const { user, weeklyData, streak, loading, handleLogout } = useProfile();
+  const { user, weeklyData, streak, loading, handleLogout, handleDeleteAccount } = useProfile();
   const profilePreferences = useAuthStore((state) => state.profilePreferences);
 
   function confirmLogout() {
@@ -32,6 +32,40 @@ export function ProfileScreen({ navigation }: TabScreenProps<'Profile'>): React.
       { text: 'Cancelar', style: 'cancel' },
       { text: 'Sair', style: 'destructive', onPress: handleLogout },
     ]);
+  }
+
+  async function deleteAccount() {
+    try {
+      await handleDeleteAccount();
+    } catch {
+      Alert.alert(
+        'Não foi possível excluir',
+        'Sua conta continua ativa. Tente novamente em instantes.',
+      );
+    }
+  }
+
+  /**
+   * Dois passos de propósito: a exclusão é irreversível e fica ao lado do
+   * "Sair" no menu. Um toque acidental não pode apagar a conta.
+   */
+  function confirmDeleteAccount() {
+    Alert.alert(
+      'Excluir conta',
+      'Isso apaga permanentemente seu perfil, refeições, dietas e histórico. Não dá para desfazer.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Continuar',
+          style: 'destructive',
+          onPress: () =>
+            Alert.alert('Tem certeza?', 'Esta é a última confirmação. Seus dados serão apagados.', [
+              { text: 'Cancelar', style: 'cancel' },
+              { text: 'Excluir conta', style: 'destructive', onPress: deleteAccount },
+            ]),
+        },
+      ],
+    );
   }
 
   return (
@@ -67,6 +101,13 @@ export function ProfileScreen({ navigation }: TabScreenProps<'Profile'>): React.
           testID="profile-evolution-btn"
         />
         <ProfileMenuItem label="🚪 Sair" onPress={confirmLogout} destructive testID="logout-btn" />
+        <ProfileMenuItem
+          label="🗑️ Excluir conta"
+          description="Apaga permanentemente sua conta e todos os seus dados"
+          onPress={confirmDeleteAccount}
+          destructive
+          testID="delete-account-btn"
+        />
       </View>
     </ScrollView>
   );

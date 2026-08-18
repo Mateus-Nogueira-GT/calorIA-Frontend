@@ -126,3 +126,40 @@ export async function uploadUserAvatar(
 
   return getUserProfile(fastify, userId)
 }
+
+/**
+ * Exclui permanentemente a conta do usuário autenticado.
+ *
+ * A ordem importa: as fotos do Storage saem ANTES do usuário, porque os
+ * arquivos não são alcançados por foreign key — se o auth.users sumisse
+ * primeiro e o Storage falhasse, as imagens ficariam órfãs para sempre, sem
+ * dono a partir do qual encontrá-las.
+ *
+ * Os dados do banco não são apagados aqui um a um: as 12 tabelas referenciam
+ * auth.users(id) com ON DELETE CASCADE, então remover o usuário do Auth leva
+ * junto perfil, refeições, dietas, feed, amizades, streaks e histórico. Fazer
+ * DELETEs manuais além disso só criaria uma segunda lista para manter em dia a
+ * cada tabela nova.
+ */
+export async function deleteUserAccount(fastify: FastifyInstance, userId: string): Promise<void> {
+  // Best-effort: uma falha aqui não pode impedir o usuário de excluir a conta —
+  // o direito à exclusão vale mais do que alguns arquivos órfãos no bucket.
+  try {
+    const { data: files } = await fastify.supabase.storage.from('avatars').list(userId)
+    const paths = (files ?? []).map((f) => `${userId}/${f.name}`)
+    if (paths.length > 0) {
+      await fastify.supabase.storage.from('avatars').remove(paths)
+    }
+  } catch (err) {
+    fastify.log.warn({ err, userId }, 'Falha ao remover avatares na exclusão de conta')
+  }
+
+  const { error } = await fastify.supabase.auth.admin.deleteUser(userId)
+
+  if (error) {
+    fastify.log.error({ err: error, userId }, 'Falha ao excluir conta')
+    throw new AppError(502, 'DELETE_FAILED', 'Não foi possível excluir a conta. Tente novamente.')
+  }
+
+  fastify.log.info({ userId }, 'Conta excluída a pedido do usuário')
+}

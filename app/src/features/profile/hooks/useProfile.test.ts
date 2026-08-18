@@ -1,6 +1,7 @@
 import { renderHook, waitFor } from '@testing-library/react-native';
 import { useProfile } from './useProfile';
 import { useAuthStore } from '@features/auth/store';
+import { profileService } from '@shared/services/profile.service';
 import { dateToString } from '@shared/utils/date';
 
 // G4: o gráfico semanal usa 1 request agregado (getSummary) no lugar de 7.
@@ -25,6 +26,7 @@ jest.mock('@shared/services/profile.service', () => ({
       avatar_emoji: null,
       current_streak: 3,
     }),
+    deleteAccount: jest.fn(),
   },
 }));
 
@@ -55,5 +57,29 @@ describe('useProfile', () => {
   it('usa o streak canônico do backend (não recalcula localmente)', async () => {
     const { result } = renderHook(() => useProfile());
     await waitFor(() => expect(result.current.streak).toBe(3));
+  });
+
+  describe('exclusão de conta', () => {
+    it('derruba a sessão quando o backend confirma a exclusão', async () => {
+      (profileService.deleteAccount as jest.Mock).mockResolvedValueOnce(undefined);
+      const { result } = renderHook(() => useProfile());
+
+      await result.current.handleDeleteAccount();
+
+      expect(profileService.deleteAccount).toHaveBeenCalled();
+      expect(useAuthStore.getState().token).toBeNull();
+      expect(useAuthStore.getState().isAuthenticated).toBe(false);
+    });
+
+    it('MANTÉM a sessão se a exclusão falhar — a conta continua existindo', async () => {
+      (profileService.deleteAccount as jest.Mock).mockRejectedValueOnce(new Error('502'));
+      const { result } = renderHook(() => useProfile());
+
+      await expect(result.current.handleDeleteAccount()).rejects.toThrow();
+
+      // Limpar o token aqui faria o usuário acreditar que a conta foi apagada.
+      expect(useAuthStore.getState().token).toBe('tok');
+      expect(useAuthStore.getState().isAuthenticated).toBe(true);
+    });
   });
 });
