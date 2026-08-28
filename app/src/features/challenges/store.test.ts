@@ -24,6 +24,7 @@ jest.mock('@shared/services/challenges.service', () => ({
     join: jest.fn(),
     getLeaderboard: jest.fn(),
     resolveInvite: jest.fn(),
+    checkIn: jest.fn(),
   },
 }));
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -106,5 +107,37 @@ describe('useChallengesStore', () => {
     useChallengesStore.setState({ challenges: [challenge('c1')] });
     useChallengesStore.getState().clear();
     expect(useChallengesStore.getState().challenges).toEqual([]);
+  });
+
+  it('ignora o segundo toque enquanto o check-in está em voo (B3)', async () => {
+    // Dois toques rápidos passavam os dois pela guarda do servidor: a segunda
+    // transação zerava a sequência (current_streak voltava para 1).
+    challengesService.getLeaderboard.mockResolvedValue([] as LeaderboardEntry[]);
+    challengesService.checkIn.mockImplementation(
+      () => new Promise((resolve) => setTimeout(() => resolve({ ok: true }), 10)),
+    );
+    const { result } = renderHook(() => useChallengesStore());
+
+    await act(async () => {
+      await Promise.all([result.current.checkIn('c1'), result.current.checkIn('c1')]);
+    });
+
+    expect(challengesService.checkIn).toHaveBeenCalledTimes(1);
+  });
+
+  it('libera novo check-in depois que o anterior termina', async () => {
+    challengesService.getLeaderboard.mockResolvedValue([] as LeaderboardEntry[]);
+    challengesService.checkIn.mockResolvedValue({ ok: true });
+    const { result } = renderHook(() => useChallengesStore());
+
+    await act(async () => {
+      await result.current.checkIn('c1');
+    });
+    expect(useChallengesStore.getState().checkingInId).toBeNull();
+
+    await act(async () => {
+      await result.current.checkIn('c1');
+    });
+    expect(challengesService.checkIn).toHaveBeenCalledTimes(2);
   });
 });

@@ -30,6 +30,7 @@ const plan: DietPlan = {
 jest.mock('@shared/services/diet.service', () => ({
   dietService: {
     getToday: jest.fn(),
+    getTodayStatus: jest.fn(),
     toggleMeal: jest.fn(),
   },
 }));
@@ -42,9 +43,12 @@ describe('useDietStore', () => {
     useDietStore.setState({
       plan: undefined,
       isLoading: false,
+      error: false,
+      todayStatus: null,
       togglingMealId: null,
     });
     jest.clearAllMocks();
+    dietService.getTodayStatus.mockResolvedValue(null);
   });
 
   it('loadCurrent popula o plan', async () => {
@@ -99,5 +103,56 @@ describe('useDietStore', () => {
     useDietStore.setState({ plan });
     useDietStore.getState().clear();
     expect(useDietStore.getState().plan).toBeUndefined();
+  });
+
+  it('marca error quando a carga falha (B2)', async () => {
+    // Antes o erro era engolido: plan ficava undefined e a seção exibia
+    // esqueleto para sempre, sem nada distinguir "carregando" de "falhou".
+    dietService.getToday.mockRejectedValue(new Error('offline'));
+    const { result } = renderHook(() => useDietStore());
+
+    await act(() => result.current.loadCurrent());
+
+    expect(result.current.error).toBe(true);
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.plan).toBeUndefined();
+  });
+
+  it('limpa o error ao tentar de novo com sucesso', async () => {
+    dietService.getToday.mockRejectedValueOnce(new Error('offline'));
+    const { result } = renderHook(() => useDietStore());
+    await act(() => result.current.loadCurrent());
+    expect(result.current.error).toBe(true);
+
+    dietService.getToday.mockResolvedValue(plan);
+    await act(() => result.current.loadCurrent());
+
+    expect(result.current.error).toBe(false);
+    expect(result.current.plan).toEqual(plan);
+  });
+
+  it('consulta o status do dia apenas quando não há plano (M8)', async () => {
+    dietService.getToday.mockResolvedValue(null);
+    dietService.getTodayStatus.mockResolvedValue({
+      hasActiveDiet: true,
+      dayMissing: true,
+      resumableJobId: 'job-1',
+    });
+    const { result } = renderHook(() => useDietStore());
+
+    await act(() => result.current.loadCurrent());
+
+    expect(dietService.getTodayStatus).toHaveBeenCalled();
+    expect(result.current.todayStatus?.dayMissing).toBe(true);
+  });
+
+  it('não consulta o status quando o plano veio', async () => {
+    dietService.getToday.mockResolvedValue(plan);
+    const { result } = renderHook(() => useDietStore());
+
+    await act(() => result.current.loadCurrent());
+
+    expect(dietService.getTodayStatus).not.toHaveBeenCalled();
+    expect(result.current.todayStatus).toBeNull();
   });
 });

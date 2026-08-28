@@ -299,6 +299,11 @@ export async function checkIn(
   const [updated] = await fastify.db.begin(async (sql) => {
     await sql`INSERT INTO challenge_days (member_id, check_date) VALUES (${member.id}, ${today}) ON CONFLICT DO NOTHING`
 
+    // B3: a guarda `member.last_check_in === today` acima é check-then-act — dois
+    // toques rápidos passavam os dois. A segunda transação lia last_check_in=hoje,
+    // o CASE dava falso e caía no ELSE 1: quem tinha 5 dias de sequência ficava
+    // com 1, e total_days incrementava em dobro. Repetimos a condição DENTRO do
+    // UPDATE, onde ela é avaliada sob o lock da linha; 0 linhas = já fez hoje.
     return sql<ChallengeMember[]>`
       UPDATE challenge_members
       SET
@@ -314,9 +319,13 @@ export async function checkIn(
         last_check_in = ${today},
         updated_at = NOW()
       WHERE id = ${member.id}
+        AND last_check_in IS DISTINCT FROM ${today}::DATE
       RETURNING id, user_id, status, current_streak, best_streak, total_days, last_check_in::TEXT AS last_check_in
     `
   })
+
+  if (!updated)
+    throw new AppError(409, 'ALREADY_CHECKED_IN', 'Você já fez check-in hoje neste desafio')
 
   // L5: best-effort, como em joinChallenge. O check-in já está commitado neste
   // ponto — uma falha ao publicar o marco devolvia 500, o usuário lia "não foi

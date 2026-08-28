@@ -110,13 +110,6 @@ export function ProfileSetupScreen({ navigation }: AuthStackScreenProps<'Profile
   async function submitProfile(finalAnswers: Partial<Record<Step, string>>) {
     setSubmitting(true);
     try {
-      // O JWT precisa estar no estado de auth ANTES da chamada, pois o
-      // interceptor do axios só anexa Authorization a partir de `token`
-      // (pendingAuth.token ainda não conta pra ele).
-      if (pendingAuth) {
-        setToken(pendingAuth.token, pendingAuth.user, pendingAuth.refreshToken);
-      }
-
       const payload: ProfileSetupPayload = {
         name: finalAnswers.name ?? user?.name ?? '',
         bodyType: (finalAnswers.bodyType as ProfileSetupPayload['bodyType']) ?? 'unknown',
@@ -126,12 +119,22 @@ export function ProfileSetupScreen({ navigation }: AuthStackScreenProps<'Profile
         coachPersonality: (finalAnswers.personality as ProfileSetupPayload['coachPersonality']) ?? 'motivational',
         coachGender: (finalAnswers.gender as ProfileSetupPayload['coachGender']) ?? 'neutral',
       };
+      // O interceptor autentica esta chamada com pendingAuth.token.
       await authService.profileSetup(payload);
       setProfilePreferences({
         goal: (finalAnswers.goal as 'lose_weight' | 'gain_muscle' | 'maintain' | 'health') ?? null,
         coachPersonality: (finalAnswers.personality as 'motivational' | 'direct' | 'empathetic' | 'scientific') ?? null,
       });
+
+      // Autentica só DEPOIS do perfil salvo: setToken troca a árvore de
+      // navegação na hora, e o dashboard busca as metas ao montar. Antes,
+      // ele montava com o request em voo (metas zeradas) e uma falha aqui
+      // deixava a conta autenticada sem altura/peso/objetivo.
+      if (pendingAuth) {
+        setToken(pendingAuth.token, pendingAuth.user, pendingAuth.refreshToken);
+      }
     } catch {
+      // Segue no onboarding: tocar de novo na última opção reenvia.
       Alert.alert('Erro', 'Não foi possível salvar seu perfil. Tente novamente.');
     } finally {
       setSubmitting(false);

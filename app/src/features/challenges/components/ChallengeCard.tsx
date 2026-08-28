@@ -13,6 +13,8 @@ interface Props {
   joining: boolean;
   /** Check-in do dia (só para desafios ativos em que participo). */
   onCheckIn?: () => void;
+  /** Trava o botão enquanto o check-in está em voo (evita duplo toque). */
+  checkingIn?: boolean;
 }
 
 export function ChallengeCard({
@@ -21,6 +23,7 @@ export function ChallengeCard({
   onJoin,
   joining,
   onCheckIn,
+  checkingIn = false,
 }: Props): React.JSX.Element {
   return (
     <Card onPress={onPress} style={styles.card} testID={`challenge-${challenge.id}`}>
@@ -45,7 +48,13 @@ export function ChallengeCard({
             <Text style={styles.joinedText}>✓ Participando</Text>
           </View>
           {onCheckIn ? (
-            <Button size='sm' onPress={onCheckIn} testID={`challenge-checkin-${challenge.id}`}>
+            <Button
+              size='sm'
+              onPress={onCheckIn}
+              loading={checkingIn}
+              disabled={checkingIn}
+              testID={`challenge-checkin-${challenge.id}`}
+            >
               Check-in de hoje
             </Button>
           ) : null}

@@ -1,4 +1,5 @@
 import React from 'react';
+import { Alert } from 'react-native';
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import { RegisterScreen } from './RegisterScreen';
 
@@ -25,10 +26,13 @@ const mockGetAppleSignInPayload = jest.fn().mockResolvedValue({
 jest.mock('@react-navigation/native', () => ({
   useNavigation: () => ({ navigate: mockNavigate, replace: mockReplace }),
 }));
+// As factories de jest.mock são içadas acima dos `const mock*`: referenciar a
+// função direto congela um valor indefinido. Chamar por dentro de uma arrow
+// adia a leitura para o momento da chamada (padrão já usado no apple-signin).
 jest.mock('@shared/services/auth.service', () => ({
   authService: {
-    register: mockRegister,
-    loginWithApple: mockLoginWithApple,
+    register: (...args: unknown[]) => mockRegister(...args),
+    loginWithApple: (...args: unknown[]) => mockLoginWithApple(...args),
   },
 }));
 jest.mock('@features/auth/store', () => ({
@@ -118,5 +122,25 @@ describe('RegisterScreen', () => {
       expect(mockSetPendingAuth).toHaveBeenCalledWith('tok', expect.any(Object), 'refresh-tok'),
     );
     await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('ProfileSetup'));
+  });
+
+  it('oferece ir para o login quando o e-mail já está cadastrado', async () => {
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    mockRegister.mockRejectedValueOnce({ isAxiosError: true, response: { status: 409 } });
+
+    const { getByPlaceholderText, getByTestId } = render(
+      <RegisterScreen navigation={{ navigate: mockNavigate, replace: mockReplace } as never} route={{} as never} />,
+    );
+    fireEvent.changeText(getByPlaceholderText('Seu nome completo'), 'João');
+    fireEvent.changeText(getByPlaceholderText('seu@email.com'), 'joao@test.com');
+    fireEvent.changeText(getByPlaceholderText('Mínimo 8 caracteres'), 'senha12345');
+    fireEvent.press(getByTestId('register-btn'));
+
+    await waitFor(() => expect(alertSpy).toHaveBeenCalledWith(
+      'E-mail já cadastrado',
+      expect.any(String),
+      expect.arrayContaining([expect.objectContaining({ text: 'Entrar' })]),
+    ));
+    alertSpy.mockRestore();
   });
 });
