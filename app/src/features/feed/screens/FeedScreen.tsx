@@ -87,7 +87,13 @@ export function FeedScreen({ navigation }: Props): React.JSX.Element {
           refreshControl={
             <RefreshControl
               refreshing={isRefreshing}
-              onRefresh={refresh}
+              onRefresh={() => {
+                // L3: sem limpar, um refresh bem-sucedido que devolve feed
+                // legitimamente vazio continuava exibindo o estado de ERRO em
+                // vez do vazio com CTA de encontrar amigos.
+                setHasError(false);
+                void Promise.resolve(refresh()).catch(() => setHasError(true));
+              }}
               tintColor={colors.brandPrimary}
             />
           }

@@ -6,6 +6,10 @@ import { useFoodLogStore } from '../store';
 const mockMeal = { id: 'm1', name: 'Frango', calories: 450, protein: 38, carbs: 52, fat: 8, loggedAt: new Date().toISOString() };
 const mockNewMeal = { id: 'm2', name: 'Novo', calories: 300, protein: 20, carbs: 30, fat: 5, loggedAt: new Date().toISOString() };
 
+jest.mock('@shared/utils/show-alert', () => ({ showAlert: jest.fn() }));
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { showAlert } = require('@shared/utils/show-alert');
+
 jest.mock('@shared/services/food-log.service', () => ({
   foodLogService: {
     getMeals: jest.fn(),
@@ -53,5 +57,38 @@ describe('useFoodLog', () => {
     await waitFor(() => expect(result.current.meals).toHaveLength(1));
     await act(() => result.current.handleDeleteMeal('m1'));
     expect(result.current.meals).toHaveLength(0);
+  });
+
+  it('avisa quando excluir falha e mantém a refeição na lista (L1)', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { foodLogService } = require('@shared/services/food-log.service');
+    foodLogService.deleteMeal.mockRejectedValue(new Error('offline'));
+    const { result } = renderHook(() => useFoodLog());
+    await waitFor(() => expect(result.current.meals).toHaveLength(1));
+
+    await act(() => result.current.handleDeleteMeal('m1'));
+
+    // Sem catch, a falha era silenciosa e a rejeição ficava pendurada.
+    expect(showAlert).toHaveBeenCalled();
+    expect(result.current.meals).toHaveLength(1);
+  });
+
+  it('ignora o segundo toque na lixeira do mesmo item (L1)', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { foodLogService } = require('@shared/services/food-log.service');
+    foodLogService.deleteMeal.mockImplementation(
+      () => new Promise((resolve) => setTimeout(() => resolve({ deleted: true }), 10)),
+    );
+    const { result } = renderHook(() => useFoodLog());
+    await waitFor(() => expect(result.current.meals).toHaveLength(1));
+
+    await act(async () => {
+      await Promise.all([
+        result.current.handleDeleteMeal('m1'),
+        result.current.handleDeleteMeal('m1'),
+      ]);
+    });
+
+    expect(foodLogService.deleteMeal).toHaveBeenCalledTimes(1);
   });
 });
