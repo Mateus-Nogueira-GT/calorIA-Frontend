@@ -58,8 +58,16 @@ A resposta continua `{ is_completed: boolean }`, mas o significado fica **precis
 concluída na data local enviada". É o que o app já atribui a `completedToday`, então o
 cliente não muda de forma — só passa a receber a verdade.
 
-Compatibilidade: sem `tzOffsetMinutes` no body, o default é `0` (UTC), que é o
-comportamento de hoje. Clientes antigos não quebram.
+Compatibilidade — **corrigido depois do deploy**: a primeira versão assumia que, sem
+`tzOffsetMinutes`, bastava usar `0` (UTC). Está errado. O app publicado envia só `date`
+(a data LOCAL), então comparar `completed_at` em UTC com essa data diverge entre 21h e
+24h no horário de Brasília: a refeição marcada às 21h30 grava `completed_at` já no dia
+seguinte em UTC, a comparação dá falso e o toque seguinte **marcaria de novo** em vez de
+desmarcar.
+
+Regra final: sem `tzOffsetMinutes` o servidor mantém o comportamento antigo
+(`NOT is_completed`) — exatamente o que os clientes publicados já tinham, sem regressão.
+Com o fuso informado (inclusive `0` explícito), usa a lógica derivada da data local.
 
 ### O que NÃO muda
 

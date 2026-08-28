@@ -70,12 +70,35 @@ describe('toggleMealCompleted — estado derivado da data (B1)', () => {
     expect(streakCall?.sql).not.toContain('CURRENT_DATE')
   })
 
-  it('sem data/fuso do cliente, cai em UTC (compatível com cliente antigo)', async () => {
+  it('cliente SEM fuso mantém o comportamento antigo (NOT is_completed)', async () => {
+    // O app publicado envia só `date`. Comparar completed_at em UTC com a data
+    // local dele quebra entre 21h e 24h BRT: a refeição marcada às 21h30 grava
+    // completed_at no dia seguinte em UTC, a comparação dá falso e o toque
+    // seguinte MARCARIA de novo em vez de desmarcar.
     const { fastify, calls } = fakeFastify([[{ is_completed: false }]])
 
-    await toggleMealCompleted(fastify, USER, MEAL)
+    await toggleMealCompleted(fastify, USER, MEAL, '2026-08-28')
 
-    expect(calls[0].params).toContain(0)
+    expect(calls[0].params).toContain(false) // hasClientTz
+    expect(calls[0].sql).toContain('dm.is_completed')
+  })
+
+  it('cliente COM fuso usa a data local', async () => {
+    const { fastify, calls } = fakeFastify([[{ is_completed: false }]])
+
+    await toggleMealCompleted(fastify, USER, MEAL, '2026-08-28', -180)
+
+    expect(calls[0].params).toContain(true) // hasClientTz
+    expect(calls[0].params).toContain(-180)
+  })
+
+  it('fuso 0 explícito conta como fuso informado (UTC de verdade)', async () => {
+    // Cliente novo em UTC manda 0: não pode ser confundido com "não informou".
+    const { fastify, calls } = fakeFastify([[{ is_completed: false }]])
+
+    await toggleMealCompleted(fastify, USER, MEAL, '2026-08-28', 0)
+
+    expect(calls[0].params).toContain(true)
   })
 
   it('recusa data fora da janela permitida', async () => {
