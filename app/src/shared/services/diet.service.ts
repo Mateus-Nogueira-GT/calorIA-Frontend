@@ -37,6 +37,13 @@ export interface DietPlan {
   generatedAt: string;
 }
 
+/** M8: por que não há plano hoje — só consultado quando getToday devolve null. */
+export interface TodayStatus {
+  hasActiveDiet: boolean;
+  dayMissing: boolean;
+  resumableJobId: string | null;
+}
+
 export interface DietJobStatus {
   jobId: string;
   status: 'pending' | 'running' | 'completed' | 'failed';
@@ -62,6 +69,11 @@ export const dietService = {
         },
       })
       .then((r) => r.data),
+  getTodayStatus: () =>
+    api
+      .get<TodayStatus>('/diets/today/status', { params: { dayNumber: todayDayNumber() } })
+      .then((r) => r.data)
+      .catch(() => null),
   toggleMeal: (mealId: string) =>
     api
       .patch<{ is_completed: boolean }>(`/diets/meals/${mealId}/toggle`, { date: todayString() })

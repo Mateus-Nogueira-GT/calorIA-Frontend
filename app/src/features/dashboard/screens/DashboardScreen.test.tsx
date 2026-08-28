@@ -14,7 +14,7 @@ jest.mock('@shared/services/food-log.service', () => ({
 }));
 
 beforeEach(() => {
-  useFoodLogStore.setState({ mealsByDate: {}, loadingByDate: {}, selectedDate: '2026-06-09' });
+  useFoodLogStore.setState({ mealsByDate: {}, syncedDates: {}, loadingByDate: {}, selectedDate: '2026-06-09' });
   useAuthStore.setState({ token: 'tok', user: { id: '1', name: 'Joao', email: 'j@j.com' }, isAuthenticated: true, pendingAuth: null });
   useDietStore.setState({ plan: null, isLoading: false, togglingMealId: null });
 });

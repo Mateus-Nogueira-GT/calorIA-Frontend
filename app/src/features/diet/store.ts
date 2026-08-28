@@ -1,10 +1,14 @@
 import { create } from 'zustand';
-import { dietService, DietPlan } from '@shared/services/diet.service';
+import { dietService, DietPlan, TodayStatus } from '@shared/services/diet.service';
 import { showAlert } from '@shared/utils/show-alert';
 
 interface DietState {
   plan: DietPlan | null | undefined;
   isLoading: boolean;
+  /** A última carga falhou. Limpo no início de cada tentativa. */
+  error: boolean;
+  /** Só preenchido quando `plan` é null: diz se falta gerar o dia (M8). */
+  todayStatus: TodayStatus | null;
   togglingMealId: string | null;
   loadCurrent: () => Promise<void>;
   toggleMealComplete: (mealId: string) => Promise<void>;
@@ -14,15 +18,26 @@ interface DietState {
 export const useDietStore = create<DietState>((set, get) => ({
   plan: undefined,
   isLoading: false,
+  error: false,
+  todayStatus: null,
   togglingMealId: null,
 
   loadCurrent: async () => {
-    set({ isLoading: true });
+    // Sem `error`, uma falha deixava plan===undefined para sempre e a seção
+    // ficava em esqueleto eterno: nada distinguia "carregando" de "falhou".
+    set({ isLoading: true, error: false });
     try {
       const plan = await dietService.getToday();
       set({ plan, isLoading: false });
+      // Só quando não há plano: distingue "sem dieta" de "dia não gerado", para
+      // não mostrar o vazio de onboarding a quem tem plano ativo incompleto.
+      if (plan === null) {
+        set({ todayStatus: await dietService.getTodayStatus() });
+      } else {
+        set({ todayStatus: null });
+      }
     } catch {
-      set({ isLoading: false });
+      set({ isLoading: false, error: true });
     }
   },
 

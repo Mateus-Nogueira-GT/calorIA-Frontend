@@ -6,7 +6,7 @@ const meal1 = { id: 'm1', name: 'Frango', calories: 450, protein: 38, carbs: 52,
 const meal2 = { id: 'm2', name: 'Salada', calories: 280, protein: 30, carbs: 12, fat: 10, loggedAt: new Date().toISOString() };
 
 beforeEach(() => {
-  useFoodLogStore.setState({ mealsByDate: {}, loadingByDate: {}, selectedDate: '2026-06-09' });
+  useFoodLogStore.setState({ mealsByDate: {}, syncedDates: {}, loadingByDate: {}, selectedDate: '2026-06-09' });
 });
 
 describe('useFoodLogStore', () => {
@@ -59,5 +59,19 @@ describe('useFoodLogStore', () => {
     expect(useFoodLogStore.getState().mealsByDate).toEqual({});
     expect(useFoodLogStore.getState().loadingByDate).toEqual({});
     expect(useFoodLogStore.getState().selectedDate).toBe(todayString());
+  });
+
+  it('setMeals marca o dia como sincronizado', () => {
+    useFoodLogStore.getState().setMeals('2026-06-09', [meal1]);
+    expect(useFoodLogStore.getState().syncedDates['2026-06-09']).toBe(true);
+  });
+
+  it('addMeal NÃO marca o dia como sincronizado (M2)', () => {
+    // O scanner escreve por aqui. Se isso contasse como sincronizado, o dia
+    // ficaria preso com um item só e as refeições já salvas no servidor
+    // sumiriam da tela até reiniciar o app.
+    useFoodLogStore.getState().addMeal('2026-06-09', meal2);
+    expect(useFoodLogStore.getState().mealsByDate['2026-06-09']).toHaveLength(1);
+    expect(useFoodLogStore.getState().syncedDates['2026-06-09']).toBeUndefined();
   });
 });
