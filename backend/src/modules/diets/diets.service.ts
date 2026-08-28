@@ -384,6 +384,14 @@ export async function toggleMealCompleted(
 
   const date = localDate ?? utcTodayString()
   const tz = tzOffsetMinutes ?? 0
+  // O app PUBLICADO não envia tzOffsetMinutes (só `date`). Sem o fuso, comparar
+  // completed_at em UTC com a data LOCAL do cliente diverge entre 21h e 24h no
+  // horário de Brasília — a refeição marcada às 21h30 grava completed_at no dia
+  // seguinte em UTC, a comparação dá falso e o toque seguinte MARCAVA de novo
+  // em vez de desmarcar. Para esses clientes mantemos o comportamento antigo
+  // (inverter is_completed), que é exatamente o que eles já tinham; quem
+  // atualizar passa a usar a lógica correta, derivada da data local.
+  const hasClientTz = tzOffsetMinutes != null
 
   // B1: o novo estado vem da DATA de completed_at, não de `NOT is_completed`.
   // O plano é cíclico (day_number), então a mesma linha reaparece na semana
@@ -398,9 +406,13 @@ export async function toggleMealCompleted(
     WITH target AS (
       SELECT dm.id,
              (
-               dm.completed_at IS NOT NULL
-               AND (dm.completed_at AT TIME ZONE 'UTC'
-                    + make_interval(mins => ${tz}))::date = ${date}::date
+               CASE WHEN ${hasClientTz}::boolean THEN
+                 dm.completed_at IS NOT NULL
+                 AND (dm.completed_at AT TIME ZONE 'UTC'
+                      + make_interval(mins => ${tz}))::date = ${date}::date
+               ELSE
+                 dm.is_completed
+               END
              ) AS completed_on_date
       FROM diet_meals dm
       JOIN diet_days dd ON dd.id = dm.diet_day_id
