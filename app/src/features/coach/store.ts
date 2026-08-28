@@ -35,7 +35,7 @@ interface CoachState {
   sendMessage: (content: string) => Promise<boolean>;
   retryLastAction: () => Promise<void>;
   runDietGeneration: (jobId: string) => Promise<void>;
-  retryDietGeneration: () => Promise<void>;
+  retryDietGeneration: (explicitJobId?: string) => Promise<void>;
   clear: () => void;
 }
 
@@ -219,13 +219,25 @@ export const useCoachStore = create<CoachState>()(
             }
           }
         }
+
+        // L4: o for pode esgotar as 30 iterações sem completed nem failed
+        // (servidor lento). Sem isto o banner ficava "Gerando sua dieta" para
+        // sempre, com a barra congelada e sem botão de tentar de novo.
+        set((st) =>
+          st.dietJob && st.dietJob.status !== 'completed'
+            ? { dietJob: { ...st.dietJob, status: 'failed' } }
+            : {},
+        );
       },
 
       // B8: reabre um job failed no servidor e religa o polling, continuando
       // do dia em que parou (não regenera os dias já persistidos).
-      retryDietGeneration: async () => {
-        const jobId = get().activeJobId;
+      retryDietGeneration: async (explicitJobId?: string) => {
+        // O jobId pode vir de fora (M8: a seção da dieta descobre pelo
+        // /diets/today/status que existe um job parado a retomar).
+        const jobId = explicitJobId ?? get().activeJobId;
         if (!jobId) return;
+        if (explicitJobId) set({ activeJobId: explicitJobId });
         try {
           await dietService.retryJob(jobId);
         } catch {

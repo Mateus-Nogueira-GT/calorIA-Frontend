@@ -16,6 +16,10 @@ const post = (id: string, over: Partial<Post> = {}): Post => ({
   ...over,
 });
 
+jest.mock('@shared/utils/show-alert', () => ({ showAlert: jest.fn() }));
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { showAlert } = require('@shared/utils/show-alert');
+
 jest.mock('@shared/services/feed.service', () => ({
   feedService: {
     getFeed: jest.fn(),
@@ -112,5 +116,43 @@ describe('useFeedStore', () => {
     useFeedStore.getState().clear();
     expect(useFeedStore.getState().posts).toEqual([]);
     expect(useFeedStore.getState().nextCursor).toBeNull();
+  });
+
+  it('avisa o usuário quando publicar falha (M3)', async () => {
+    // A tela dizia no comentário que "o Alert já foi disparado no store", mas o
+    // store só relançava: o spinner parava e nada acontecia na frente do usuário.
+    feedService.createPost.mockRejectedValue(new Error('offline'));
+    const { result } = renderHook(() => useFeedStore());
+
+    await act(async () => {
+      await result.current.createPost('meu post', null).catch(() => {});
+    });
+
+    expect(showAlert).toHaveBeenCalled();
+    expect(result.current.isCreating).toBe(false);
+  });
+
+  it('marca erro quando os comentários não carregam (M5)', async () => {
+    feedService.getComments.mockRejectedValue(new Error('offline'));
+    const { result } = renderHook(() => useFeedStore());
+
+    await act(() => result.current.loadComments('p1'));
+
+    // Sem isso a tela mostrava "Seja o primeiro a comentar." num post que tem
+    // comentários — afirmação falsa e sem como recarregar.
+    expect(result.current.commentsErrorByPost['p1']).toBe(true);
+    expect(result.current.loadingCommentsByPost['p1']).toBe(false);
+  });
+
+  it('limpa o erro dos comentários ao recarregar com sucesso', async () => {
+    feedService.getComments.mockRejectedValueOnce(new Error('offline'));
+    const { result } = renderHook(() => useFeedStore());
+    await act(() => result.current.loadComments('p1'));
+    expect(result.current.commentsErrorByPost['p1']).toBe(true);
+
+    feedService.getComments.mockResolvedValue([] as Comment[]);
+    await act(() => result.current.loadComments('p1'));
+
+    expect(result.current.commentsErrorByPost['p1']).toBe(false);
   });
 });

@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useMemo, useState } from 'react';
+import { RefreshControl, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Text, ErrorState } from '@shared/components';
 import { colors, typography, spacing, radius } from '@theme';
 import { useFoodLog } from '../hooks/useFoodLog';
@@ -41,6 +41,11 @@ export function FoodLogScreen(): React.JSX.Element {
   const { meals, isLoading, hasError, reload, selectedDate, setSelectedDate, handleAddMeal, handleDeleteMeal } = useFoodLog();
   const plan = useDietStore((s) => s.plan);
   const [modalVisible, setModalVisible] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    void Promise.resolve(reload()).finally(() => setRefreshing(false));
+  }, [reload]);
   const dates = last7Days();
 
   // M6: mesma regra do Dashboard. O `plan` em memória é só o dia de HOJE
@@ -102,7 +107,11 @@ export function FoodLogScreen(): React.JSX.Element {
         ) : hasError ? (
           <ErrorState onRetry={reload} />
         ) : (
-          <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
+          <ScrollView
+            style={styles.scroll}
+            contentContainerStyle={styles.scrollContent}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+          >
             <CalorieProgressBar consumed={consumed} goal={goal} />
             <DayMacroSummary meals={meals} />
             {meals.length === 0 ? (

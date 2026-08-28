@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, radius, typography } from '@theme';
+import { ErrorState } from '@shared/components';
 import { useFeedStore } from '../store';
 import { CommentRow } from '../components/CommentRow';
 import type { CommunityStackScreenProps } from '@navigation/types';
@@ -23,6 +24,7 @@ export function PostCommentsScreen({ route }: Props): React.JSX.Element {
   const comments = useFeedStore((s) => s.commentsByPost[postId] ?? []);
   const isLoading = useFeedStore((s) => s.loadingCommentsByPost[postId] ?? false);
   const loadComments = useFeedStore((s) => s.loadComments);
+  const hasError = useFeedStore((s) => s.commentsErrorByPost[postId] ?? false);
   const addComment = useFeedStore((s) => s.addComment);
   const [draft, setDraft] = useState('');
 
@@ -45,6 +47,13 @@ export function PostCommentsScreen({ route }: Props): React.JSX.Element {
       >
         {isLoading && comments.length === 0 ? (
           <ActivityIndicator color={colors.brandPrimary} style={styles.loader} />
+        ) : hasError && comments.length === 0 ? (
+          // Erro antes do vazio: "seja o primeiro a comentar" era falso quando
+          // a carga falhava num post que tem comentários.
+          <ErrorState
+            title="Não foi possível carregar os comentários"
+            onRetry={() => void loadComments(postId)}
+          />
         ) : (
           <FlatList
             data={comments}

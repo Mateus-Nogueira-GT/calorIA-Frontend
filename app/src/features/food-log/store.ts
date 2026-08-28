@@ -4,6 +4,13 @@ import { todayString } from '@shared/utils/date';
 
 interface FoodLogState {
   mealsByDate: Record<string, Meal[]>;
+  /**
+   * Dias efetivamente CARREGADOS do servidor. Separado de `mealsByDate` porque
+   * escritas locais (scanner, novo registro) criam a chave sem que o dia tenha
+   * sido sincronizado — usar só `mealsByDate` como portão de fetch deixava o
+   * dia preso com um item só, escondendo o que já estava salvo no servidor.
+   */
+  syncedDates: Record<string, boolean>;
   loadingByDate: Record<string, boolean>;
   selectedDate: string;
   setSelectedDate: (date: string) => void;
@@ -16,11 +23,15 @@ interface FoodLogState {
 
 export const useFoodLogStore = create<FoodLogState>((set) => ({
   mealsByDate: {},
+  syncedDates: {},
   loadingByDate: {},
   selectedDate: todayString(),
   setSelectedDate: (date) => set({ selectedDate: date }),
   setMeals: (date, meals) =>
-    set((s) => ({ mealsByDate: { ...s.mealsByDate, [date]: meals } })),
+    set((s) => ({
+      mealsByDate: { ...s.mealsByDate, [date]: meals },
+      syncedDates: { ...s.syncedDates, [date]: true },
+    })),
   addMeal: (date, meal) =>
     set((s) => ({
       mealsByDate: {
@@ -42,5 +53,6 @@ export const useFoodLogStore = create<FoodLogState>((set) => ({
         [date]: loading,
       },
     })),
-  clear: () => set({ mealsByDate: {}, loadingByDate: {}, selectedDate: todayString() }),
+  clear: () =>
+    set({ mealsByDate: {}, syncedDates: {}, loadingByDate: {}, selectedDate: todayString() }),
 }));

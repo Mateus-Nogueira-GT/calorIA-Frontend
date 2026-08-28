@@ -75,6 +75,15 @@ export const useScannerStore = create<ScannerState>((set, get) => ({
 
   confirm: async () => {
     const valid = get().items.filter((i) => i.name.trim().length > 0);
+    // M7: sem itens válidos o fluxo caía direto no reset e o modal fechava como
+    // se tivesse salvo — o usuário acreditava ter registrado a refeição.
+    if (valid.length === 0) {
+      showAlert(
+        'Nada para adicionar',
+        'Dê um nome a pelo menos um item antes de confirmar.',
+      );
+      throw new Error('SCAN_CONFIRM_EMPTY');
+    }
     // D2 da spec: allSettled + remoção incremental — item salvo SAI da lista na
     // hora, então um retry após falha parcial reenvia só o que faltou (antes o
     // Promise.all re-salvava os já persistidos, duplicando no diário).

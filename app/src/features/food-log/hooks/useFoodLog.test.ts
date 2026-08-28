@@ -23,7 +23,7 @@ beforeEach(() => {
   foodLogService.getMeals.mockResolvedValue([mockMeal]);
   foodLogService.addMeal.mockResolvedValue(mockNewMeal);
   foodLogService.deleteMeal.mockResolvedValue({ deleted: true });
-  useFoodLogStore.setState({ mealsByDate: {}, loadingByDate: {}, selectedDate: '2026-06-09' });
+  useFoodLogStore.setState({ mealsByDate: {}, syncedDates: {}, loadingByDate: {}, selectedDate: '2026-06-09' });
 });
 
 describe('useFoodLog', () => {
@@ -35,7 +35,7 @@ describe('useFoodLog', () => {
 
   it('não faz fetch se a data já está em cache', async () => {
     const { foodLogService } = require('@shared/services/food-log.service');
-    useFoodLogStore.setState({ mealsByDate: { '2026-06-09': [mockMeal] }, loadingByDate: {}, selectedDate: '2026-06-09' });
+    useFoodLogStore.setState({ mealsByDate: { '2026-06-09': [mockMeal] }, syncedDates: { '2026-06-09': true }, loadingByDate: {}, selectedDate: '2026-06-09' });
     renderHook(() => useFoodLog());
     await act(async () => {});
     expect(foodLogService.getMeals).not.toHaveBeenCalled();

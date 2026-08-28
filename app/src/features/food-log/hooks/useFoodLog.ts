@@ -10,7 +10,10 @@ export function useFoodLog() {
 
   useEffect(() => {
     setHasError(false);
-    if (store.mealsByDate[store.selectedDate] !== undefined) return;
+    // Portão por syncedDates, não por mealsByDate: escrita local (scanner) cria
+    // a chave sem o dia ter sido carregado do servidor — o dia ficava preso com
+    // um item só e o resto do diário sumia até reiniciar o app.
+    if (store.syncedDates[store.selectedDate]) return;
     store.setLoading(store.selectedDate, true);
     foodLogService
       .getMeals(store.selectedDate)
@@ -19,10 +22,11 @@ export function useFoodLog() {
       .finally(() => store.setLoading(store.selectedDate, false));
   }, [store.selectedDate]);
 
+  /** Força o fetch, ignorando o cache — é o retry e o pull-to-refresh. */
   const reload = useCallback(() => {
     setHasError(false);
     store.setLoading(store.selectedDate, true);
-    foodLogService
+    return foodLogService
       .getMeals(store.selectedDate)
       .then((data) => store.setMeals(store.selectedDate, data))
       .catch(() => { setHasError(true); })

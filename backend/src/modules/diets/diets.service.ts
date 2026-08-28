@@ -328,6 +328,46 @@ export async function getTodayPlan(
   }
 }
 
+/**
+ * M8: distingue "não tem dieta" de "tem dieta, mas o dia de hoje não foi gerado".
+ *
+ * getTodayPlan devolve null nos dois casos, e a tela mostrava o vazio de
+ * onboarding ("converse com o Coach") para quem já tem um plano ativo cuja
+ * geração parou no meio. Endpoint SEPARADO de propósito: /diets/today precisa
+ * continuar respondendo `TodayPlan | null` para o app já publicado.
+ */
+export async function getTodayStatus(
+  fastify: FastifyInstance,
+  userId: string,
+  query: TodayQuery = {},
+): Promise<{ hasActiveDiet: boolean; dayMissing: boolean; resumableJobId: string | null }> {
+  const { dayNumber } = resolveTodayContext(query)
+
+  let diet: Diet
+  try {
+    diet = await getActiveDiet(fastify, userId)
+  } catch {
+    return { hasActiveDiet: false, dayMissing: false, resumableJobId: null }
+  }
+
+  const [day] = await fastify.db<{ id: string }[]>`
+    SELECT id FROM diet_days
+    WHERE diet_id = ${diet.id} AND day_number = ${dayNumber}
+  `
+  if (day) return { hasActiveDiet: true, dayMissing: false, resumableJobId: null }
+
+  // Inclui 'failed': é justamente o job que parou no meio e deixou a dieta
+  // parcial — getActiveJob só enxerga pending/running e não serviria aqui.
+  const [job] = await fastify.db<{ id: string }[]>`
+    SELECT id FROM diet_jobs
+    WHERE user_id = ${userId} AND status IN ('pending', 'running', 'failed')
+    ORDER BY created_at DESC
+    LIMIT 1
+  `
+
+  return { hasActiveDiet: true, dayMissing: true, resumableJobId: job?.id ?? null }
+}
+
 // ─── Ações do usuário na dieta ────────────────────────────────────────────────
 
 /** Marca ou desmarca uma refeição como concluída. */
