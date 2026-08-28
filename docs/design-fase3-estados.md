@@ -80,12 +80,30 @@ aba) que trocaria um bug por outro.
 
 ---
 
-## 3. `getTodayPlan` — "sem dieta" ≠ "dia não gerado" (M8)
+## 3. "Sem dieta" ≠ "dia não gerado" (M8)
 
 `getTodayPlan` retorna `null` nos dois casos, e a UI mostra "converse com o Coach para
 gerar uma dieta" para quem **tem** um plano ativo cuja geração parou no meio.
 
-O serviço passa a distinguir, sem quebrar o contrato atual (`null` segue sendo "sem
-dieta"): quando existe dieta ativa mas falta o `diet_day` do dia, responde
-`{ status: 'day_missing' }`, e a tela oferece retomar a geração em vez do vazio de
-onboarding.
+### O que NÃO fazer
+
+O rascunho inicial deste design previa devolver `{ status: 'day_missing' }` no lugar do
+`null`. **Isso quebraria o app publicado.** O cliente em produção tipa a resposta como
+`DietPlan | null` e faz `plan.meals.map(...)`: receber um objeto sem `meals` seria um
+crash na tela principal, não um estado degradado. Qualquer mudança em `/diets/today`
+precisa manter `DietPlan | null`.
+
+### Decisão: endpoint novo, consultado só quando `plan` é `null`
+
+`GET /diets/today/status` responde:
+
+```
+{ hasActiveDiet: boolean, dayMissing: boolean, resumableJobId: string | null }
+```
+
+- `/diets/today` fica **intocado** — clientes antigos não percebem nada.
+- O app só chama o novo endpoint quando `plan === null`, ou seja, no exato momento em que
+  precisa escolher entre "você não tem dieta" e "sua dieta está incompleta".
+- Com `resumableJobId`, a tela oferece **retomar a geração** em vez do vazio de
+  onboarding. `getActiveJob` não serve para isso: ele só enxerga jobs `pending`/`running`,
+  e o caso problemático é justamente o job que **falhou** deixando a dieta parcial.
