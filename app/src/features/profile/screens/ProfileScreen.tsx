@@ -13,7 +13,7 @@ import { useAuthStore } from '@features/auth/store';
  * Exigência do Google Play: a política precisa estar linkada na ficha da loja
  * E dentro do app. Só na loja não cumpre.
  */
-const PRIVACY_POLICY_URL = 'https://id-to-sparkle.lovable.app/politica-de-privacidade';
+const PRIVACY_POLICY_URL = 'https://caloriaoficial.com.br/politica-de-privacidade';
 
 const goalLabels = {
   lose_weight: 'Perder peso',
