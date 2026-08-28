@@ -34,9 +34,14 @@ const api = axios.create({
 });
 
 api.interceptors.request.use((config) => {
-  const token = useAuthStore.getState().token;
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+  // pendingAuth é a sessão do onboarding, antes de `token` existir: sem esse
+  // fallback, salvar o perfil exigiria autenticar ANTES de saber se o perfil
+  // salvou — e o dashboard montava com o request ainda em voo.
+  // O refresh (abaixo) já usava o mesmo fallback.
+  const { token, pendingAuth } = useAuthStore.getState();
+  const accessToken = token ?? pendingAuth?.token ?? null;
+  if (accessToken) {
+    config.headers.Authorization = `Bearer ${accessToken}`;
   }
   return config;
 });
