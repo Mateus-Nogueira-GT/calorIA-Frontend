@@ -193,7 +193,13 @@ const dietsRoutes: FastifyPluginAsyncZod = async (fastify) => {
     async (request, reply) => {
       const { sub: userId } = request.user as JwtPayload
       return reply.send(
-        await toggleMealCompleted(fastify, userId, request.params.mealId, request.body?.date),
+        await toggleMealCompleted(
+          fastify,
+          userId,
+          request.params.mealId,
+          request.body?.date,
+          request.body?.tzOffsetMinutes,
+        ),
       )
     },
   )

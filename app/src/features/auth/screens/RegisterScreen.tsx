@@ -10,6 +10,7 @@ import { authService } from '@shared/services/auth.service';
 import { getAppleSignInPayload, isAppleSignInAvailable } from '@shared/services/apple-signin.service';
 import { getGoogleIdToken, isGoogleSignInAvailable } from '@shared/services/google-signin.service';
 import { useAuthStore } from '@features/auth/store';
+import { isNetworkError, statusOf } from '@shared/utils/api-error';
 import { Button, Input, Text } from '@shared/components';
 import { colors, typography, spacing, radius } from '@theme';
 import type { AuthStackScreenProps } from '@navigation/types';
@@ -49,6 +50,11 @@ export function RegisterScreen({ navigation }: AuthStackScreenProps<'Register'>)
   function validateName(v: string) {
     setNameError(v.length < 2 ? 'Nome deve ter no mínimo 2 caracteres' : '');
   }
+  /** Ver LoginScreen: teclados Android acrescentam espaço ao autocompletar. */
+  function handleEmailChange(v: string) {
+    setEmail(v.trim());
+  }
+
   function validateEmail(v: string) {
     setEmailError(!isValidEmail(v) ? 'E-mail inválido' : '');
   }
@@ -65,8 +71,22 @@ export function RegisterScreen({ navigation }: AuthStackScreenProps<'Register'>)
       const res = await authService.register({ name, email, password });
       setPendingAuth(res.token, res.user, res.refreshToken);
       navigation.navigate('ProfileSetup');
-    } catch {
-      Alert.alert('Erro', 'Não foi possível criar a conta. Tente novamente.');
+    } catch (err) {
+      // O backend responde 409 EMAIL_ALREADY_EXISTS; sem tratar, quem já tinha
+      // conta lia "tente novamente" e ficava em loop no cadastro.
+      if (statusOf(err) === 409) {
+        Alert.alert('E-mail já cadastrado', 'Já existe uma conta com este e-mail.', [
+          { text: 'Cancelar', style: 'cancel' },
+          { text: 'Entrar', onPress: () => navigation.replace('Login') },
+        ]);
+        return;
+      }
+      Alert.alert(
+        'Erro',
+        isNetworkError(err)
+          ? 'Não foi possível falar com o servidor. Verifique sua conexão e tente novamente.'
+          : 'Não foi possível criar a conta. Tente novamente.',
+      );
     } finally {
       setLoading(false);
     }
@@ -131,7 +151,7 @@ export function RegisterScreen({ navigation }: AuthStackScreenProps<'Register'>)
         label="E-mail"
         placeholder="seu@email.com"
         value={email}
-        onChangeText={setEmail}
+        onChangeText={handleEmailChange}
         onBlur={() => validateEmail(email)}
         error={emailError}
         keyboardType="email-address"
@@ -151,6 +171,7 @@ export function RegisterScreen({ navigation }: AuthStackScreenProps<'Register'>)
         onPress={handleRegister}
         loading={loading}
         disabled={!isFormValid}
+        testID="register-btn"
         size="lg"
         style={[styles.btn, styles.primaryButton]}
         labelStyle={styles.primaryButtonLabel}

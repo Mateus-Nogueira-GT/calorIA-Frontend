@@ -14,20 +14,21 @@ const baseMeal: PlannedMeal = {
   carbs: 50,
   fat: 10,
   completedAt: null,
+  completedToday: false,
 };
 
 describe('MealPlanCard', () => {
-  it('mostra "Marcar como concluída" quando completedAt é null', () => {
+  it('mostra "Marcar como concluída" quando não concluída no dia', () => {
     const { getByText } = render(
       <MealPlanCard meal={baseMeal} isToggling={false} onToggleComplete={() => {}} />,
     );
     expect(getByText('Marcar como concluída')).toBeTruthy();
   });
 
-  it('mostra "✓ Concluída" quando completedAt é setado', () => {
+  it('mostra "✓ Concluída" quando concluída NO dia', () => {
     const { getByText } = render(
       <MealPlanCard
-        meal={{ ...baseMeal, completedAt: '2026-06-11T08:00:00Z' }}
+        meal={{ ...baseMeal, completedAt: '2026-06-11T08:00:00Z', completedToday: true }}
         isToggling={false}
         onToggleComplete={() => {}}
       />,
@@ -42,5 +43,18 @@ describe('MealPlanCard', () => {
     );
     fireEvent.press(getByText('Marcar como concluída'));
     expect(onToggle).toHaveBeenCalledWith('m1');
+  });
+
+  // completedToday é o campo canônico: completedAt cru pode ser de semanas
+  // atrás e não significa "feita hoje" (mesma razão do B1 no backend).
+  it('não considera concluída quando completedAt é antigo mas não é de hoje', () => {
+    const { getByText } = render(
+      <MealPlanCard
+        meal={{ ...baseMeal, completedAt: '2026-05-01T08:00:00Z', completedToday: false }}
+        isToggling={false}
+        onToggleComplete={() => {}}
+      />,
+    );
+    expect(getByText('Marcar como concluída')).toBeTruthy();
   });
 });

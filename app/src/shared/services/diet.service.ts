@@ -74,9 +74,17 @@ export const dietService = {
       .get<TodayStatus>('/diets/today/status', { params: { dayNumber: todayDayNumber() } })
       .then((r) => r.data)
       .catch(() => null),
+  /**
+   * O fuso vai junto com a data: o servidor decide se a refeição já está
+   * concluída NAQUELE dia local. Sem tzOffsetMinutes ele compara em UTC e o
+   * dia "vira" às 21h BRT (mesmo motivo do getToday acima).
+   */
   toggleMeal: (mealId: string) =>
     api
-      .patch<{ is_completed: boolean }>(`/diets/meals/${mealId}/toggle`, { date: todayString() })
+      .patch<{ is_completed: boolean }>(`/diets/meals/${mealId}/toggle`, {
+        date: todayString(),
+        tzOffsetMinutes: tzOffsetMinutes(),
+      })
       .then((r) => r.data),
   /** Geração assíncrona: cada chamada gera 1 dia; chamar em polling até completed. */
   stepJob: (jobId: string) =>
