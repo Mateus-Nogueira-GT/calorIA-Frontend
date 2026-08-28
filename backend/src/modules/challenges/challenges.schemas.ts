@@ -52,12 +52,20 @@ export const errorSchema = z.object({
 
 // ─── Requests ─────────────────────────────────────────────────────────────────
 
-export const createChallengeBodySchema = z.object({
-  title: z.string().min(2).max(100),
-  description: z.string().max(500).optional().default(''),
-  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data deve estar no formato YYYY-MM-DD'),
-  endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data deve estar no formato YYYY-MM-DD'),
-})
+export const createChallengeBodySchema = z
+  .object({
+    title: z.string().min(2).max(100),
+    description: z.string().max(500).optional().default(''),
+    startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data deve estar no formato YYYY-MM-DD'),
+    endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data deve estar no formato YYYY-MM-DD'),
+  })
+  // L6: sem validação cruzada, endDate < startDate fazia durationDays cair para
+  // 1 mas ends_at gravava a data passada — o desafio nascia já encerrado.
+  // A UI atual sempre manda +7 dias, mas a API estava aberta.
+  .refine((data) => Date.parse(data.endDate) >= Date.parse(data.startDate), {
+    message: 'A data de término não pode ser anterior à de início',
+    path: ['endDate'],
+  })
 
 /** Body opcional do check-in — data LOCAL do usuário (Workstream A / A8). */
 export const checkInBodySchema = z.object({ date: localDateSchema.optional() }).nullish()

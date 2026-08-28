@@ -5,11 +5,22 @@ import type { Friend, FriendRequest, UserSearchResult } from './friends.schemas.
 
 // ─── Busca de usuários ────────────────────────────────────────────────────────
 
+/**
+ * L7: escapa os curingas do LIKE. Sem isso, digitar `%%` na aba Buscar casava
+ * com todo mundo e listava 20 usuários arbitrários da base. `\` é o escape
+ * padrão do ILIKE no Postgres, então ele também precisa ser escapado primeiro.
+ */
+export function escapeLikePattern(value: string): string {
+  return value.replace(/[\\%_]/g, (char) => `\\${char}`)
+}
+
 export async function searchUsers(
   fastify: FastifyInstance,
   userId: string,
   query: string,
 ): Promise<UserSearchResult[]> {
+  const pattern = `%${escapeLikePattern(query)}%`
+
   const rows = await fastify.db<
     {
       id: string
@@ -26,7 +37,7 @@ export async function searchUsers(
       ON (f.requester_id = p.id AND f.addressee_id = ${userId})
       OR (f.addressee_id = p.id AND f.requester_id = ${userId})
     WHERE p.id <> ${userId}
-      AND (p.username ILIKE ${`%${query}%`} OR p.full_name ILIKE ${`%${query}%`})
+      AND (p.username ILIKE ${pattern} OR p.full_name ILIKE ${pattern})
     ORDER BY p.username
     LIMIT 20
   `
