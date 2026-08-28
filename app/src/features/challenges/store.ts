@@ -13,6 +13,7 @@ interface ChallengesState {
   isLoading: boolean;
   isCreating: boolean;
   joiningId: string | null;
+  checkingInId: string | null;
   loadingLeaderboardId: string | null;
 
   load: () => Promise<void>;
@@ -30,6 +31,7 @@ const initialState = {
   isLoading: false,
   isCreating: false,
   joiningId: null as string | null,
+  checkingInId: null as string | null,
   loadingLeaderboardId: null as string | null,
 };
 
@@ -89,6 +91,10 @@ export const useChallengesStore = create<ChallengesState>((set, get) => ({
   // Check-in diário (a UI nunca tinha exposto isso — o ranking ficava sempre
   // zerado). Recarrega o leaderboard do desafio após o sucesso.
   checkIn: async (challengeId) => {
+    // B3: sem essa trava, dois toques rápidos disparavam dois check-ins; o
+    // segundo zerava a sequência no servidor.
+    if (get().checkingInId) return false;
+    set({ checkingInId: challengeId });
     try {
       await challengesService.checkIn(challengeId);
       void get().loadLeaderboard(challengeId).catch(() => {});
@@ -104,6 +110,8 @@ export const useChallengesStore = create<ChallengesState>((set, get) => ({
         showAlert('Não foi possível fazer o check-in', 'Tente novamente.');
       }
       return false;
+    } finally {
+      set({ checkingInId: null });
     }
   },
 

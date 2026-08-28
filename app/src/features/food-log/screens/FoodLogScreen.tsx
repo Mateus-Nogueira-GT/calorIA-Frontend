@@ -8,8 +8,8 @@ import { DayMacroSummary } from '../components/DayMacroSummary';
 import { MealSection } from '../components/MealSection';
 import { AddMealModal } from '../components/AddMealModal';
 import { CalorieProgressBar } from '../components/CalorieProgressBar';
-import { formatChipLabel, getMealGroupFor, last7Days } from '@shared/utils/date';
-import { getDailyCalorieGoal, sumCalories } from '@shared/utils/calories';
+import { formatChipLabel, getMealGroupFor, last7Days, todayString } from '@shared/utils/date';
+import { getDailyCalorieGoal, getDayTotals } from '@shared/utils/calories';
 import { useDietStore } from '@features/diet/store';
 
 const GROUPS = ['Café da manhã', 'Almoço', 'Lanche', 'Jantar'] as const;
@@ -43,7 +43,14 @@ export function FoodLogScreen(): React.JSX.Element {
   const [modalVisible, setModalVisible] = useState(false);
   const dates = last7Days();
 
-  const consumed = sumCalories(meals);
+  // M6: mesma regra do Dashboard. O `plan` em memória é só o dia de HOJE
+  // (completedToday não diz nada sobre dias anteriores), então em dias passados
+  // somamos apenas o diário livre — é o único dado real que existe para eles.
+  const isToday = selectedDate === todayString();
+  const consumed = getDayTotals({
+    planMeals: isToday ? plan?.meals : undefined,
+    freeMeals: meals,
+  }).calories;
   const goal = getDailyCalorieGoal(plan);
 
   const grouped = useMemo(

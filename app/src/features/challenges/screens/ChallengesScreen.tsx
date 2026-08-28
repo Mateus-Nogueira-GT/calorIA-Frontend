@@ -15,6 +15,7 @@ export function ChallengesScreen({ navigation }: Props): React.JSX.Element {
   const challenges = useChallengesStore((s) => s.challenges);
   const isLoading = useChallengesStore((s) => s.isLoading);
   const joiningId = useChallengesStore((s) => s.joiningId);
+  const checkingInId = useChallengesStore((s) => s.checkingInId);
   const load = useChallengesStore((s) => s.load);
   const join = useChallengesStore((s) => s.join);
   const checkIn = useChallengesStore((s) => s.checkIn);
@@ -65,6 +66,7 @@ export function ChallengesScreen({ navigation }: Props): React.JSX.Element {
               <ChallengeCard
                 challenge={item}
                 joining={joiningId === item.id}
+                checkingIn={checkingInId === item.id}
                 onJoin={() => join(item.id).catch(() => {})}
                 onCheckIn={item.joinedByMe && !item.finished ? () => void checkIn(item.id) : undefined}
                 onPress={() => navigation.navigate('ChallengeLeaderboard', { challengeId: item.id })}

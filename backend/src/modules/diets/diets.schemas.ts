@@ -116,8 +116,17 @@ export const todayQuerySchema = z.object({
   tzOffsetMinutes: tzOffsetMinutesSchema.optional(),
 })
 
-/** Body opcional do toggle — data local para o streak (A4). */
-export const toggleMealBodySchema = z.object({ date: localDateSchema.optional() }).nullish()
+/**
+ * Body opcional do toggle — data local para o streak (A4) e para decidir se a
+ * refeição já está concluída NAQUELE dia (B1). Sem tzOffsetMinutes o servidor
+ * compara em UTC e o dia "vira" às 21h BRT.
+ */
+export const toggleMealBodySchema = z
+  .object({
+    date: localDateSchema.optional(),
+    tzOffsetMinutes: tzOffsetMinutesSchema.optional(),
+  })
+  .nullish()
 
 export const replaceDietItemBodySchema = z.object({
   food_name: z.string().min(2),

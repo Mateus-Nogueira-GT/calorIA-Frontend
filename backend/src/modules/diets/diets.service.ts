@@ -336,23 +336,44 @@ export async function toggleMealCompleted(
   userId: string,
   mealId: string,
   localDate?: string,
+  tzOffsetMinutes?: number,
 ): Promise<{ is_completed: boolean }> {
   if (localDate && !isWithinDateWindow(localDate)) {
     throw new AppError(400, 'INVALID_DATE', 'Data fora da janela permitida')
   }
 
-  // Toggle ATÔMICO (B10): uma única query com ownership no WHERE — o padrão
-  // select-then-update permitia double-toggle em taps rápidos.
+  const date = localDate ?? utcTodayString()
+  const tz = tzOffsetMinutes ?? 0
+
+  // B1: o novo estado vem da DATA de completed_at, não de `NOT is_completed`.
+  // O plano é cíclico (day_number), então a mesma linha reaparece na semana
+  // seguinte ainda com is_completed=true de uma conclusão antiga, enquanto a UI
+  // mostra completedToday=false — inverter o booleano cru DESMARCAVA no
+  // primeiro toque. completed_at é a única fonte de verdade; is_completed é
+  // derivado. A conversão para hora local espelha o helper completedOnDate.
+  //
+  // Continua ATÔMICO (B10): o CTE calcula o estado e o UPDATE acontece na mesma
+  // instrução — select-then-update permitia double-toggle em taps rápidos.
   const [meal] = await fastify.db<{ is_completed: boolean }[]>`
+    WITH target AS (
+      SELECT dm.id,
+             (
+               dm.completed_at IS NOT NULL
+               AND (dm.completed_at AT TIME ZONE 'UTC'
+                    + make_interval(mins => ${tz}))::date = ${date}::date
+             ) AS completed_on_date
+      FROM diet_meals dm
+      JOIN diet_days dd ON dd.id = dm.diet_day_id
+      JOIN diets d ON d.id = dd.diet_id
+      WHERE dm.id = ${mealId}
+        AND d.user_id = ${userId}
+    )
     UPDATE diet_meals dm
-    SET is_completed = NOT dm.is_completed,
-        completed_at = CASE WHEN dm.is_completed THEN NULL ELSE NOW() END,
+    SET is_completed = NOT target.completed_on_date,
+        completed_at = CASE WHEN target.completed_on_date THEN NULL ELSE NOW() END,
         updated_at   = NOW()
-    FROM diet_days dd
-    JOIN diets d ON d.id = dd.diet_id
-    WHERE dm.id = ${mealId}
-      AND dd.id = dm.diet_day_id
-      AND d.user_id = ${userId}
+    FROM target
+    WHERE dm.id = target.id
     RETURNING dm.is_completed
   `
 
@@ -361,9 +382,9 @@ export async function toggleMealCompleted(
   const newState = meal.is_completed
 
   if (newState) {
-    // Data local do cliente quando presente; fallback = CURRENT_DATE (UTC)
+    // Mesma data usada para decidir o estado acima (local do cliente, ou UTC).
     await fastify.db`
-      SELECT update_user_streak(${userId}, COALESCE(${localDate ?? null}::date, CURRENT_DATE))
+      SELECT update_user_streak(${userId}, ${date}::date)
     `
 
     const [streak] = await fastify.db<{ current_streak: number }[]>`

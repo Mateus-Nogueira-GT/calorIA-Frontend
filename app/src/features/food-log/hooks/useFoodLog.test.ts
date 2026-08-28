@@ -54,4 +54,36 @@ describe('useFoodLog', () => {
     await act(() => result.current.handleDeleteMeal('m1'));
     expect(result.current.meals).toHaveLength(0);
   });
+
+  it('envia a data SELECIONADA ao registrar (B4)', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { foodLogService } = require('@shared/services/food-log.service');
+    // Usuário no chip "Ontem": sem a data explícita o servidor salvava em HOJE
+    // enquanto o cache local gravava em ontem — a refeição migrava de dia.
+    useFoodLogStore.setState({ mealsByDate: { '2026-06-08': [] }, loadingByDate: {}, selectedDate: '2026-06-08' });
+    const { result } = renderHook(() => useFoodLog());
+
+    await act(async () => {
+      await result.current.handleAddMeal({ name: 'Almoço', calories: 500, protein: 30, carbs: 40, fat: 10 });
+    });
+
+    expect(foodLogService.addMeal).toHaveBeenCalledWith(
+      expect.objectContaining({ date: '2026-06-08' }),
+    );
+  });
+
+  it('respeita uma data explícita passada pelo chamador', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { foodLogService } = require('@shared/services/food-log.service');
+    useFoodLogStore.setState({ mealsByDate: { '2026-06-09': [] }, loadingByDate: {}, selectedDate: '2026-06-09' });
+    const { result } = renderHook(() => useFoodLog());
+
+    await act(async () => {
+      await result.current.handleAddMeal({ name: 'X', calories: 1, protein: 0, carbs: 0, fat: 0, date: '2026-06-01' });
+    });
+
+    expect(foodLogService.addMeal).toHaveBeenCalledWith(
+      expect.objectContaining({ date: '2026-06-01' }),
+    );
+  });
 });
