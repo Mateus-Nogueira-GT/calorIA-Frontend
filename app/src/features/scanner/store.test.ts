@@ -2,6 +2,10 @@ import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import { act, renderHook } from '@testing-library/react-native';
 import { useScannerStore } from './store';
 
+jest.mock('@shared/utils/show-alert', () => ({ showAlert: jest.fn() }));
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { showAlert } = require('@shared/utils/show-alert');
+
 jest.mock('@shared/services/scanner.service', () => ({
   scannerService: { analyzePhoto: jest.fn() },
 }));
@@ -61,5 +65,26 @@ describe('useScannerStore', () => {
     useScannerStore.getState().clear();
     expect(useScannerStore.getState().items).toEqual([]);
     expect(useScannerStore.getState().image).toBeNull();
+  });
+
+  it('confirmar sem nenhum item nomeado não fecha como se tivesse salvo (M7)', async () => {
+    // A IA não identificou nada, o usuário adicionou um item e esqueceu o nome:
+    // o modal fechava sem erro e sem registrar, e ele acreditava ter salvo.
+    useScannerStore.setState({
+      image: 'data:image/jpeg;base64,AAA',
+      items: [{ ...item('1'), name: '   ' }],
+      isAnalyzing: false,
+      error: null,
+    });
+    const { result } = renderHook(() => useScannerStore());
+
+    await act(async () => {
+      await expect(result.current.confirm()).rejects.toThrow('SCAN_CONFIRM_EMPTY');
+    });
+
+    expect(showAlert).toHaveBeenCalled();
+    expect(foodLogService.addMeal).not.toHaveBeenCalled();
+    // O estado NÃO é resetado: o usuário continua na tela para nomear o item.
+    expect(useScannerStore.getState().items).toHaveLength(1);
   });
 });

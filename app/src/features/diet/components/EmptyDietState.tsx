@@ -3,17 +3,38 @@ import { StyleSheet, View } from 'react-native';
 import { Button, Text } from '@shared/components';
 import { colors, radius, spacing, typography } from '@theme';
 
+/**
+ * `incomplete` (M8): o usuário TEM plano ativo, mas a geração parou antes de
+ * chegar no dia de hoje. Mostrar o vazio de onboarding aqui era enganoso —
+ * sugeria que ele não tinha dieta nenhuma.
+ */
+type Mode = 'empty' | 'error' | 'incomplete';
+
 interface Props {
-  errorMode?: boolean;
+  mode?: Mode;
   onAction: () => void;
 }
 
-export function EmptyDietState({ errorMode, onAction }: Props): React.JSX.Element {
-  const title = errorMode ? 'Não foi possível carregar sua dieta' : 'Você ainda não tem uma dieta';
-  const subtitle = errorMode
-    ? 'Tente novamente em instantes.'
-    : 'Converse com o Coach para gerar um plano personalizado.';
-  const cta = errorMode ? 'Tentar novamente' : 'Falar com o Coach';
+const COPY: Record<Mode, { title: string; subtitle: string; cta: string }> = {
+  empty: {
+    title: 'Você ainda não tem uma dieta',
+    subtitle: 'Converse com o Coach para gerar um plano personalizado.',
+    cta: 'Falar com o Coach',
+  },
+  error: {
+    title: 'Não foi possível carregar sua dieta',
+    subtitle: 'Tente novamente em instantes.',
+    cta: 'Tentar novamente',
+  },
+  incomplete: {
+    title: 'Seu plano ainda está incompleto',
+    subtitle: 'A geração parou antes de chegar no dia de hoje. Dá para retomar de onde parou.',
+    cta: 'Retomar geração',
+  },
+};
+
+export function EmptyDietState({ mode = 'empty', onAction }: Props): React.JSX.Element {
+  const { title, subtitle, cta } = COPY[mode];
 
   return (
     <View style={styles.card}>

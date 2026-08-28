@@ -15,6 +15,7 @@ import {
   getDietHistory,
   getDietWithDays,
   getTodayPlan,
+  getTodayStatus,
   replaceDietItem,
   toggleMealCompleted,
 } from './diets.service.js'
@@ -102,6 +103,36 @@ const dietsRoutes: FastifyPluginAsyncZod = async (fastify) => {
     },
   )
 
+  /** GET /diets/today/status — por que não há plano hoje (M8) */
+  fastify.get(
+    '/today/status',
+    {
+      schema: {
+        tags: ['Diets'],
+        summary: 'Situação do plano de hoje',
+        description:
+          'Distingue "sem dieta" de "dieta ativa com o dia de hoje ainda não gerado". ' +
+          'O app consulta apenas quando /diets/today responde null, para escolher entre ' +
+          'o vazio de onboarding e a oferta de retomar a geração.',
+        security: [{ bearerAuth: [] }],
+        querystring: todayQuerySchema,
+        response: {
+          200: z.object({
+            hasActiveDiet: z.boolean(),
+            dayMissing: z.boolean(),
+            resumableJobId: z.string().uuid().nullable(),
+          }),
+          400: errorSchema,
+          401: errorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { sub: userId } = request.user as JwtPayload
+      return reply.send(await getTodayStatus(fastify, userId, request.query))
+    },
+  )
+
   /** GET /diets/history — histórico de dietas */
   fastify.get(
     '/history',
@@ -162,7 +193,13 @@ const dietsRoutes: FastifyPluginAsyncZod = async (fastify) => {
     async (request, reply) => {
       const { sub: userId } = request.user as JwtPayload
       return reply.send(
-        await toggleMealCompleted(fastify, userId, request.params.mealId, request.body?.date),
+        await toggleMealCompleted(
+          fastify,
+          userId,
+          request.params.mealId,
+          request.body?.date,
+          request.body?.tzOffsetMinutes,
+        ),
       )
     },
   )
