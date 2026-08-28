@@ -7,7 +7,7 @@ import { useFoodLogStore } from '@features/food-log/store';
 import { foodLogService } from '@shared/services/food-log.service';
 import { useDietStore } from '@features/diet/store';
 import { todayString } from '@shared/utils/date';
-import { getDailyCalorieGoal } from '@shared/utils/calories';
+import { getDailyCalorieGoal, getDayTotals } from '@shared/utils/calories';
 import { CalorieRing } from '../components/CalorieRing';
 import { MacroCard } from '../components/MacroCard';
 import { MealListItem } from '../components/MealListItem';
@@ -87,27 +87,9 @@ export function DashboardScreen(): React.JSX.Element {
   }, [today, setFoodLogLoading, setMeals, loadCurrentDiet]);
 
   // D1 da spec: o anel soma o que a pessoa REALMENTE comeu — refeições do
-  // plano concluídas hoje + diário livre (inclui itens do scanner). Antes,
-  // com dieta ativa, o diário era ignorado e a contagem ficava errada.
-  const completedPlannedMeals = (plan?.meals ?? []).filter((m) => m.completedToday);
-  const sumMacros = (items: { calories: number; protein: number; carbs: number; fat: number }[]) =>
-    items.reduce(
-      (acc, m) => ({
-        calories: acc.calories + m.calories,
-        protein: acc.protein + m.protein,
-        carbs: acc.carbs + m.carbs,
-        fat: acc.fat + m.fat,
-      }),
-      { calories: 0, protein: 0, carbs: 0, fat: 0 },
-    );
-  const plannedTotals = sumMacros(completedPlannedMeals);
-  const freeTotals = sumMacros(foodLogMeals);
-  const totals = {
-    calories: plannedTotals.calories + freeTotals.calories,
-    protein: plannedTotals.protein + freeTotals.protein,
-    carbs: plannedTotals.carbs + freeTotals.carbs,
-    fat: plannedTotals.fat + freeTotals.fat,
-  };
+  // plano concluídas hoje + diário livre (inclui itens do scanner). A mesma
+  // regra é usada pelo Diário (M6), por isso vive em @shared/utils/calories.
+  const totals = getDayTotals({ planMeals: plan?.meals, freeMeals: foodLogMeals });
 
   const calorieGoal = getDailyCalorieGoal(plan);
   const proteinGoal = plan?.totalProtein ?? DEFAULT_PROTEIN_GOAL;

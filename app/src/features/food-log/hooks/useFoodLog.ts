@@ -30,7 +30,10 @@ export function useFoodLog() {
   }, [store.selectedDate]);
 
   const handleAddMeal = useCallback(async (data: AddMealPayload): Promise<void> => {
-    const meal = await foodLogService.addMeal(data);
+    // B4: sem a data explícita o serviço usava HOJE, mas o cache local grava sob
+    // o dia selecionado. Registrar em "Ontem" parecia funcionar até reabrir o
+    // app: a refeição migrava para hoje e os totais dos dois dias ficavam errados.
+    const meal = await foodLogService.addMeal({ ...data, date: data.date ?? store.selectedDate });
     store.addMeal(store.selectedDate, meal);
   }, [store.selectedDate]);
 
