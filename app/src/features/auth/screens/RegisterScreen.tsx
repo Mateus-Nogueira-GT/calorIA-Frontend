@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import {
   Alert,
+  KeyboardAvoidingView,
   Platform,
   ScrollView,
   StyleSheet,
@@ -121,6 +122,12 @@ export function RegisterScreen({ navigation }: AuthStackScreenProps<'Register'>)
   }
 
   return (
+    // A6: sem o KAV o teclado cobria o campo de senha e o botão em telas
+    // pequenas — o usuário não via o que digitava nem alcançava o Entrar.
+    <KeyboardAvoidingView
+      style={styles.screen}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
     <ScrollView
       style={styles.screen}
       contentContainerStyle={styles.container}
@@ -223,6 +230,7 @@ export function RegisterScreen({ navigation }: AuthStackScreenProps<'Register'>)
         {loginFooterLabel}
       </Button>
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
