@@ -32,6 +32,10 @@ export function FriendsScreen({ route }: CommunityStackScreenProps<'Friends'>): 
 
   useEffect(() => {
     void store.load();
+    // Cancela o debounce pendente ao sair da tela (buscava depois de desmontar).
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

@@ -35,6 +35,9 @@ const initialState = {
   error: null as string | null,
 };
 
+/** Sequência das buscas: só a resposta da última requisição pode escrever. */
+let searchSeq = 0;
+
 export const useFriendsStore = create<FriendsState>((set, get) => ({
   ...initialState,
 
@@ -60,19 +63,29 @@ export const useFriendsStore = create<FriendsState>((set, get) => ({
   search: async (query) => {
     const trimmed = query.trim();
     if (trimmed.length < 2) {
+      searchSeq++; // invalida qualquer busca em voo
       set({ searchResults: [], isSearching: false });
       return;
     }
+    // L2: o debounce reduz mas não elimina buscas concorrentes. Sem o token, a
+    // resposta de "ana" podia chegar depois da de "anab" e sobrescrever a lista
+    // com resultados do termo antigo.
+    const seq = ++searchSeq;
     set({ isSearching: true });
     try {
       const searchResults = await friendsService.search(trimmed);
+      if (seq !== searchSeq) return; // chegou fora de ordem: descarta
       set({ searchResults, isSearching: false });
     } catch {
+      if (seq !== searchSeq) return;
       set({ isSearching: false });
     }
   },
 
-  clearSearch: () => set({ searchResults: [] }),
+  clearSearch: () => {
+    searchSeq++;
+    set({ searchResults: [] });
+  },
 
   sendRequest: async (username) => {
     try {

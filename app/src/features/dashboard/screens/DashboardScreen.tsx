@@ -1,13 +1,13 @@
-import React, { useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
-import { Text } from '@shared/components';
+import React, { useCallback, useEffect, useState } from 'react';
+import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { ErrorState, Text } from '@shared/components';
 import { colors, typography, spacing, radius } from '@theme';
 import { useAuthStore } from '@features/auth/store';
 import { useFoodLogStore } from '@features/food-log/store';
 import { foodLogService } from '@shared/services/food-log.service';
 import { useDietStore } from '@features/diet/store';
 import { todayString } from '@shared/utils/date';
-import { getDailyCalorieGoal } from '@shared/utils/calories';
+import { getDailyCalorieGoal, getDayTotals } from '@shared/utils/calories';
 import { CalorieRing } from '../components/CalorieRing';
 import { MacroCard } from '../components/MacroCard';
 import { MealListItem } from '../components/MealListItem';
@@ -71,43 +71,43 @@ export function DashboardScreen(): React.JSX.Element {
   const plan = useDietStore((s) => s.plan);
   const loadCurrentDiet = useDietStore((s) => s.loadCurrent);
 
-  useEffect(() => {
-    if (useFoodLogStore.getState().mealsByDate[today] === undefined) {
+  /**
+   * `force` ignora o cache — é o caminho do retry e do pull-to-refresh.
+   * O portão normal é `syncedDates`, não `mealsByDate`: escrita local do
+   * scanner criava a chave sem o dia ter sido carregado, e o dia ficava preso
+   * com um item só (as refeições já salvas sumiam até reiniciar o app).
+   */
+  const loadFoodLog = useCallback(
+    (force = false) => {
+      if (!force && useFoodLogStore.getState().syncedDates[today]) return Promise.resolve();
       setFoodLogError(false);
       setFoodLogLoading(today, true);
-      foodLogService
+      return foodLogService
         .getMeals(today)
         .then((data) => setMeals(today, data))
         .catch(() => setFoodLogError(true))
         .finally(() => setFoodLogLoading(today, false));
-    }
+    },
+    [today, setFoodLogLoading, setMeals],
+  );
+
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    void Promise.all([loadFoodLog(true), loadCurrentDiet()]).finally(() => setRefreshing(false));
+  }, [loadFoodLog, loadCurrentDiet]);
+
+  useEffect(() => {
+    void loadFoodLog();
     if (useDietStore.getState().plan === undefined) {
       loadCurrentDiet();
     }
-  }, [today, setFoodLogLoading, setMeals, loadCurrentDiet]);
+  }, [loadFoodLog, loadCurrentDiet]);
 
   // D1 da spec: o anel soma o que a pessoa REALMENTE comeu — refeições do
-  // plano concluídas hoje + diário livre (inclui itens do scanner). Antes,
-  // com dieta ativa, o diário era ignorado e a contagem ficava errada.
-  const completedPlannedMeals = (plan?.meals ?? []).filter((m) => m.completedToday);
-  const sumMacros = (items: { calories: number; protein: number; carbs: number; fat: number }[]) =>
-    items.reduce(
-      (acc, m) => ({
-        calories: acc.calories + m.calories,
-        protein: acc.protein + m.protein,
-        carbs: acc.carbs + m.carbs,
-        fat: acc.fat + m.fat,
-      }),
-      { calories: 0, protein: 0, carbs: 0, fat: 0 },
-    );
-  const plannedTotals = sumMacros(completedPlannedMeals);
-  const freeTotals = sumMacros(foodLogMeals);
-  const totals = {
-    calories: plannedTotals.calories + freeTotals.calories,
-    protein: plannedTotals.protein + freeTotals.protein,
-    carbs: plannedTotals.carbs + freeTotals.carbs,
-    fat: plannedTotals.fat + freeTotals.fat,
-  };
+  // plano concluídas hoje + diário livre (inclui itens do scanner). A mesma
+  // regra é usada pelo Diário (M6), por isso vive em @shared/utils/calories.
+  const totals = getDayTotals({ planMeals: plan?.meals, freeMeals: foodLogMeals });
 
   const calorieGoal = getDailyCalorieGoal(plan);
   const proteinGoal = plan?.totalProtein ?? DEFAULT_PROTEIN_GOAL;
@@ -117,7 +117,11 @@ export function DashboardScreen(): React.JSX.Element {
   const percentLabel = calorieGoal > 0 ? Math.round((totals.calories / calorieGoal) * 100) : 0;
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+    >
       <View style={styles.shell}>
         <View style={styles.headerRow}>
           <Text style={styles.date}>{todayLabel()}</Text>
@@ -178,12 +182,10 @@ export function DashboardScreen(): React.JSX.Element {
         {isFoodLogLoading ? (
           <DashboardMealSkeleton />
         ) : foodLogError ? (
-          <View style={styles.feedbackCard}>
-            <Text style={styles.feedbackTitle}>Nao foi possivel carregar o diario livre</Text>
-            <Text style={styles.feedbackText}>
-              Atualize a pagina ou tente novamente em instantes.
-            </Text>
-          </View>
+          <ErrorState
+            title="Não foi possível carregar o diário livre"
+            onRetry={() => void loadFoodLog(true)}
+          />
         ) : foodLogMeals.length > 0 ? (
           <View style={styles.sectionCard}>
             {foodLogMeals.map((meal, index) => (

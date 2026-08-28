@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import {
   Alert,
+  KeyboardAvoidingView,
   Platform,
   ScrollView,
   StyleSheet,
@@ -11,6 +12,7 @@ import { authService } from '@shared/services/auth.service';
 import { getAppleSignInPayload, isAppleSignInAvailable } from '@shared/services/apple-signin.service';
 import { getGoogleIdToken, isGoogleSignInAvailable } from '@shared/services/google-signin.service';
 import { useAuthStore } from '@features/auth/store';
+import { isNetworkError } from '@shared/utils/api-error';
 import { Button, Input, Text } from '@shared/components';
 import { colors, typography, spacing, radius } from '@theme';
 import type { AuthStackScreenProps } from '@navigation/types';
@@ -45,6 +47,15 @@ export function LoginScreen({ navigation }: AuthStackScreenProps<'Login'>): Reac
   const [passwordError, setPasswordError] = useState('');
   const [loading, setLoading] = useState(false);
 
+  /**
+   * Teclados Android completam o e-mail com um espaço no fim. Normalizamos na
+   * origem: sem isso o botão ficava desabilitado (toque morto) com o e-mail
+   * visualmente correto na tela.
+   */
+  function handleEmailChange(v: string) {
+    setEmail(v.trim());
+  }
+
   function validateEmail(v: string) {
     setEmailError(!isValidEmail(v) ? 'E-mail inválido' : '');
   }
@@ -59,8 +70,13 @@ export function LoginScreen({ navigation }: AuthStackScreenProps<'Login'>): Reac
     try {
       const res = await authService.login({ email, password });
       setToken(res.token, res.user, res.refreshToken);
-    } catch {
-      Alert.alert('Erro', 'Credenciais inválidas. Verifique e tente novamente.');
+    } catch (err) {
+      Alert.alert(
+        'Erro',
+        isNetworkError(err)
+          ? 'Não foi possível falar com o servidor. Verifique sua conexão e tente novamente.'
+          : 'Credenciais inválidas. Verifique e tente novamente.',
+      );
     } finally {
       setLoading(false);
     }
@@ -93,6 +109,12 @@ export function LoginScreen({ navigation }: AuthStackScreenProps<'Login'>): Reac
   }
 
   return (
+    // A6: sem o KAV o teclado cobria o campo de senha e o botão em telas
+    // pequenas — o usuário não via o que digitava nem alcançava o Entrar.
+    <KeyboardAvoidingView
+      style={styles.screen}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
     <ScrollView
       style={styles.screen}
       contentContainerStyle={styles.container}
@@ -114,7 +136,7 @@ export function LoginScreen({ navigation }: AuthStackScreenProps<'Login'>): Reac
         label="E-mail"
         placeholder="seu@email.com"
         value={email}
-        onChangeText={setEmail}
+        onChangeText={handleEmailChange}
         onBlur={() => validateEmail(email)}
         error={emailError}
         keyboardType="email-address"
@@ -142,6 +164,7 @@ export function LoginScreen({ navigation }: AuthStackScreenProps<'Login'>): Reac
         onPress={handleLogin}
         loading={loading}
         disabled={!isFormValid}
+        testID="login-btn"
         size="lg"
         style={[styles.btn, styles.primaryButton]}
         labelStyle={styles.primaryButtonLabel}
@@ -193,6 +216,7 @@ export function LoginScreen({ navigation }: AuthStackScreenProps<'Login'>): Reac
         {registerFooterLabel}
       </Button>
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 

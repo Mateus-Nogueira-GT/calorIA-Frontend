@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useMemo, useState } from 'react';
+import { RefreshControl, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Text, ErrorState } from '@shared/components';
 import { colors, typography, spacing, radius } from '@theme';
 import { useFoodLog } from '../hooks/useFoodLog';
@@ -8,8 +8,8 @@ import { DayMacroSummary } from '../components/DayMacroSummary';
 import { MealSection } from '../components/MealSection';
 import { AddMealModal } from '../components/AddMealModal';
 import { CalorieProgressBar } from '../components/CalorieProgressBar';
-import { formatChipLabel, getMealGroupFor, last7Days } from '@shared/utils/date';
-import { getDailyCalorieGoal, sumCalories } from '@shared/utils/calories';
+import { formatChipLabel, getMealGroupFor, last7Days, todayString } from '@shared/utils/date';
+import { getDailyCalorieGoal, getDayTotals } from '@shared/utils/calories';
 import { useDietStore } from '@features/diet/store';
 
 const GROUPS = ['Café da manhã', 'Almoço', 'Lanche', 'Jantar'] as const;
@@ -41,9 +41,21 @@ export function FoodLogScreen(): React.JSX.Element {
   const { meals, isLoading, hasError, reload, selectedDate, setSelectedDate, handleAddMeal, handleDeleteMeal } = useFoodLog();
   const plan = useDietStore((s) => s.plan);
   const [modalVisible, setModalVisible] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    void Promise.resolve(reload()).finally(() => setRefreshing(false));
+  }, [reload]);
   const dates = last7Days();
 
-  const consumed = sumCalories(meals);
+  // M6: mesma regra do Dashboard. O `plan` em memória é só o dia de HOJE
+  // (completedToday não diz nada sobre dias anteriores), então em dias passados
+  // somamos apenas o diário livre — é o único dado real que existe para eles.
+  const isToday = selectedDate === todayString();
+  const consumed = getDayTotals({
+    planMeals: isToday ? plan?.meals : undefined,
+    freeMeals: meals,
+  }).calories;
   const goal = getDailyCalorieGoal(plan);
 
   const grouped = useMemo(
@@ -95,7 +107,11 @@ export function FoodLogScreen(): React.JSX.Element {
         ) : hasError ? (
           <ErrorState onRetry={reload} />
         ) : (
-          <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
+          <ScrollView
+            style={styles.scroll}
+            contentContainerStyle={styles.scrollContent}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+          >
             <CalorieProgressBar consumed={consumed} goal={goal} />
             <DayMacroSummary meals={meals} />
             {meals.length === 0 ? (

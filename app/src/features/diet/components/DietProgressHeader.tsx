@@ -14,7 +14,7 @@ export function DietProgressHeader({ completedCount, totalCount }: Props): React
     <View style={styles.container}>
       <View style={styles.copy}>
         <Text style={styles.title}>Plano do dia</Text>
-        <Text style={styles.subtitle}>{completedCount} de {totalCount} refeicoes concluidas</Text>
+        <Text style={styles.subtitle}>{completedCount} de {totalCount} refeições concluídas</Text>
       </View>
       <View style={styles.badge}>
         <Text style={styles.badgeText}>{Math.round(pct * 100)}%</Text>

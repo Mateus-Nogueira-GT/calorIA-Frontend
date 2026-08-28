@@ -16,6 +16,8 @@ interface FeedState {
   isCreating: boolean;
   commentsByPost: Record<string, Comment[]>;
   loadingCommentsByPost: Record<string, boolean>;
+  /** A última carga de comentários daquele post falhou. */
+  commentsErrorByPost: Record<string, boolean>;
 
   loadInitial: () => Promise<void>;
   loadMore: () => Promise<void>;
@@ -36,6 +38,7 @@ const initialState = {
   isCreating: false,
   commentsByPost: {} as Record<string, Comment[]>,
   loadingCommentsByPost: {} as Record<string, boolean>,
+  commentsErrorByPost: {} as Record<string, boolean>,
 };
 
 export const useFeedStore = create<FeedState>((set, get) => ({
@@ -85,7 +88,10 @@ export const useFeedStore = create<FeedState>((set, get) => ({
       set((s) => ({ posts: [created, ...s.posts], isCreating: false }));
       return created;
     } catch (e) {
+      // M3: antes o catch da tela dizia "Alert já disparado no store", mas o
+      // store só relançava — o usuário via o spinner parar e mais nada.
       set({ isCreating: false });
+      showAlert('Não foi possível publicar', 'Verifique sua conexão e tente novamente.');
       throw e;
     }
   },
@@ -120,7 +126,10 @@ export const useFeedStore = create<FeedState>((set, get) => ({
   },
 
   loadComments: async (postId) => {
-    set((s) => ({ loadingCommentsByPost: { ...s.loadingCommentsByPost, [postId]: true } }));
+    set((s) => ({
+      loadingCommentsByPost: { ...s.loadingCommentsByPost, [postId]: true },
+      commentsErrorByPost: { ...s.commentsErrorByPost, [postId]: false },
+    }));
     try {
       const comments = await feedService.getComments(postId);
       set((s) => ({
@@ -128,7 +137,12 @@ export const useFeedStore = create<FeedState>((set, get) => ({
         loadingCommentsByPost: { ...s.loadingCommentsByPost, [postId]: false },
       }));
     } catch {
-      set((s) => ({ loadingCommentsByPost: { ...s.loadingCommentsByPost, [postId]: false } }));
+      // Sem esse estado a tela exibia "Seja o primeiro a comentar." num post
+      // com 12 comentários — afirmação falsa e sem como recarregar.
+      set((s) => ({
+        loadingCommentsByPost: { ...s.loadingCommentsByPost, [postId]: false },
+        commentsErrorByPost: { ...s.commentsErrorByPost, [postId]: true },
+      }));
     }
   },
 

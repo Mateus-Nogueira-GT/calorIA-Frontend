@@ -51,7 +51,7 @@ export function MealPlanCard({ meal, isToggling, onToggleComplete }: Props): Rea
         style={[styles.btn, isDone && styles.btnDone, isToggling && styles.btnDisabled]}
       >
         <Text style={[styles.btnText, isDone && styles.btnTextDone]}>
-          {isDone ? 'Concluida' : 'Marcar como concluida'}
+          {isDone ? '✓ Concluída' : 'Marcar como concluída'}
         </Text>
       </TouchableOpacity>
     </View>
