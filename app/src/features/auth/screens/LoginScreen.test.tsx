@@ -1,4 +1,5 @@
 import React from 'react';
+import { Alert } from 'react-native';
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import { LoginScreen } from './LoginScreen';
 
@@ -25,10 +26,13 @@ const mockGetAppleSignInPayload = jest.fn().mockResolvedValue({
 jest.mock('@react-navigation/native', () => ({
   useNavigation: () => ({ navigate: mockNavigate, replace: mockReplace }),
 }));
+// As factories de jest.mock são içadas acima dos `const mock*`: referenciar a
+// função direto congela um valor indefinido. Chamar por dentro de uma arrow
+// adia a leitura para o momento da chamada (padrão já usado no apple-signin).
 jest.mock('@shared/services/auth.service', () => ({
   authService: {
-    login: mockLogin,
-    loginWithApple: mockLoginWithApple,
+    login: (...args: unknown[]) => mockLogin(...args),
+    loginWithApple: (...args: unknown[]) => mockLoginWithApple(...args),
   },
 }));
 jest.mock('@features/auth/store', () => ({
@@ -113,5 +117,37 @@ describe('LoginScreen', () => {
     await waitFor(() =>
       expect(mockSetToken).toHaveBeenCalledWith('tok', expect.any(Object), 'refresh-tok'),
     );
+  });
+
+  it('remove o espaço que o teclado adiciona no fim do e-mail', async () => {
+    const { getByPlaceholderText, getByTestId } = render(
+      <LoginScreen navigation={{ navigate: mockNavigate, replace: mockReplace } as never} route={{} as never} />,
+    );
+
+    // Gboard/Samsung completam o e-mail com espaço: o botão ficava morto.
+    fireEvent.changeText(getByPlaceholderText('seu@email.com'), 'joao@test.com ');
+    fireEvent.changeText(getByPlaceholderText('Sua senha'), 'senha12345');
+    fireEvent.press(getByTestId('login-btn'));
+
+    await waitFor(() =>
+      expect(mockLogin).toHaveBeenCalledWith({ email: 'joao@test.com', password: 'senha12345' }),
+    );
+  });
+
+  it('distingue falha de rede de credenciais inválidas', async () => {
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    mockLogin.mockRejectedValueOnce({ isAxiosError: true, response: undefined });
+
+    const { getByPlaceholderText, getByTestId } = render(
+      <LoginScreen navigation={{ navigate: mockNavigate, replace: mockReplace } as never} route={{} as never} />,
+    );
+    fireEvent.changeText(getByPlaceholderText('seu@email.com'), 'joao@test.com');
+    fireEvent.changeText(getByPlaceholderText('Sua senha'), 'senha12345');
+    fireEvent.press(getByTestId('login-btn'));
+
+    await waitFor(() =>
+      expect(alertSpy).toHaveBeenCalledWith('Erro', expect.stringContaining('conexão')),
+    );
+    alertSpy.mockRestore();
   });
 });
