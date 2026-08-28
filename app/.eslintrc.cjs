@@ -1,5 +1,8 @@
 module.exports = {
   root: true,
+  // scripts/ é ferramental Node (CommonJS), roda fora do bundle do app e não
+  // segue as regras de React Native/TS aplicadas a src/.
+  ignorePatterns: ['scripts/'],
   parser: '@typescript-eslint/parser',
   parserOptions: {
     ecmaFeatures: {
