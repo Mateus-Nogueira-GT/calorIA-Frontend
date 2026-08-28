@@ -206,6 +206,27 @@ export async function getLeaderboard(
   userId: string,
   challengeId: string,
 ): Promise<LeaderboardEntry[]> {
+  // M4: o ranking expõe nome/username e desempenho de todos os participantes.
+  // Sem esta checagem, qualquer usuário autenticado que obtivesse um id de
+  // desafio (link de convite repassado, id vindo do feed) lia a lista inteira
+  // de um grupo privado do qual não faz parte. Era o único endpoint destes
+  // módulos sem verificação de vínculo.
+  const [challenge] = await fastify.db<{ is_public: boolean; is_member: boolean }[]>`
+    SELECT
+      COALESCE(c.is_public, FALSE) AS is_public,
+      EXISTS (
+        SELECT 1 FROM challenge_members m
+        WHERE m.challenge_id = c.id AND m.user_id = ${userId} AND m.status = 'active'
+      ) AS is_member
+    FROM challenges c
+    WHERE c.id = ${challengeId}
+  `
+
+  if (!challenge) throw new AppError(404, 'CHALLENGE_NOT_FOUND', 'Desafio não encontrado')
+  if (!challenge.is_public && !challenge.is_member) {
+    throw new AppError(403, 'NOT_A_MEMBER', 'Você não participa deste desafio')
+  }
+
   const rows = await fastify.db<
     {
       user_id: string
@@ -306,17 +327,24 @@ export async function checkIn(
   if (!updated)
     throw new AppError(409, 'ALREADY_CHECKED_IN', 'Você já fez check-in hoje neste desafio')
 
+  // L5: best-effort, como em joinChallenge. O check-in já está commitado neste
+  // ponto — uma falha ao publicar o marco devolvia 500, o usuário lia "não foi
+  // possível fazer o check-in" e ao tentar de novo batia em ALREADY_CHECKED_IN.
   if (updated.current_streak > 0 && updated.current_streak % 7 === 0) {
-    const [{ title }] = await fastify.db<
-      { title: string }[]
-    >`SELECT title FROM challenges WHERE id = ${challengeId}`
-    await createSystemPost(
-      fastify,
-      userId,
-      'streak_milestone',
-      `${updated.current_streak} dias seguidos no desafio "${title}"! 🔥`,
-      { challenge_id: challengeId, streak: updated.current_streak },
-    )
+    try {
+      const [{ title }] = await fastify.db<
+        { title: string }[]
+      >`SELECT title FROM challenges WHERE id = ${challengeId}`
+      await createSystemPost(
+        fastify,
+        userId,
+        'streak_milestone',
+        `${updated.current_streak} dias seguidos no desafio "${title}"! 🔥`,
+        { challenge_id: challengeId, streak: updated.current_streak },
+      )
+    } catch (err) {
+      fastify.log.warn({ err }, 'Falha ao publicar marco de streak do desafio')
+    }
   }
 
   return updated
