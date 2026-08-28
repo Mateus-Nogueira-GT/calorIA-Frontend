@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, ScrollView, StyleSheet, Alert } from 'react-native';
+import { View, ScrollView, StyleSheet, Alert, Linking } from 'react-native';
 import { colors, radius, spacing } from '@theme';
 import type { TabScreenProps } from '@navigation/types';
 import { useProfile } from '../hooks/useProfile';
@@ -8,6 +8,12 @@ import { StreakBadge } from '../components/StreakBadge';
 import { WeeklyCalorieChart } from '../components/WeeklyCalorieChart';
 import { ProfileMenuItem } from '../components/ProfileMenuItem';
 import { useAuthStore } from '@features/auth/store';
+
+/**
+ * Exigência do Google Play: a política precisa estar linkada na ficha da loja
+ * E dentro do app. Só na loja não cumpre.
+ */
+const PRIVACY_POLICY_URL = 'https://caloriaoficial.com.br/politica-de-privacidade';
 
 const goalLabels = {
   lose_weight: 'Perder peso',
@@ -42,6 +48,14 @@ export function ProfileScreen({ navigation }: TabScreenProps<'Profile'>): React.
         'Não foi possível excluir',
         'Sua conta continua ativa. Tente novamente em instantes.',
       );
+    }
+  }
+
+  async function openPrivacyPolicy() {
+    try {
+      await Linking.openURL(PRIVACY_POLICY_URL);
+    } catch {
+      Alert.alert('Não foi possível abrir', `Acesse pelo navegador: ${PRIVACY_POLICY_URL}`);
     }
   }
 
@@ -99,6 +113,12 @@ export function ProfileScreen({ navigation }: TabScreenProps<'Profile'>): React.
           description="Acompanhe seu peso e o histórico de calorias"
           onPress={() => navigation.navigate('Evolution')}
           testID="profile-evolution-btn"
+        />
+        <ProfileMenuItem
+          label="🔒 Política de privacidade"
+          description="Como seus dados são coletados e usados"
+          onPress={openPrivacyPolicy}
+          testID="privacy-policy-btn"
         />
         <ProfileMenuItem label="🚪 Sair" onPress={confirmLogout} destructive testID="logout-btn" />
         <ProfileMenuItem
