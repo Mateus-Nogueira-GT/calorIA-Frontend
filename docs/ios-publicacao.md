@@ -154,6 +154,7 @@ erro. Os identificadores certos são os da **LPAR**, dona do app:
 | | |
 |---|---|
 | Team ID (LPAR) | `Z7U2XD3LS9` |
+| ASC App ID (o app) | `6806420106` |
 | Provider ID (LPAR) | `129362518` |
 | Team ID da PLUS MIDIA — **não usar** | `49K4553QTR` |
 
@@ -171,3 +172,8 @@ rm -rf ~/.app-store/auth/activeconexautomacoes@gmail.com
 
 A solução definitiva é a **App Store Connect API Key**: a chave pertence a uma única
 organização, então não há prompt de provider nem sessão em cache para dar errado.
+
+**Já está resolvido.** No primeiro envio bem-sucedido o EAS gerou a chave
+`[Expo] EAS Submit X7HfhSAupO` (Key ID `KAJQK8C598`), guardada nos servidores dele e
+vinculada ao app. Com ela mais o `ascAppId` no `eas.json`, os próximos envios não pedem
+senha, não pedem código de dois fatores e não passam pela escolha de provider.
