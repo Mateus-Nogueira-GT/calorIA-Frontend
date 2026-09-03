@@ -17,6 +17,7 @@
     "preview": {
       "distribution": "internal",
       "ios": {
+        "image": "latest",
         "resourceClass": "m-medium"
       },
       "env": {
@@ -26,6 +27,7 @@
     "production": {
       "autoIncrement": true,
       "ios": {
+        "image": "latest",
         "resourceClass": "m-medium"
       },
       "env": {

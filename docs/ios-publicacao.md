@@ -177,3 +177,33 @@ organização, então não há prompt de provider nem sessão em cache para dar 
 `[Expo] EAS Submit X7HfhSAupO` (Key ID `KAJQK8C598`), guardada nos servidores dele e
 vinculada ao app. Com ela mais o `ascAppId` no `eas.json`, os próximos envios não pedem
 senha, não pedem código de dois fatores e não passam pela escolha de provider.
+
+---
+
+## Rejeição da primeira entrega (build 1)
+
+A Apple recusou o binário com três avisos. Dois foram corrigidos no repositório; o
+terceiro depende de arte que não existe no projeto.
+
+**ITMS-90713 — `CFBundleIconName` ausente** ✅ corrigido. A chave é obrigatória desde o
+SDK do iOS 11 e não vinha no `Info.plist` do template.
+
+**ITMS-90725 — SDK antigo** ✅ corrigido. A build saiu com o SDK do iOS 18.2; a Apple
+passou a exigir o do iOS 26. O `eas.json` agora pede `"image": "latest"` nos perfis
+`preview` e `production`, o que usa a imagem de build mais recente da Expo.
+
+**ITMS-90022 — ícone de 120×120 ausente** ⚠️ **depende de você.** O
+`AppIcon.appiconset` contém apenas o `Contents.json`: nenhuma imagem. É o padrão do
+template do React Native, que declara as vagas e não fornece arte.
+
+Não dá para aproveitar o ícone do Android: o maior é 192×192 (pequeno demais para o
+1024×1024 da App Store), tem canal alfa — proibido em ícone iOS — e além disso é o
+robozinho padrão do template, não a marca do CalorIA.
+
+### O que fornecer
+
+Um PNG de **1024×1024**, **sem canal alfa** e **sem cantos arredondados** (o iOS aplica a
+máscara sozinho). A partir dele todos os tamanhos menores são gerados automaticamente.
+
+O mesmo arquivo resolve de quebra o ícone do Android, que hoje está publicado na Play
+Store com o robô do template no lançador do celular.
