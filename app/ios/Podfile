@@ -36,5 +36,30 @@ target 'calorIA' do
       :mac_catalyst_enabled => false,
       # :ccache_enabled => true
     )
+
+    # A Apple passou a exigir o SDK do iOS 26 (ITMS-90725), mas o clang que vem
+    # com o Xcode 26 não compila o `fmt` embutido no React Native 0.77:
+    #
+    #   call to consteval function 'fmt::basic_format_string<...>'
+    #   is not a constant expression
+    #
+    # O fmt marca as format strings como `consteval` para validá-las em tempo de
+    # compilação. Definir FMT_CONSTEVAL vazio desliga essa validação e o código
+    # volta a compilar — o comportamento em execução é o mesmo, perde-se apenas
+    # a checagem estática das strings de formato, que é interna ao RN.
+    #
+    # Aplicado a todos os pods porque o erro aparece em quem USA o fmt (o
+    # RCT-Folly, no logging), não só no alvo `fmt`.
+    #
+    # Contorno temporário: a correção definitiva é subir o React Native para uma
+    # versão que já suporte o Xcode 26.
+    installer.pods_project.targets.each do |target|
+      target.build_configurations.each do |config|
+        defs = config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] || ['$(inherited)']
+        defs = [defs] if defs.is_a?(String)
+        defs << 'FMT_CONSTEVAL=' unless defs.include?('FMT_CONSTEVAL=')
+        config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] = defs
+      end
+    end
   end
 end
