@@ -192,18 +192,29 @@ SDK do iOS 11 e não vinha no `Info.plist` do template.
 passou a exigir o do iOS 26. O `eas.json` agora pede `"image": "latest"` nos perfis
 `preview` e `production`, o que usa a imagem de build mais recente da Expo.
 
-**ITMS-90022 — ícone de 120×120 ausente** ⚠️ **depende de você.** O
-`AppIcon.appiconset` contém apenas o `Contents.json`: nenhuma imagem. É o padrão do
-template do React Native, que declara as vagas e não fornece arte.
+**ITMS-90022 — ícone de 120×120 ausente** ✅ corrigido. O `AppIcon.appiconset` continha
+apenas o `Contents.json`, sem nenhuma imagem — o padrão do template do React Native, que
+declara as vagas e não fornece arte.
 
 Não dá para aproveitar o ícone do Android: o maior é 192×192 (pequeno demais para o
 1024×1024 da App Store), tem canal alfa — proibido em ícone iOS — e além disso é o
 robozinho padrão do template, não a marca do CalorIA.
 
-### O que fornecer
+### Como regenerar
 
-Um PNG de **1024×1024**, **sem canal alfa** e **sem cantos arredondados** (o iOS aplica a
-máscara sozinho). A partir dele todos os tamanhos menores são gerados automaticamente.
+O master fica em `app/assets/app-icon-1024.png` (1024×1024, PNG, sem canal alfa). Todos os
+tamanhos saem dele com `sips`, que já vem no macOS:
 
-O mesmo arquivo resolve de quebra o ícone do Android, que hoje está publicado na Play
-Store com o robô do template no lançador do celular.
+```bash
+# iOS — os tamanhos que o Contents.json referencia
+for px in 40 58 60 80 87 120 180 1024; do
+  sips -z $px $px app/assets/app-icon-1024.png \
+    --out app/ios/calorIA/Images.xcassets/AppIcon.appiconset/icon-$px.png
+done
+
+# Android — ic_launcher e ic_launcher_round por densidade
+# mdpi 48 · hdpi 72 · xhdpi 96 · xxhdpi 144 · xxxhdpi 192
+```
+
+**Ícone iOS não pode ter canal alfa** nem cantos arredondados — o sistema aplica a máscara
+sozinho. Confira com `sips -g hasAlpha` antes de subir.
