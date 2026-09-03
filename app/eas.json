@@ -37,7 +37,8 @@
     "production": {
       "ios": {
         "appleId": "activeconexautomacoes@gmail.com",
-        "appleTeamId": "Z7U2XD3LS9"
+        "appleTeamId": "Z7U2XD3LS9",
+        "ascAppId": "6806420106"
       }
     }
   }
