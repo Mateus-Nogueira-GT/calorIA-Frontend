@@ -15,7 +15,7 @@ Este documento é o passo a passo. O que já está pronto no repositório está 
 |---|---|
 | Bundle ID do app | `br.com.caloriaoficial.app` — igual ao `applicationId` do Android |
 | Bundle ID dos testes | `br.com.caloriaoficial.app.tests` (targets não podem repetir) |
-| Assinatura automática + Team | `CODE_SIGN_STYLE = Automatic`, `DEVELOPMENT_TEAM = 49K4553QTR` |
+| Assinatura automática + Team | `CODE_SIGN_STYLE = Automatic`, `DEVELOPMENT_TEAM = Z7U2XD3LS9` |
 | Perfis de build do EAS | `app/eas.json` |
 | Geração do `.env` na nuvem | `app/scripts/eas-write-env.js` + hook `eas-build-pre-install` |
 
@@ -85,7 +85,7 @@ e-mail da conta Apple:
 ```json
 "ios": {
   "appleId": "email-do-cliente@exemplo.com",
-  "appleTeamId": "49K4553QTR",
+  "appleTeamId": "Z7U2XD3LS9",
   "ascAppId": "6748291042"
 }
 ```
@@ -143,3 +143,31 @@ passa a exigir o Sign in with Apple, e aí é preciso habilitar a capability no 
 
 **Não crie certificados em paralelo.** Se você criar um no portal e o EAS criar outro, a
 conta atinge o limite de 2 e a próxima build falha pedindo para revogar algum.
+
+---
+
+## A conta Apple pertence a duas organizações
+
+`activeconexautomacoes@gmail.com` é membro de duas empresas, e isso já custou um ciclo de
+erro. Os identificadores certos são os da **LPAR**, dona do app:
+
+| | |
+|---|---|
+| Team ID (LPAR) | `Z7U2XD3LS9` |
+| Provider ID (LPAR) | `129362518` |
+| Team ID da PLUS MIDIA — **não usar** | `49K4553QTR` |
+
+O `49K4553QTR` apareceu no portal da Apple porque a PLUS MIDIA estava selecionada no
+seletor de organização, e acabou copiado para o `eas.json` e para o projeto Xcode.
+
+O `eas submit` guarda a organização escolhida em
+`~/.app-store/auth/<apple-id>/cookie` e a **restaura sem perguntar** nas execuções
+seguintes — nem `FASTLANE_ITC_TEAM_NAME` sobrescreve. Se ele insistir na organização
+errada, apague a sessão:
+
+```bash
+rm -rf ~/.app-store/auth/activeconexautomacoes@gmail.com
+```
+
+A solução definitiva é a **App Store Connect API Key**: a chave pertence a uma única
+organização, então não há prompt de provider nem sessão em cache para dar errado.
