@@ -13,12 +13,16 @@ const USER = '11111111-1111-1111-1111-111111111111'
 const CHALLENGE = '22222222-2222-2222-2222-222222222222'
 
 describe('getLeaderboard — vínculo obrigatório (M4)', () => {
-  it('recusa quem não participa de desafio privado', async () => {
+  it('não-membro de desafio privado recebe lista vazia, sem nomes e sem erro', async () => {
     const fastify = fakeFastify([[{ is_public: false, is_member: false }]])
 
     // O ranking expõe nome e desempenho de todos os membros: qualquer usuário
-    // autenticado com um id de desafio em mãos lia um grupo privado inteiro.
-    await expect(getLeaderboard(fastify, USER, CHALLENGE)).rejects.toThrow(/não participa/i)
+    // autenticado com um id em mãos lia um grupo privado inteiro (IDOR).
+    // Mas responder 403 quebrava o fluxo de convite no app publicado, que busca
+    // o ranking antes de o convidado entrar. Vazio fecha o vazamento e mantém o
+    // convite funcionando.
+    const rows = await getLeaderboard(fastify, USER, CHALLENGE)
+    expect(rows).toEqual([])
   })
 
   it('permite quem é membro ativo', async () => {

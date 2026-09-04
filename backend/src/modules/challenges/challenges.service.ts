@@ -223,9 +223,15 @@ export async function getLeaderboard(
   `
 
   if (!challenge) throw new AppError(404, 'CHALLENGE_NOT_FOUND', 'Desafio não encontrado')
-  if (!challenge.is_public && !challenge.is_member) {
-    throw new AppError(403, 'NOT_A_MEMBER', 'Você não participa deste desafio')
-  }
+  // Não-membro de desafio privado recebe lista VAZIA, não 403. O IDOR continua
+  // fechado (nenhum nome sai daqui), mas o 403 quebrava o fluxo de CONVITE: o
+  // app resolve o código, insere o desafio na lista local e em seguida busca o
+  // ranking — e o convidado ainda não é membro. Com 403 a primeira tela que ele
+  // via era "Algo deu errado" com um retry que nunca funcionaria. Isso atinge o
+  // app já publicado na Play (que não pode mudar), então a correção tem de ser
+  // aqui: vazio renderiza cabeçalho + "Ranking ainda vazio." e o "Participar"
+  // segue alcançável na aba de desafios.
+  if (!challenge.is_public && !challenge.is_member) return []
 
   const rows = await fastify.db<
     {
