@@ -3,7 +3,7 @@ import { act, renderHook } from '@testing-library/react-native';
 import { useScannerStore } from './store';
 
 jest.mock('@shared/utils/show-alert', () => ({ showAlert: jest.fn() }));
-// eslint-disable-next-line @typescript-eslint/no-var-requires
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const { showAlert } = require('@shared/utils/show-alert');
 
 jest.mock('@shared/services/scanner.service', () => ({

@@ -7,7 +7,7 @@ const mockMeal = { id: 'm1', name: 'Frango', calories: 450, protein: 38, carbs: 
 const mockNewMeal = { id: 'm2', name: 'Novo', calories: 300, protein: 20, carbs: 30, fat: 5, loggedAt: new Date().toISOString() };
 
 jest.mock('@shared/utils/show-alert', () => ({ showAlert: jest.fn() }));
-// eslint-disable-next-line @typescript-eslint/no-var-requires
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const { showAlert } = require('@shared/utils/show-alert');
 
 jest.mock('@shared/services/food-log.service', () => ({
@@ -60,7 +60,7 @@ describe('useFoodLog', () => {
   });
 
   it('avisa quando excluir falha e mantém a refeição na lista (L1)', async () => {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { foodLogService } = require('@shared/services/food-log.service');
     foodLogService.deleteMeal.mockRejectedValue(new Error('offline'));
     const { result } = renderHook(() => useFoodLog());
@@ -74,7 +74,7 @@ describe('useFoodLog', () => {
   });
 
   it('ignora o segundo toque na lixeira do mesmo item (L1)', async () => {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { foodLogService } = require('@shared/services/food-log.service');
     foodLogService.deleteMeal.mockImplementation(
       () => new Promise((resolve) => setTimeout(() => resolve({ deleted: true }), 10)),
@@ -90,9 +90,10 @@ describe('useFoodLog', () => {
     });
 
     expect(foodLogService.deleteMeal).toHaveBeenCalledTimes(1);
+  });
 
   it('envia a data SELECIONADA ao registrar (B4)', async () => {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { foodLogService } = require('@shared/services/food-log.service');
     // Usuário no chip "Ontem": sem a data explícita o servidor salvava em HOJE
     // enquanto o cache local gravava em ontem — a refeição migrava de dia.
@@ -109,7 +110,7 @@ describe('useFoodLog', () => {
   });
 
   it('respeita uma data explícita passada pelo chamador', async () => {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { foodLogService } = require('@shared/services/food-log.service');
     useFoodLogStore.setState({ mealsByDate: { '2026-06-09': [] }, loadingByDate: {}, selectedDate: '2026-06-09' });
     const { result } = renderHook(() => useFoodLog());
