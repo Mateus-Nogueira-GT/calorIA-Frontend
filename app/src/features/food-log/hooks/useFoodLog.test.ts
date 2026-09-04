@@ -90,6 +90,7 @@ describe('useFoodLog', () => {
     });
 
     expect(foodLogService.deleteMeal).toHaveBeenCalledTimes(1);
+  });
 
   it('envia a data SELECIONADA ao registrar (B4)', async () => {
     // eslint-disable-next-line @typescript-eslint/no-var-requires

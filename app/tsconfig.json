@@ -1,16 +1,37 @@
 {
-  "extends": "@react-native/typescript-config/tsconfig.json",
+  "extends": "@react-native/typescript-config",
   "compilerOptions": {
     "strict": true,
     "baseUrl": ".",
     "paths": {
-      "@features/*": ["src/features/*"],
-      "@shared/*": ["src/shared/*"],
-      "@navigation/*": ["src/navigation/*"],
-      "@theme": ["src/theme/index.ts"],
-      "@theme/*": ["src/theme/*"]
-    }
+      "@features/*": [
+        "src/features/*"
+      ],
+      "@shared/*": [
+        "src/shared/*"
+      ],
+      "@navigation/*": [
+        "src/navigation/*"
+      ],
+      "@theme": [
+        "src/theme/index.ts"
+      ],
+      "@theme/*": [
+        "src/theme/*"
+      ]
+    },
+    "types": [
+      "jest"
+    ]
   },
-  "include": ["src/**/*", "index.js", "App.tsx", "__tests__/**/*"],
-  "exclude": ["node_modules", "agentmemory-main"]
+  "include": [
+    "src/**/*",
+    "index.js",
+    "App.tsx",
+    "__tests__/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "agentmemory-main"
+  ]
 }
