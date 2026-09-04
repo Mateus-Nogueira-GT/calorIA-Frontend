@@ -14,7 +14,7 @@ jest.mock('@shared/services/feed.service', () => ({
     addComment: jest.fn(),
   },
 }));
-// eslint-disable-next-line @typescript-eslint/no-var-requires
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const { feedService } = require('@shared/services/feed.service');
 
 const post: Post = {

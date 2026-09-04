@@ -17,7 +17,7 @@ const post = (id: string, over: Partial<Post> = {}): Post => ({
 });
 
 jest.mock('@shared/utils/show-alert', () => ({ showAlert: jest.fn() }));
-// eslint-disable-next-line @typescript-eslint/no-var-requires
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const { showAlert } = require('@shared/utils/show-alert');
 
 jest.mock('@shared/services/feed.service', () => ({

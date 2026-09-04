@@ -26,8 +26,10 @@ class MainApplication : Application(), ReactApplication {
 
         override fun getUseDeveloperSupport(): Boolean = BuildConfig.DEBUG
 
-        override val isNewArchEnabled: Boolean = BuildConfig.IS_NEW_ARCHITECTURE_ENABLED
-        override val isHermesEnabled: Boolean = BuildConfig.IS_HERMES_ENABLED
+        // isNewArchEnabled e isHermesEnabled NÃO são mais sobrescritos: no RN
+        // 0.85 a classe base já retorna true nos dois, o isHermesEnabled está
+        // @Deprecated e é ignorado, e sobrescrever isNewArchEnabled com false
+        // passou a lançar erro desde o 0.82 (DefaultReactNativeHost.kt:46).
       }
 
   override val reactHost: ReactHost

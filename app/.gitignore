@@ -48,6 +48,7 @@ build/
 /captures
 .externalNativeBuild
 .cxx
+.kotlin/
 *.apk
 
 # Project-specific

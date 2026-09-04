@@ -21,7 +21,7 @@ jest.mock('@shared/services/friends.service', () => ({
     removeFriend: jest.fn(),
   },
 }));
-// eslint-disable-next-line @typescript-eslint/no-var-requires
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const { friendsService } = require('@shared/services/friends.service');
 
 describe('useFriendsStore — busca', () => {
