@@ -1,0 +1,9 @@
+<resources>
+    <!--
+      N1: mesma cor de `colors.brandBackground` em src/theme/colors.ts. Fica
+      atrás da árvore React: é o que aparece no flash de abertura, nas
+      transições de navegação e no resize do teclado (windowSoftInputMode=
+      adjustResize). Mudou lá, muda aqui.
+    -->
+    <color name="brand_background">#FAF8F4</color>
+</resources>

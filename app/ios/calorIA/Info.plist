@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-	<string>calorIA</string>
+	<string>CalorIA</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -50,8 +50,11 @@
 	<string>Precisamos da câmera para você fotografar seus pratos.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Precisamos da galeria para você escolher fotos dos seus pratos.</string>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string/>
+	<!-- O app tem paleta fixa clara (src/theme/colors.ts) e nenhum suporte a dark
+	     mode. Sem esta chave, o iOS renderiza alerts, teclado e seleção de texto
+	     em escuro dentro de uma UI clara, e a splash sai preta. -->
+	<key>UIUserInterfaceStyle</key>
+	<string>Light</string>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIRequiredDeviceCapabilities</key>

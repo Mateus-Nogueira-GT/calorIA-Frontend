@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useConfirmDiscard } from '@shared/hooks/useConfirmDiscard';
 import { screenShellStyle } from '@shared/components';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, typography, spacing, radius } from '@theme';
@@ -36,6 +37,13 @@ const ACHIEVEMENT_OPTIONS: PostAchievement[] = [
 export function CreatePostScreen({ navigation }: Props): React.JSX.Element {
   const [content, setContent] = useState('');
   const [selected, setSelected] = useState<PostAchievement | null>(null);
+
+  // N4: sair com o post escrito descartava tudo sem avisar.
+  useConfirmDiscard({
+    hasUnsavedChanges: content.trim().length > 0 || selected !== null,
+    navigation,
+    message: 'Seu post ainda não foi publicado. Quer descartar?',
+  });
   const isCreating = useFeedStore((s) => s.isCreating);
   const createPost = useFeedStore((s) => s.createPost);
 

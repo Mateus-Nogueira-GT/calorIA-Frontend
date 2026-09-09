@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
+import { useConfirmDiscard } from '@shared/hooks/useConfirmDiscard';
 import { screenShellStyle } from '@shared/components';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing } from '@theme';
@@ -20,6 +21,13 @@ function plusDays(base: string, days: number): string {
 export function CreateChallengeScreen({ navigation }: Props): React.JSX.Element {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+
+  // N4: sair com o desafio preenchido descartava tudo sem avisar.
+  useConfirmDiscard({
+    hasUnsavedChanges: title.trim().length > 0 || description.trim().length > 0,
+    navigation,
+    message: 'Seu desafio ainda não foi criado. Quer descartar?',
+  });
   const isCreating = useChallengesStore((s) => s.isCreating);
   const create = useChallengesStore((s) => s.create);
 

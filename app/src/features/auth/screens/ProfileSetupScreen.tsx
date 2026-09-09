@@ -275,7 +275,12 @@ export function ProfileSetupScreen({ navigation }: AuthStackScreenProps<'Profile
   return (
     <KeyboardAvoidingView
       style={styles.flex}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      // N3: no Android o manifest já usa windowSoftInputMode=adjustResize, que
+      // encolhe a janela quando o teclado sobe. Com behavior='height' o
+      // KeyboardAvoidingView encolhia DE NOVO por cima disso, e em tela pequena
+      // o conteúdo saltava e o botão de avançar podia sumir. As outras quatro
+      // telas do app já usavam `undefined` — esta era o ponto fora da curva.
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <OnboardingProgressBar current={currentStepIndex + 1} total={STEPS.length} />
 

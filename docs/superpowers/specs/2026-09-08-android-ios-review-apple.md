@@ -482,7 +482,7 @@ investigado com a mesma disciplina; R1 tem loop vermelho automatizado.
 |---|---|---|---|
 | R1 | **CRÍTICA** | ✅ **REPRODUZIDO** | Onboarding manda `null` e o perfil nunca salva |
 | R2 | ALTA | ✅ VERIFICADO | Upload da foto de perfil estoura em 10 s |
-| R3 | MÉDIA | ✅ VERIFICADO | Açúcar/fibra/sódio existem no banco e nunca chegam ao app |
+| R3 | MÉDIA | ⛔ **NÃO IMPLEMENTADO** | Açúcar não é capturado em lugar nenhum — é feature, não encanamento |
 | R4 | — | ✅ VERIFICADO | Áudio para o Coach: **o recurso não existe** (não é bug) |
 | R5 | ALTA | ✅ VERIFICADO | Dashboard inventa metas quando não há plano |
 | R6 | ALTA | ✅ VERIFICADO | Dá para chegar ao app sem perfil preenchido |
@@ -575,8 +575,32 @@ FoodLogItem.tsx:34 → "Proteínas Xg · Carboidratos Yg · Gorduras Zg"
 
 Nenhuma menção a açúcar em `app/src` ou nas rotas do backend — o dado morre na tabela `foods`.
 
-**Não é coleta de dado novo: é encanamento.** Expor `sugar_g`/`fiber_g`/`sodium_mg` da tabela
-`foods` até o `Meal` do app, e exibi-los no Diário e no card de macros do Dashboard.
+> ### ⚠️ CORREÇÃO (2026-09-09, durante a execução do plano)
+>
+> **A frase original desta seção — "não é coleta de dado novo, é encanamento" — estava errada.**
+> Investiguei mais fundo ao ir implementar e o `sugar_g` de `002_foods.sql` pertence ao **catálogo
+> de alimentos**, que não é usado no registro de refeição do usuário:
+>
+> - `meals` guarda totais desnormalizados e tem só `total_calories/protein/carbs/fat`
+>   (`003_meals.sql:20-23`) — **não existe coluna de açúcar**.
+> - `meal_items` guarda `calories/protein_g/carbs_g/fat_g` (`003_meals.sql:41-44`) — idem. O
+>   `food_id` fica `NULL` no registro manual (`food-log.service.ts:84-86` grava
+>   `source: 'manual'` com o nome em texto), então o catálogo nunca é consultado.
+> - O trigger `recalculate_meal_totals` (`003_meals.sql:64-69`) soma só os quatro.
+> - O scanner por IA também devolve só os quatro.
+>
+> Ou seja: **o açúcar não é capturado em lugar nenhum** para as refeições do usuário. Entregar
+> isso exige, no mínimo: migração em `meal_items` e `meals` + atualizar o trigger; mudar o
+> prompt/schema do scanner para a IA devolver açúcar (com impacto em custo e qualidade da
+> resposta); um campo novo no `AddMealModal`; e só então o encanamento até a tela.
+>
+> **É uma feature, não uma correção** — e some com a justificativa de "o dado já está lá" que fazia
+> dela um item barato. Somada à ambiguidade da §9.1 (qual tela?), R3 **não foi implementado**;
+> proteína e carboidrato, que o cliente também citou, **já aparecem** no Diário
+> (`FoodLogItem.tsx:34`). Decisão de escopo devolvida ao cliente.
+
+**O que seria preciso:** migração (`meal_items.sugar_g`, `meals.total_sugar`, trigger), scanner
+devolvendo açúcar, campo no formulário manual, schemas do backend, tipo `Meal` do app e a UI.
 
 > **⚠️ Ambiguidade a confirmar com o cliente — ver §9.1.**
 

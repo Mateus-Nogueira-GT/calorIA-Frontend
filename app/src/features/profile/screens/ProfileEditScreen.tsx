@@ -10,6 +10,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { useConfirmDiscard } from '@shared/hooks/useConfirmDiscard';
 import { colors, typography } from '@theme';
 import { Button, screenShellStyle } from '@shared/components';
 import type { RootStackScreenProps } from '@navigation/types';
@@ -88,6 +89,13 @@ export function ProfileEditScreen({ navigation }: RootStackScreenProps<'ProfileE
   }, [updateUser]);
 
   const nameChanged = name.trim().length >= 2 && name.trim() !== (user?.name ?? '');
+
+  // N4: sair com o nome editado e não salvo perdia a edição sem avisar.
+  useConfirmDiscard({
+    hasUnsavedChanges: nameChanged,
+    navigation,
+    message: 'O nome editado ainda não foi salvo. Quer descartar?',
+  });
 
   async function handleSaveName() {
     if (!nameChanged || savingName) return;
