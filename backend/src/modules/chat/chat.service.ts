@@ -6,7 +6,7 @@ import { type CollectedUserData, collectedUserDataSchema } from '../../shared/di
 import { env } from '../../shared/env.js'
 import { AppError } from '../../shared/errors.js'
 import { assessSafety, describeInvalidFields } from '../../shared/guardrails/index.js'
-import { createDietJob } from '../diets/jobs.service.js'
+import { createDietJob, getPendingJob } from '../diets/jobs.service.js'
 import { fetchUserContext, formatKnownData, formatUserContext } from './chat-context.js'
 import type { ChatMessageBody, ChatResponse } from './chat.schemas.js'
 
@@ -241,12 +241,21 @@ export async function sendChatMessage(
     date: data.date,
     tzOffsetMinutes: data.tzOffsetMinutes,
   })
+
+  // C1: com geração em voo, o modelo NÃO recebe a tool — não chama o que não
+  // existe. Fecha o buraco da primeira geração (dieta ainda 'draft', logo
+  // hasActiveDiet era false e a instrução de "já tem dieta" não entrava).
+  const pendingJob = await getPendingJob(fastify, userId)
+  const hasActiveDiet = context.diet !== null || pendingJob !== null
   const systemPrompt = assembleSystemPrompt(
     buildSystemPrompt(profile?.coach_personality),
     formatUserContext(context),
     formatKnownData(context),
-    context.diet !== null,
+    hasActiveDiet,
   )
+  const toolParams = pendingJob
+    ? {}
+    : { tools: [COLLECT_DIET_DATA_TOOL], tool_choice: 'auto' as const, parallel_tool_calls: false }
 
   // ── Chamada à OpenAI com suporte a function calling ──────────────────────
   let completion: Awaited<ReturnType<typeof fastify.openai.chat.completions.create>>
@@ -257,8 +266,7 @@ export async function sendChatMessage(
         // I5.2: fallbacks do OpenRouter (spread não dispara excess-property check).
         ...buildModelsField(env.OPENAI_MODEL, env.OPENAI_FALLBACK_MODELS),
         messages: [{ role: 'system', content: systemPrompt }, ...windowedHistory(history)],
-        tools: [COLLECT_DIET_DATA_TOOL],
-        tool_choice: 'auto',
+        ...toolParams,
         // GPT-5 é reasoning model: não aceita temperature custom (só o default) e
         // gasta "reasoning tokens" do orçamento — por isso um limite mais folgado.
         max_tokens: 2000,

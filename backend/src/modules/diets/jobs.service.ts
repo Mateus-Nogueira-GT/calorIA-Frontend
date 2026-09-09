@@ -84,6 +84,25 @@ export function parseInput(raw: unknown): CollectedUserData | null {
 // ─── Criação do job ───────────────────────────────────────────────────────────
 
 /**
+ * Job de geração em andamento (pending/running) mais recente do usuário, ou
+ * null. Usado por createDietJob (não abrir duas gerações) e pelo chat (C1:
+ * não oferecer a tool ao modelo enquanto há geração em voo).
+ */
+export async function getPendingJob(
+  fastify: FastifyInstance,
+  userId: string,
+): Promise<{ id: string; diet_id: string } | null> {
+  const [row] = await fastify.db<{ id: string; diet_id: string }[]>`
+    SELECT id, diet_id
+    FROM diet_jobs
+    WHERE user_id = ${userId} AND status IN ('pending', 'running')
+    ORDER BY created_at DESC
+    LIMIT 1
+  `
+  return row ?? null
+}
+
+/**
  * Cria o job de geração e o cabeçalho da dieta (metas determinísticas), sem
  * gerar os dias ainda. A dieta nasce como RASCUNHO (draft) — a ativa anterior
  * só é substituída quando o último dia é gerado (B3 da spec). Se a geração
@@ -106,13 +125,7 @@ export async function createDietJob(
   // Este guard é a rede determinística — mesmo que o prompt falhe, não dá para
   // ter duas gerações concorrentes do mesmo usuário. A instrução de prompt
   // (EXISTING_DIET_INSTRUCTION, no chat.service) evita a tentativa antes daqui.
-  const [emAndamento] = await fastify.db<{ id: string; diet_id: string }[]>`
-    SELECT id, diet_id
-    FROM diet_jobs
-    WHERE user_id = ${userId} AND status IN ('pending', 'running')
-    ORDER BY created_at DESC
-    LIMIT 1
-  `
+  const emAndamento = await getPendingJob(fastify, userId)
   if (emAndamento) {
     fastify.log.info(
       { userId, jobId: emAndamento.id },
