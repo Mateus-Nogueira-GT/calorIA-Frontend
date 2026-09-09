@@ -22,6 +22,10 @@ export { reconcileDay }
 const TOTAL_DAYS = 7
 const DAYS_PT = ['', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo']
 
+// C2: contraparte do marcador de início (chat.service.ts) — o modelo passa a
+// ver, no próprio histórico, que a geração terminou.
+export const DIET_COMPLETED_MARKER = `[Dieta concluída — ${TOTAL_DAYS} dias]`
+
 // S5: piso mínimo sem supervisão profissional. 1000 (antes) fica abaixo do
 // que qualquer diretriz recomenda; abaixo do piso o plano vira risco.
 export const MIN_CALORIES_FEMALE = 1200
@@ -554,8 +558,15 @@ export async function processJobStep(
     })
     if (job.conversation_id) {
       try {
+        // Concatena via JSONB (não lê+regrava o array): o job roda concorrente
+        // com o chat do usuário, e um read-modify-write aqui derrubaria
+        // mensagens enviadas enquanto o último dia gerava.
+        const marker = JSON.stringify([{ role: 'assistant', content: DIET_COMPLETED_MARKER }])
         await fastify.db`
-          UPDATE chat_history SET status = 'completed', diet_id = ${job.diet_id}, updated_at = NOW()
+          UPDATE chat_history
+          SET status = 'completed', diet_id = ${job.diet_id},
+              messages = messages || ${marker}::jsonb,
+              updated_at = NOW()
           WHERE id = ${job.conversation_id}
         `
       } catch (err) {

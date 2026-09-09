@@ -138,6 +138,20 @@ export function mapOpenAIError(err: unknown): AppError {
   return new AppError(502, 'AI_ERROR', 'Serviço de IA temporariamente indisponível')
 }
 
+/**
+ * C2: o histórico guarda só {role, content}; a chamada da tool e o job nunca
+ * entravam nele. Para o modelo, a conversa era "dados → vou gerar → ok" — nada
+ * dizia que algo rodou. Este marcador é o que ele passa a ver.
+ */
+export function formatDietStartedMarker(now: Date, tzOffsetMinutes?: number): string {
+  const local = new Date(now.getTime() + (tzOffsetMinutes ?? 0) * 60_000)
+  const dd = String(local.getUTCDate()).padStart(2, '0')
+  const mm = String(local.getUTCMonth() + 1).padStart(2, '0')
+  const hh = String(local.getUTCHours()).padStart(2, '0')
+  const mi = String(local.getUTCMinutes()).padStart(2, '0')
+  return `[Dieta de 7 dias iniciada em ${dd}/${mm} às ${hh}:${mi}]`
+}
+
 // ─── Tool definition para coleta de dados ─────────────────────────────────
 
 const COLLECT_DIET_DATA_TOOL: OpenAI.Chat.ChatCompletionTool = {
@@ -290,7 +304,14 @@ export async function sendChatMessage(
     const toolCall = choice.message.tool_calls[0]
 
     if (toolCall.function.name === 'collect_diet_data') {
-      return handleDietGeneration(fastify, userId, conversationId, history, toolCall)
+      return handleDietGeneration(
+        fastify,
+        userId,
+        conversationId,
+        history,
+        toolCall,
+        data.tzOffsetMinutes,
+      )
     }
   }
 
@@ -317,6 +338,7 @@ async function handleDietGeneration(
   conversationId: string,
   history: ChatHistoryMessage[],
   toolCall: OpenAI.Chat.ChatCompletionMessageToolCall,
+  tzOffsetMinutes: number | undefined,
 ): Promise<ChatResponse> {
   // Valida os dados coletados pela IA
   const rawArgs = JSON.parse(toolCall.function.arguments) as unknown
@@ -408,6 +430,9 @@ async function handleDietGeneration(
 
   // Sinaliza que está gerando; o front faz polling em /diets/jobs/:id/step.
   history.push({ role: 'assistant', content: userMessage })
+  // C2: marcador só no histórico — a resposta ao app continua sendo só a
+  // mensagem do coach, mas nas próximas rodadas o modelo vê que já gerou.
+  history.push({ role: 'assistant', content: formatDietStartedMarker(new Date(), tzOffsetMinutes) })
   await persistHistory(fastify, userId, conversationId, history, 'generating')
 
   fastify.log.info({ userId, jobId: job.jobId }, 'Job de dieta enfileirado')

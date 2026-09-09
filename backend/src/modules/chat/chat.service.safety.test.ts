@@ -78,4 +78,26 @@ describe('handleDietGeneration — guardrails de coleta (S3/S4)', () => {
     expect(r.message.content).toMatch(/acompanhamento médico/)
     expect(calls.some((c) => c.sql.includes('INSERT INTO diet_jobs'))).toBe(true)
   })
+
+  it('ao enfileirar o job, grava o marcador de início no histórico (o modelo passa a ver que gerou)', async () => {
+    const { fastify, calls } = fakeFastify([], {
+      chatCreate: async () => toolCompletion(dados),
+    })
+
+    const r = await sendChatMessage(fastify, USER, {
+      message: 'sim',
+      conversation_id: CONV,
+      tzOffsetMinutes: -180,
+    })
+
+    expect(r.diet_job_id).not.toBeNull()
+    const persist = calls.find((c) => c.sql.includes('INSERT INTO chat_history'))
+    const messages = JSON.parse(persist?.params[2] as string) as { role: string; content: string }[]
+    expect(messages.at(-1)?.content).toMatch(
+      /^\[Dieta de 7 dias iniciada em \d\d\/\d\d às \d\d:\d\d\]$/,
+    )
+    expect(messages.at(-2)?.content).toBe('Vou montar sua dieta!')
+    // A resposta ao app é só a mensagem do coach; o marcador é para o histórico.
+    expect(r.message.content).toBe('Vou montar sua dieta!')
+  })
 })

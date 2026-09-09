@@ -146,4 +146,32 @@ describe('processJobStep — guardrails do dia (O4)', () => {
       code: 'DIET_STEP_FAILED',
     })
   })
+
+  it('no último dia, anexa o marcador de conclusão ao chat_history da conversa', async () => {
+    const CONV = '22222222-2222-2222-2222-222222222222'
+    const queue = [dayWith('Frango grelhado')]
+    const { fastify, calls } = fakeFastify(
+      [
+        ['FROM diet_jobs WHERE id', [{ ...jobRow, conversation_id: CONV, days_completed: 6 }]],
+        ['SET days_completed', [{ id: JOB }]],
+      ],
+      {
+        parse: async () => ({
+          choices: [{ message: { parsed: queue.shift() ?? null } }],
+          usage: null,
+        }),
+      },
+    )
+
+    const r = await processJobStep(fastify, USER, JOB)
+
+    expect(r.status).toBe('completed')
+    const upd = calls.find(
+      (c) => c.sql.includes('UPDATE chat_history') && c.sql.includes('messages ||'),
+    )
+    expect(upd).toBeDefined()
+    expect(
+      String(upd?.params.find((p) => typeof p === 'string' && p.includes('Dieta concluída'))),
+    ).toContain('7 dias')
+  })
 })

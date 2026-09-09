@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   assembleSystemPrompt,
   buildSystemPrompt,
+  formatDietStartedMarker,
   mapOpenAIError,
   normalizeHistory,
   windowedHistory,
@@ -131,5 +132,19 @@ describe('assembleSystemPrompt — dieta já existente', () => {
 
     expect(prompt).not.toContain('JÁ TEM uma dieta ativa')
     expect(prompt).toBe(assembleSystemPrompt(base, contexto, conhecidos))
+  })
+})
+
+describe('formatDietStartedMarker (C2)', () => {
+  it('usa o fuso do app (local = UTC + offset)', () => {
+    expect(formatDietStartedMarker(new Date('2026-09-09T17:32:00Z'), -180)).toBe(
+      '[Dieta de 7 dias iniciada em 09/09 às 14:32]',
+    )
+  })
+
+  it('sem offset, UTC', () => {
+    expect(formatDietStartedMarker(new Date('2026-01-05T03:07:00Z'))).toBe(
+      '[Dieta de 7 dias iniciada em 05/01 às 03:07]',
+    )
   })
 })
