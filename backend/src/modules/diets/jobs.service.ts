@@ -83,6 +83,32 @@ export async function createDietJob(
   conversationId: string,
   userData: CollectedUserData,
 ): Promise<{ jobId: string; dietId: string }> {
+  // Reaproveita uma geração em andamento em vez de abrir outra.
+  //
+  // O chat chama esta função toda vez que a IA usa a tool collect_diet_data, e
+  // a instrução de "dados já conhecidos" manda a IA chamar a tool sempre que o
+  // usuário CONFIRMA os dados. Depois que a dieta existe, qualquer "ok" ou
+  // "obrigado" era lido como confirmação: cada mensagem criava uma dieta nova,
+  // e o usuário via a lista ser gerada de novo sem parar.
+  //
+  // Este guard é a rede determinística — mesmo que o prompt falhe, não dá para
+  // ter duas gerações concorrentes do mesmo usuário. A instrução de prompt
+  // (EXISTING_DIET_INSTRUCTION, no chat.service) evita a tentativa antes daqui.
+  const [emAndamento] = await fastify.db<{ id: string; diet_id: string }[]>`
+    SELECT id, diet_id
+    FROM diet_jobs
+    WHERE user_id = ${userId} AND status IN ('pending', 'running')
+    ORDER BY created_at DESC
+    LIMIT 1
+  `
+  if (emAndamento) {
+    fastify.log.info(
+      { userId, jobId: emAndamento.id },
+      'Geração de dieta já em andamento — reaproveitando o job',
+    )
+    return { jobId: emAndamento.id, dietId: emAndamento.diet_id }
+  }
+
   const t = computeTargets(userData)
   const dietId = randomUUID()
   const jobId = randomUUID()

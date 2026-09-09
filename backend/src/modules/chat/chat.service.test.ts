@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  assembleSystemPrompt,
   buildSystemPrompt,
   mapOpenAIError,
   normalizeHistory,
@@ -77,5 +78,38 @@ describe('windowedHistory (G6)', () => {
     expect(w).toHaveLength(30)
     expect(w[0]).toBe(10)
     expect(w[29]).toBe(39)
+  })
+})
+
+describe('assembleSystemPrompt — dieta já existente', () => {
+  const base = 'BASE'
+  const contexto = 'CONTEXTO'
+  const conhecidos = 'CONHECIDOS'
+
+  /**
+   * KNOWN_DATA_INSTRUCTION manda chamar collect_diet_data assim que o usuário
+   * confirma os dados. Com dieta ativa, isso transformava qualquer "ok" numa
+   * geração nova — a dieta era refeita a cada mensagem.
+   */
+  it('avisa que já existe dieta e restringe a tool a pedido explícito', () => {
+    const prompt = assembleSystemPrompt(base, contexto, conhecidos, true)
+
+    expect(prompt).toContain('JÁ TEM uma dieta ativa')
+    expect(prompt).toContain('APENAS se o usuário pedir EXPLICITAMENTE')
+  })
+
+  it('a instrução vem DEPOIS da de dados conhecidos, para prevalecer', () => {
+    const prompt = assembleSystemPrompt(base, contexto, conhecidos, true)
+
+    expect(prompt.indexOf('JÁ TEM uma dieta ativa')).toBeGreaterThan(
+      prompt.indexOf('DADOS JÁ CONHECIDOS'),
+    )
+  })
+
+  it('sem dieta ativa, o prompt segue igual ao de antes', () => {
+    const prompt = assembleSystemPrompt(base, contexto, conhecidos, false)
+
+    expect(prompt).not.toContain('JÁ TEM uma dieta ativa')
+    expect(prompt).toBe(assembleSystemPrompt(base, contexto, conhecidos))
   })
 })
