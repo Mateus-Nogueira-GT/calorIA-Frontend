@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import type { AiSingleDay, CollectedUserData } from '../../shared/diet-ai-schema.js'
-import { computeTargets, parseInput, reconcileDay, summarizePreviousDays } from './jobs.service.js'
+import {
+  buildDayPrompt,
+  computeTargets,
+  parseInput,
+  reconcileDay,
+  summarizePreviousDays,
+} from './jobs.service.js'
 
 /** Monta um dia com 1 refeição cujos itens têm as calorias dadas (macros = 1/4). */
 function dayWithCalories(...itemCalories: number[]): AiSingleDay {
@@ -207,5 +213,43 @@ describe('summarizePreviousDays (I3 — variedade entre dias)', () => {
     }))
     const s = summarizePreviousDays(rows)
     expect(s.length).toBeLessThanOrEqual(600)
+  })
+})
+
+describe('buildDayPrompt (O5)', () => {
+  it('lista os meal_type exatos na ordem canônica para meals_per_day', () => {
+    const p = buildDayPrompt({ ...base, meals_per_day: 4 }, computeTargets(base), 1)
+    expect(p).toContain('breakfast, lunch, afternoon_snack, dinner')
+    expect(p).toMatch(/exatamente 4 refeições/)
+  })
+
+  it('sem feedback, não há seção de rejeição', () => {
+    expect(buildDayPrompt(base, computeTargets(base), 1)).not.toContain('REJEITADA')
+  })
+
+  it('com feedback, a seção vem antes das regras', () => {
+    const p = buildDayPrompt(
+      base,
+      computeTargets(base),
+      2,
+      '',
+      'ATENÇÃO — a tentativa anterior foi REJEITADA',
+    )
+    expect(p).toContain('REJEITADA')
+    expect(p.indexOf('REJEITADA')).toBeLessThan(p.indexOf('Regras:'))
+  })
+
+  // O validador (checkAllergens) rejeita uma restrição violada com a MESMA
+  // severidade de uma alergia violada — se o prompt tratar restrição como
+  // preferência, a IA gasta uma tentativa de regeneração numa regra que
+  // nunca soube ser absoluta.
+  it('restrições e alergias carregam a mesma linguagem de proibição', () => {
+    const p = buildDayPrompt(
+      { ...base, dietary_restrictions: ['vegetariano'], allergies: ['amendoim'] },
+      computeTargets(base),
+      1,
+    )
+    expect(p).toMatch(/Restrições alimentares \(PROIBIDO/)
+    expect(p).toMatch(/Alergias \(PROIBIDO/)
   })
 })

@@ -10,7 +10,7 @@ import {
 } from '../../shared/diet-ai-schema.js'
 import { env } from '../../shared/env.js'
 import { AppError } from '../../shared/errors.js'
-import { reconcileDay } from '../../shared/guardrails/day.js'
+import { mealTypesFor, reconcileDay } from '../../shared/guardrails/day.js'
 import { createSystemPost } from '../feed/feed.service.js'
 
 // Reexport: reconcileDay migrou para shared/guardrails/day.ts (guardrails de
@@ -151,10 +151,16 @@ export async function createDietJob(
 
 // ─── Geração de 1 dia (1 chamada GPT-5, cabe no limite serverless) ───────────
 
+// O5: explicita meal_type/ordem e reforça alergia como proibição — o prompt
+// anterior só dizia "restrições informadas", o que deixava a IA livre para
+// escolher quantas/quais refeições gerar e tratar alergia como preferência.
 const DAY_SYSTEM_PROMPT =
   'Você é um nutricionista. Gere UM dia de plano alimentar em JSON, com alimentos ' +
   'brasileiros comuns e acessíveis, respeitando as metas e restrições informadas. ' +
-  'Some as calorias/macros dos itens de forma coerente com a meta diária.'
+  'Some as calorias/macros dos itens de forma coerente com a meta diária (kcal de cada ' +
+  'item = 4×proteína + 4×carboidrato + 9×gordura). Use EXATAMENTE os meal_type pedidos, ' +
+  'na ordem pedida, sem repetir. Alergias são PROIBIÇÕES absolutas, inclusive em ' +
+  'ingredientes e dicas de preparo.'
 
 // ─── Variedade entre dias (I3) ────────────────────────────────────────────────
 
@@ -180,11 +186,14 @@ export function summarizePreviousDays(rows: { day_name: string; foods: string[] 
   return lines.join('\n')
 }
 
-function buildDayPrompt(
+// Exportada: o snapshot do prompt (task 10) e o loop de regeneração com
+// feedback (task 11) precisam chamar isso de fora deste módulo.
+export function buildDayPrompt(
   u: CollectedUserData,
   t: DietTargets,
   dayNumber: number,
   previousDays = '',
+  feedback = '',
 ): string {
   const goalLabels: Record<string, string> = {
     lose_weight: 'perda de peso',
@@ -192,19 +201,27 @@ function buildDayPrompt(
     gain_muscle: 'ganho de massa',
     gain_weight: 'ganho de peso',
   }
+  // Mesma fonte que o validador (validateDay) usa para checar ordem/tipo —
+  // se o prompt derivasse a lista por conta própria, prompt e validador
+  // poderiam divergir sobre o que é "um dia de 4 refeições", e o dia gerado
+  // falharia a validação por um motivo que a IA nunca recebeu.
+  const mealTypes = mealTypesFor(u.meals_per_day)
   const varietySection = previousDays
     ? `\nDIAS JÁ GERADOS — para garantir variedade, evite repetir a mesma proteína principal do almoço/jantar em dias consecutivos e varie os carboidratos:\n${previousDays}\n`
     : ''
+  // Só existe quando uma tentativa anterior foi rejeitada pelos guardrails
+  // (task 11 monta essa string); sem isso a seção não aparece no prompt.
+  const feedbackSection = feedback ? `\n${feedback}\n` : ''
   return `Gere o dia ${dayNumber} de ${TOTAL_DAYS} (${DAYS_PT[dayNumber] ?? `Dia ${dayNumber}`}) de um plano alimentar.
 
 Perfil: ${u.weight_kg}kg, ${u.height_cm}cm, ${u.age} anos, ${u.gender}, objetivo ${goalLabels[u.goal] ?? u.goal}.
 Metas do DIA: ${t.targetCalories} kcal, ${t.protein}g proteína, ${t.carbs}g carboidrato, ${t.fat}g gordura.
-Refeições por dia: ${u.meals_per_day}.
-${u.dietary_restrictions?.length ? `Restrições: ${u.dietary_restrictions.join(', ')}.` : ''}
-${u.allergies?.length ? `Alergias (EVITAR): ${u.allergies.join(', ')}.` : ''}
+Refeições: exatamente ${mealTypes.length} refeições, com estes meal_type nesta ordem: ${mealTypes.join(', ')}.
+${u.dietary_restrictions?.length ? `Restrições alimentares (PROIBIDO qualquer ingrediente incompatível, inclusive em dicas de preparo): ${u.dietary_restrictions.join(', ')}. Ex.: vegetariano = sem carne nem peixe; sem glúten = sem trigo, pão ou massa comum.` : ''}
+${u.allergies?.length ? `Alergias (PROIBIDO, em qualquer ingrediente ou dica): ${u.allergies.join(', ')}.` : ''}
 ${u.food_preferences ? `Preferências: ${u.food_preferences}.` : ''}
-${varietySection}
-Regras: varie os alimentos (evite repetir em relação a um dia típico), especifique quantidade em gramas e calorias/macros por item. Distribua as ${u.meals_per_day} refeições ao longo do dia.`
+${varietySection}${feedbackSection}
+Regras: varie os alimentos (evite repetir em relação a um dia típico), especifique quantidade em gramas e calorias/macros por item. Distribua as ${mealTypes.length} refeições ao longo do dia.`
 }
 
 function dayTotals(day: AiSingleDay) {
