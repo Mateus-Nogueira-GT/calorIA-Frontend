@@ -28,7 +28,20 @@ const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 // Nota: o linking do AuthNavigator é resolvido via getStateFromPath default
 // (rota registrada no próprio AuthStack quando deslogado).
 const linking: LinkingOptions<RootStackParamList> = {
-  prefixes: ['caloria://', 'https://caloria.app'],
+  /**
+   * Só o esquema próprio. 'https://caloria.app' estava declarado aqui mas
+   * nunca funcionou em NENHUMA das duas plataformas, porque link https exige
+   * verificação de domínio que não existe:
+   *
+   *   - iOS: entitlement com.apple.developer.associated-domains + o arquivo
+   *     apple-app-site-association servido no domínio;
+   *   - Android: intent-filter com android:scheme="https" e autoVerify, mais
+   *     o assetlinks.json no domínio. O AndroidManifest só declara o
+   *     intent-filter do esquema "caloria".
+   *
+   * Para religar, fazer os dois lados acima e devolver o prefixo aqui.
+   */
+  prefixes: ['caloria://'],
   config: {
     screens: {
       App: {

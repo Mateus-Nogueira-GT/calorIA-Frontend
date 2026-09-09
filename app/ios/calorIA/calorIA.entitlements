@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  Sign in with Apple. Exigido pela diretriz 4.8 da App Store porque o app
+	  também oferece login com Google.
+
+	  PENDENTE FORA DO REPOSITÓRIO: a capability precisa estar habilitada no
+	  App ID em developer.apple.com. Sem isso a assinatura de código FALHA com
+	  "Provisioning profile doesn't support the Sign In with Apple capability".
+	  Ver docs/mobile-social-login.md.
+	-->
+	<key>com.apple.developer.applesignin</key>
+	<array>
+		<string>Default</string>
+	</array>
+</dict>
+</plist>

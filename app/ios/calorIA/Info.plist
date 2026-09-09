@@ -61,11 +61,25 @@
 	<array>
 		<string>arm64</string>
 	</array>
+	<!--
+	  O app é desenhado em retrato: nenhuma tela tem layout de paisagem, e o
+	  trabalho de tablet limitou LARGURA MÁXIMA, não reflow horizontal. Deixar
+	  landscape habilitado só expunha telas que ninguém desenhou nem testou.
+
+	  UIRequiresFullScreen abre mão do multitasking do iPad, e é o que torna
+	  legítimo declarar só retrato também lá: a Apple exige as 4 orientações
+	  de apps de iPad que participam de Slide Over / Split View.
+	-->
+	<key>UIRequiresFullScreen</key>
+	<true/>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
-		<string>UIInterfaceOrientationLandscapeLeft</string>
-		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<false/>

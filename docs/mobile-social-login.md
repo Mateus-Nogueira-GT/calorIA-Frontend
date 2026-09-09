@@ -1,22 +1,33 @@
 # Social login no mobile — checklist de ativação
 
-**Estado atual:** as libs nativas **não estão instaladas**. Os guards de
-`require` em `google-signin.service.ts` / `apple-signin.service.ts` detectam a
-ausência e o app esconde os botões — comportamento correto, sem crash.
+**Estado atual:** as libs nativas **estão instaladas** e o entitlement de
+Sign in with Apple está no projeto iOS. O que falta são credenciais e passos
+em consoles externos — nada disso dá para automatizar pelo repositório.
 
 O backend já está pronto: `POST /auth/google` e `POST /auth/apple` validam o
 token no Supabase e derivam o `username` (`ensureUsername`).
 
-Para ativar, os passos abaixo precisam de credenciais e acesso ao Xcode —
-não dá para automatizar pelo repositório.
+Enquanto o `GOOGLE_WEB_CLIENT_ID` não estiver no `.env`, o botão do Google
+aparece mas falha com mensagem apontando para este documento. O da Apple
+depende da capability no portal (ver abaixo).
 
-## 1. Instalar as dependências
+## 1. Dependências — FEITO
+
+```
+@react-native-google-signin/google-signin  ^16.1.5
+@invertase/react-native-apple-authentication ^2.5.1
+```
+
+Falta rodar, numa máquina com Xcode:
 
 ```bash
-cd app
-npm i @react-native-google-signin/google-signin @invertase/react-native-apple-authentication
-cd ios && bundle install && bundle exec pod install
+cd app/ios && bundle install && bundle exec pod install
 ```
+
+> A v13 da lib do Google mudou o retorno de `signIn()` de `{ idToken }` para
+> `{ type: 'success', data: { idToken } }`. O serviço já foi ajustado para a
+> forma nova e `extractIdToken` tem teste travando a regressão — inclusive um
+> caso que rejeita explicitamente a forma antiga.
 
 ## 2. Google
 
@@ -38,7 +49,12 @@ cd ios && bundle install && bundle exec pod install
 ## 3. Apple
 
 1. Apple Developer → App ID com a capability **Sign in with Apple**.
-2. Xcode → target `calorIA` → Signing & Capabilities → **+ Sign in with Apple**.
+   ⚠️ Sem este passo a **assinatura de código falha**: o arquivo
+   `app/ios/calorIA/calorIA.entitlements` já declara
+   `com.apple.developer.applesignin`, e o provisioning profile precisa
+   suportá-lo.
+2. Xcode → target `calorIA` → Signing & Capabilities: a capability já vem do
+   entitlements versionado; basta conferir que aparece marcada.
 3. Supabase → Authentication → Providers → Apple: habilitar com Service ID,
    Team ID, Key ID e a chave `.p8`.
 
