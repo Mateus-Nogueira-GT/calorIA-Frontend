@@ -115,6 +115,17 @@ export function assembleSystemPrompt(
 // pra falhar com erro tratável antes de o gateway cortar em 502.
 const OPENAI_TIMEOUT_MS = 50_000
 
+const CHAT_MAX_TOKENS = 2000
+const CHAT_RETRY_MAX_TOKENS = 4000
+
+/**
+ * C3: no retry por `length`, reasoning mínimo — sobra orçamento para o texto.
+ * O tipo ReasoningEffort do SDK 4.104 é 'low'|'medium'|'high'|null e ainda não
+ * conhece 'minimal'; a API aceita. Spread de Record não dispara o excess-property
+ * check (mesmo truque de buildModelsField para `models`).
+ */
+const MINIMAL_REASONING = { reasoning_effort: 'minimal' } as Record<string, unknown>
+
 /**
  * G6 da spec: só as últimas N mensagens vão para o modelo — sem janela, o
  * custo/latência cresciam linearmente com a conversa. O histórico COMPLETO
@@ -272,37 +283,74 @@ export async function sendChatMessage(
     : { tools: [COLLECT_DIET_DATA_TOOL], tool_choice: 'auto' as const, parallel_tool_calls: false }
 
   // ── Chamada à OpenAI com suporte a function calling ──────────────────────
-  let completion: Awaited<ReturnType<typeof fastify.openai.chat.completions.create>>
-  try {
-    completion = await fastify.openai.chat.completions.create(
-      {
-        model: env.OPENAI_MODEL,
-        // I5.2: fallbacks do OpenRouter (spread não dispara excess-property check).
-        ...buildModelsField(env.OPENAI_MODEL, env.OPENAI_FALLBACK_MODELS),
-        messages: [{ role: 'system', content: systemPrompt }, ...windowedHistory(history)],
-        ...toolParams,
-        // GPT-5 é reasoning model: não aceita temperature custom (só o default) e
-        // gasta "reasoning tokens" do orçamento — por isso um limite mais folgado.
-        max_tokens: 2000,
-        // Reasoning baixo: coletar dados / decidir a tool não precisa de raciocínio
-        // profundo, e o reasoning alto estourava os 60s da função (timeout).
-        reasoning_effort: 'low',
-      },
-      { timeout: OPENAI_TIMEOUT_MS },
-    )
-  } catch (err) {
-    fastify.log.error({ err }, 'Erro ao chamar OpenAI chat')
-    throw mapOpenAIError(err)
+  const baseParams = {
+    model: env.OPENAI_MODEL,
+    // I5.2: fallbacks do OpenRouter (spread não dispara excess-property check).
+    ...buildModelsField(env.OPENAI_MODEL, env.OPENAI_FALLBACK_MODELS),
+    messages: [{ role: 'system' as const, content: systemPrompt }, ...windowedHistory(history)],
+    ...toolParams,
+    // GPT-5 é reasoning model: não aceita temperature custom (só o default) e
+    // gasta "reasoning tokens" do orçamento — por isso um limite mais folgado.
+    max_tokens: CHAT_MAX_TOKENS,
+    // Reasoning baixo: coletar dados / decidir a tool não precisa de raciocínio
+    // profundo, e o reasoning alto estourava os 60s da função (timeout).
+    reasoning_effort: 'low' as const,
   }
 
+  const callChat = async (
+    params: typeof baseParams | (typeof baseParams & Record<string, unknown>),
+  ) => {
+    try {
+      return await fastify.openai.chat.completions.create(params, { timeout: OPENAI_TIMEOUT_MS })
+    } catch (err) {
+      fastify.log.error({ err }, 'Erro ao chamar OpenAI chat')
+      throw mapOpenAIError(err)
+    }
+  }
+
+  let completion = await callChat(baseParams)
   logAiUsage(fastify, { feature: 'chat', model: env.OPENAI_MODEL, userId, usage: completion.usage })
+
+  // C3: reasoning tokens consumiram o orçamento → conteúdo vazio/cortado. Antes,
+  // o fallback "Desculpe, não consegui…" era mostrado E persistido no histórico,
+  // contaminando as rodadas seguintes. Uma repetição curta; depois, erro limpo.
+  if (completion.choices[0]?.finish_reason === 'length') {
+    fastify.log.warn(
+      { userId, conversationId },
+      'Chat truncado (length) — repetindo com reasoning mínimo',
+    )
+    completion = await callChat({
+      ...baseParams,
+      max_tokens: CHAT_RETRY_MAX_TOKENS,
+      ...MINIMAL_REASONING,
+    })
+    logAiUsage(fastify, {
+      feature: 'chat',
+      model: env.OPENAI_MODEL,
+      userId,
+      usage: completion.usage,
+    })
+    if (completion.choices[0]?.finish_reason === 'length') {
+      throw new AppError(
+        502,
+        'AI_TRUNCATED',
+        'A IA não conseguiu concluir a resposta. Tente uma mensagem mais curta.',
+      )
+    }
+  }
+  if (completion.choices[0]?.finish_reason === 'content_filter') {
+    throw new AppError(
+      422,
+      'AI_CONTENT_FILTERED',
+      'Não consigo responder a essa mensagem. Vamos falar de alimentação?',
+    )
+  }
 
   const choice = completion.choices[0]
 
   // ── Detecta chamada de função: IA coletou todos os dados ─────────────────
   if (choice.finish_reason === 'tool_calls' && choice.message.tool_calls?.length) {
     const toolCall = choice.message.tool_calls[0]
-
     if (toolCall.function.name === 'collect_diet_data') {
       return handleDietGeneration(
         fastify,
@@ -313,11 +361,18 @@ export async function sendChatMessage(
         data.tzOffsetMinutes,
       )
     }
+    fastify.log.warn(
+      { userId, tool: toolCall.function.name },
+      'Tool desconhecida chamada pelo modelo',
+    )
   }
 
   // ── Resposta de conversa normal ──────────────────────────────────────────
-  const assistantMessage =
-    choice.message.content ?? 'Desculpe, não consegui processar sua mensagem.'
+  const assistantMessage = choice.message.content?.trim() ?? ''
+  if (!assistantMessage) {
+    // Sem texto e sem tool válida: não há o que mostrar nem o que persistir.
+    throw new AppError(502, 'AI_TRUNCATED', 'A IA devolveu uma resposta vazia. Tente novamente.')
+  }
   history.push({ role: 'assistant', content: assistantMessage })
   await persistHistory(fastify, userId, conversationId, history, 'collecting')
 
