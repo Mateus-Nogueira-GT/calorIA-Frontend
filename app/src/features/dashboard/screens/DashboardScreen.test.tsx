@@ -44,6 +44,21 @@ describe('DashboardScreen', () => {
     expect(await findByText('Frango')).toBeTruthy();
   });
 
+  /**
+   * R5: sem plano, o Dashboard caía em constantes do cliente
+   * (2000 kcal / 150g / 250g / 65g) e as exibia como metas pessoais. O print do
+   * cliente mostrava exatamente esses quatro números.
+   */
+  it('sem dieta gerada não inventa meta nenhuma (R5)', () => {
+    useDietStore.setState({ plan: null, isLoading: false, togglingMealId: null });
+    const { queryByText, getAllByText } = renderDashboard();
+
+    for (const chute of ['2000', '150g', '250g', '65g', 'de 2000 kcal']) {
+      expect(queryByText(chute)).toBeNull();
+    }
+    expect(getAllByText('Sem meta ainda').length).toBeGreaterThan(0);
+  });
+
   it('exibe a secao de diario alimentar', () => {
     const { getByText } = renderDashboard();
     expect(getByText('Diario alimentar')).toBeTruthy();

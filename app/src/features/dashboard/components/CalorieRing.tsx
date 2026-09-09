@@ -3,7 +3,7 @@ import { Platform, StyleSheet, View } from 'react-native';
 import { Text } from '@shared/components';
 import { colors, typography } from '@theme';
 
-interface Props { current: number; goal: number; size?: number }
+interface Props { current: number; goal: number | null; size?: number }
 
 /**
  * Arco de progresso no NATIVO sem react-native-svg: o conic-gradient só existe
@@ -76,9 +76,12 @@ export function halfDegrees(percent: number, side: 'left' | 'right'): number {
 }
 
 export function CalorieRing({ current, goal, size = 120 }: Props): React.JSX.Element {
-  const rawPercent = goal > 0 ? current / goal : 0;
-  const percent = goal > 0 ? Math.min(Math.max(rawPercent, 0), 1) : 0;
-  const displayPercent = goal > 0 ? Math.round(Math.max(rawPercent, 0) * 100) : 0;
+  // R5: sem dieta gerada não existe percentual — "0% atingido" sugeria que a
+  // pessoa tinha meta e não comeu nada.
+  const hasGoal = goal !== null && goal > 0;
+  const rawPercent = hasGoal ? current / goal : 0;
+  const percent = hasGoal ? Math.min(Math.max(rawPercent, 0), 1) : 0;
+  const displayPercent = hasGoal ? Math.round(Math.max(rawPercent, 0) * 100) : 0;
   const angle = Math.round(percent * 360);
   const strokeWidth = Math.round(size * 0.085);
   const innerSize = size - strokeWidth * 2;
@@ -124,8 +127,10 @@ export function CalorieRing({ current, goal, size = 120 }: Props): React.JSX.Ele
         }}
       >
         <View style={styles.inner}>
-          <Text style={styles.pct}>{displayPercent > 999 ? '999%+' : `${displayPercent}%`}</Text>
-          <Text style={styles.caption}>atingido</Text>
+          <Text style={styles.pct}>
+            {!hasGoal ? '--' : displayPercent > 999 ? '999%+' : `${displayPercent}%`}
+          </Text>
+          <Text style={styles.caption}>{hasGoal ? 'atingido' : 'sem meta'}</Text>
         </View>
       </View>
     </View>

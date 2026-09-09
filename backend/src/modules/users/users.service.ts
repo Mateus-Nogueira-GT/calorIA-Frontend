@@ -112,6 +112,15 @@ export async function uploadUserAvatar(
   // H3 da spec: remove as fotos antigas do prefixo do usuário (cada upload
   // criava um arquivo novo e os anteriores acumulavam para sempre).
   // Best-effort: falha aqui nunca derruba a troca de avatar.
+  //
+  // R2: estas duas idas ao Storage ficam DENTRO do request de propósito. A API
+  // roda como função serverless na Vercel (vercel.json -> api/handler.js), e
+  // ali o processo congela assim que a resposta sai: um fire-and-forget depois
+  // do reply.send simplesmente não executaria, e o vazamento de storage que o
+  // H3 fechou voltaria em silêncio. O gargalo que o usuário sentia era o
+  // timeout de 10s do CLIENTE (corrigido para 75s em profile.service.ts), não
+  // este trecho — a função tem maxDuration de 300s. Tirar daqui exige fila ou
+  // cron, não um `void`.
   try {
     const { data: files } = await fastify.supabase.storage.from('avatars').list(userId)
     const stale = (files ?? [])

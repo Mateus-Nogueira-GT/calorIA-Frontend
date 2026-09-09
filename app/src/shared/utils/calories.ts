@@ -1,10 +1,18 @@
 import type { DietPlan } from '@shared/services/diet.service';
 import type { Meal } from '@shared/services/food-log.service';
 
-export const DEFAULT_CALORIE_GOAL = 2000;
-
-export function getDailyCalorieGoal(plan: DietPlan | null | undefined): number {
-  return plan && plan.totalCalories > 0 ? plan.totalCalories : DEFAULT_CALORIE_GOAL;
+/**
+ * R5: existia um DEFAULT_CALORIE_GOAL = 2000 aqui. Sem plano, o Dashboard
+ * exibia 2000 kcal (e 150g/250g/65g de macro) como se fossem as metas da
+ * pessoa. Quem tem 1,60m querendo emagrecer via exatamente o mesmo que quem
+ * tem 1,90m querendo ganhar massa, sem nenhuma pista de que era chute. Num app
+ * de nutrição, número inventado é pior que ausência de número: a pessoa decide
+ * o que comer com base nele.
+ *
+ * `null` = ainda não há meta. Quem renderiza decide como dizer isso.
+ */
+export function getDailyCalorieGoal(plan: DietPlan | null | undefined): number | null {
+  return plan && plan.totalCalories > 0 ? plan.totalCalories : null;
 }
 
 export function sumCalories(meals: Meal[]): number {

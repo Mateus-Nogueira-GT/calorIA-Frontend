@@ -13,10 +13,6 @@ import { MacroCard } from '../components/MacroCard';
 import { MealListItem } from '../components/MealListItem';
 import { DietPlanSection } from '@features/diet/components/DietPlanSection';
 
-const DEFAULT_PROTEIN_GOAL = 150;
-const DEFAULT_CARBS_GOAL = 250;
-const DEFAULT_FAT_GOAL = 65;
-
 const DAYS_PT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab'];
 const MONTHS_PT = [
   'Jan',
@@ -109,12 +105,18 @@ export function DashboardScreen(): React.JSX.Element {
   // regra é usada pelo Diário (M6), por isso vive em @shared/utils/calories.
   const totals = getDayTotals({ planMeals: plan?.meals, freeMeals: foodLogMeals });
 
+  // R5: sem plano NÃO existem metas. Antes o Dashboard caía em constantes do
+  // cliente (2000/150/250/65) e as exibia como se fossem personalizadas.
   const calorieGoal = getDailyCalorieGoal(plan);
-  const proteinGoal = plan?.totalProtein ?? DEFAULT_PROTEIN_GOAL;
-  const carbsGoal = plan?.totalCarbs ?? DEFAULT_CARBS_GOAL;
-  const fatGoal = plan?.totalFat ?? DEFAULT_FAT_GOAL;
+  const proteinGoal = plan?.totalProtein ?? null;
+  const carbsGoal = plan?.totalCarbs ?? null;
+  const fatGoal = plan?.totalFat ?? null;
+  const hasGoals = calorieGoal !== null;
   const greetingLabel = user?.name ? `Ola, ${user.name}` : 'Seu resumo de hoje';
-  const percentLabel = calorieGoal > 0 ? Math.round((totals.calories / calorieGoal) * 100) : 0;
+  const percentLabel =
+    calorieGoal !== null && calorieGoal > 0
+      ? `${Math.round((totals.calories / calorieGoal) * 100)}%`
+      : '--';
 
   return (
     <ScrollView
@@ -135,10 +137,14 @@ export function DashboardScreen(): React.JSX.Element {
               <Text style={styles.badgeText}>Resumo calorico</Text>
             </View>
             <Text style={styles.kcalValue}>{totals.calories}</Text>
-            <Text style={styles.kcalGoal}>de {calorieGoal} kcal</Text>
+            <Text style={styles.kcalGoal}>
+              {hasGoals ? `de ${calorieGoal} kcal` : 'kcal hoje'}
+            </Text>
             <View style={styles.progressMeta}>
-              <Text style={styles.progressMetaLabel}>Meta diaria</Text>
-              <Text style={styles.progressMetaValue}>{percentLabel}%</Text>
+              <Text style={styles.progressMetaLabel}>
+                {hasGoals ? 'Meta diaria' : 'Sem meta ainda'}
+              </Text>
+              <Text style={styles.progressMetaValue}>{percentLabel}</Text>
             </View>
           </View>
           <CalorieRing current={totals.calories} goal={calorieGoal} size={132} />
@@ -147,7 +153,9 @@ export function DashboardScreen(): React.JSX.Element {
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Macronutrientes</Text>
           <Text style={styles.sectionSubtitle}>
-            Distribuicao consumida em relacao a meta atual.
+            {hasGoals
+              ? 'Distribuicao consumida em relacao a meta atual.'
+              : 'Suas metas aparecem aqui assim que sua dieta for gerada.'}
           </Text>
         </View>
 

@@ -19,6 +19,39 @@ import { pickImage } from '@shared/services/image-picker.service';
 
 const EMOJI_OPTIONS = ['🙂', '😎', '🦊', '🐼', '🐯', '🍎', '🥑', '💪', '🔥', '⭐', '🌱', '🏆'];
 
+/**
+ * O catch engolia tudo num alerta só: timeout de rede, 502 do Storage e 422 de
+ * imagem inválida viravam a mesma frase, e o usuário não sabia se tentava de
+ * novo, trocava de foto ou desistia.
+ */
+function describeUploadError(error: unknown): string {
+  const e = error as {
+    response?: { status?: number; data?: { error?: string; message?: string } };
+    code?: string;
+    message?: string;
+  };
+
+  const isTimeout =
+    e?.code === 'ECONNABORTED' ||
+    e?.code === 'ERR_NETWORK' ||
+    (typeof e?.message === 'string' && /timeout|network/i.test(e.message));
+  if (isTimeout) {
+    return 'A conexão demorou demais para enviar a foto. Tente de novo com um sinal melhor.';
+  }
+
+  if (e?.response?.status === 422) {
+    return 'Não conseguimos ler essa imagem. Tente escolher outra foto.';
+  }
+  if (e?.response?.status === 502) {
+    return 'Nosso servidor de imagens falhou. Tente de novo em alguns instantes.';
+  }
+
+  const fromServer = e?.response?.data?.message;
+  if (typeof fromServer === 'string' && fromServer.trim()) return fromServer;
+
+  return 'Não foi possível enviar a foto. Tente novamente.';
+}
+
 function initialsOf(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean).slice(0, 2);
   if (parts.length === 0) return 'U';
@@ -79,8 +112,8 @@ export function ProfileEditScreen({ navigation }: RootStackScreenProps<'ProfileE
       const p = await profileService.uploadAvatar(dataUrl);
       setAvatarUrl(p.avatar_url);
       updateUser({ avatarUrl: p.avatar_url });
-    } catch {
-      Alert.alert('Erro', 'Não foi possível enviar a foto. Tente novamente.');
+    } catch (error) {
+      Alert.alert('Erro', describeUploadError(error));
     } finally {
       setUploadingPhoto(false);
     }

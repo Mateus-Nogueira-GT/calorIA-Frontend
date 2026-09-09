@@ -3,11 +3,14 @@ import { StyleSheet, View } from 'react-native';
 import { Text } from '@shared/components';
 import { colors, typography, spacing, radius } from '@theme';
 
-interface Props { label: string; current: number; goal: number; unit?: string; color: string }
+interface Props { label: string; current: number; goal: number | null; unit?: string; color: string }
 
 export function MacroCard({ label, current, goal, unit = 'g', color }: Props): React.JSX.Element {
-  const pct = goal > 0 ? Math.min(Math.max(current / goal, 0), 1) : 0;
-  const pctLabel = goal > 0 ? `${Math.round((current / goal) * 100)}%` : '--';
+  // goal === null: ainda não há dieta gerada. Mostrar "Meta 0g" seria só
+  // trocar uma mentira por outra — o card diz que a meta não existe ainda.
+  const hasGoal = goal !== null && goal > 0;
+  const pct = hasGoal ? Math.min(Math.max(current / goal, 0), 1) : 0;
+  const pctLabel = hasGoal ? `${Math.round((current / goal) * 100)}%` : '--';
 
   return (
     <View style={styles.container}>
@@ -16,7 +19,7 @@ export function MacroCard({ label, current, goal, unit = 'g', color }: Props): R
         <Text style={[styles.percent, { color }]}>{pctLabel}</Text>
       </View>
       <Text style={[styles.value, { color }]}>{current}{unit}</Text>
-      <Text style={styles.goal}>Meta {goal}{unit}</Text>
+      <Text style={styles.goal}>{hasGoal ? `Meta ${goal}${unit}` : 'Sem meta ainda'}</Text>
       <View style={styles.track}>
         <View style={[styles.fill, { width: `${pct * 100}%` as const, backgroundColor: color }]} />
       </View>
