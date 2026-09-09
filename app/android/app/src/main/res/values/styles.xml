@@ -16,6 +16,17 @@
     <style name="AppTheme" parent="Theme.AppCompat.Light.NoActionBar">
         <item name="android:windowBackground">@color/brand_background</item>
         <item name="android:editTextBackground">@drawable/rn_edit_text_material</item>
+        <!--
+          N2: com o app forcado em tema claro, a barra de status continuava
+          seguindo o modo do sistema. Em aparelho no modo escuro os icones
+          (relogio, wifi, bateria) eram desenhados em BRANCO sobre o fundo
+          creme do app — praticamente ilegiveis. Verificado em emulador
+          Android 16 com o sistema em night mode.
+
+          windowLightStatusBar=true pede icones ESCUROS, que e o correto para
+          um fundo claro. Disponivel desde a API 23; o minSdk do app e 24.
+        -->
+        <item name="android:windowLightStatusBar">true</item>
     </style>
 
 </resources>
