@@ -10,7 +10,12 @@ import {
 } from '../../shared/diet-ai-schema.js'
 import { env } from '../../shared/env.js'
 import { AppError } from '../../shared/errors.js'
+import { reconcileDay } from '../../shared/guardrails/day.js'
 import { createSystemPost } from '../feed/feed.service.js'
+
+// Reexport: reconcileDay migrou para shared/guardrails/day.ts (guardrails de
+// saída do dia gerado); mantido aqui para não quebrar quem já importa daqui.
+export { reconcileDay }
 
 // B1 da spec: 7 dias — sábado/domingo ficavam sem plano com 5.
 const TOTAL_DAYS = 7
@@ -216,64 +221,6 @@ function dayTotals(day: AiSingleDay) {
     }
   }
   return { cal: Math.round(cal), p: Math.round(p), c: Math.round(c), f: Math.round(f) }
-}
-
-// ─── Reconciliação com a meta (I4) ────────────────────────────────────────────
-
-const RECONCILE_TOLERANCE = 0.1 // ±10% da meta é aceitável
-const RECONCILE_MIN_FACTOR = 0.6
-const RECONCILE_MAX_FACTOR = 1.6
-
-/** Arredonda preservando frações pequenas: ≥10 → inteiro; <10 → 1 casa. */
-function roundSmart(n: number): number {
-  if (n >= 10) return Math.round(n)
-  return Math.round(n * 10) / 10
-}
-
-/**
- * Escala determinística do dia para bater a meta de calorias (I4). O modelo às
- * vezes entrega um dia 20-40% fora da meta; em vez de re-chamar a IA (caro/lento
- * e não-determinístico), reescalamos as quantidades proporcionalmente.
- * - Desvio ≤ 10% → intacto.
- * - Fora disso → fator = meta/total, limitado a [0.6, 1.6] (evita distorção
- *   absurda quando a geração vem muito errada).
- */
-export function reconcileDay(
-  day: AiSingleDay,
-  targetCalories: number,
-): { day: AiSingleDay; scaled: boolean; factor: number } {
-  let total = 0
-  for (const meal of day.meals) for (const it of meal.items) total += it.calories
-
-  if (total <= 0 || targetCalories <= 0) return { day, scaled: false, factor: 1 }
-  if (Math.abs(total - targetCalories) / targetCalories <= RECONCILE_TOLERANCE) {
-    return { day, scaled: false, factor: 1 }
-  }
-
-  const factor = Math.min(
-    RECONCILE_MAX_FACTOR,
-    Math.max(RECONCILE_MIN_FACTOR, targetCalories / total),
-  )
-
-  const scaledDay: AiSingleDay = {
-    ...day,
-    meals: day.meals.map((meal) => {
-      const items = meal.items.map((it) => ({
-        ...it,
-        quantity_g: roundSmart(it.quantity_g * factor),
-        calories: roundSmart(it.calories * factor),
-        protein_g: roundSmart(it.protein_g * factor),
-        carbs_g: roundSmart(it.carbs_g * factor),
-        fat_g: roundSmart(it.fat_g * factor),
-      }))
-      return {
-        ...meal,
-        items,
-        total_calories: roundSmart(items.reduce((s, i) => s + i.calories, 0)),
-      }
-    }),
-  }
-  return { day: scaledDay, scaled: true, factor }
 }
 
 interface JobRow {
