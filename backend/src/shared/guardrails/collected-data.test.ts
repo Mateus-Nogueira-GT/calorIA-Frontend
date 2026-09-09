@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { assessSafety, bmi } from './collected-data.js'
+import type { z } from 'zod'
+import { collectedUserDataSchema } from '../diet-ai-schema.js'
+import { assessSafety, bmi, describeInvalidFields } from './collected-data.js'
 
 const adulto = {
   age: 30,
@@ -75,5 +77,61 @@ describe('assessSafety (S2) — ordem: menor → condição → IMC baixo+défic
     const r = assessSafety({ ...adulto, weight_kg: 108.9, height_cm: 165 })
     expect(r.ok).toBe(true)
     if (r.ok) expect(r.warning).toBeNull()
+  })
+})
+
+describe('describeInvalidFields (S4) — pergunta específica por campo', () => {
+  const base = {
+    weight_kg: 80,
+    height_cm: 180,
+    age: 30,
+    gender: 'male',
+    goal: 'maintain',
+    activity_level: 'moderate',
+    meals_per_day: 4,
+    dietary_restrictions: [],
+    allergies: [],
+    food_preferences: null,
+    message_to_user: 'ok',
+    health_conditions: [],
+  }
+  function issuesFor(raw: unknown) {
+    const r = collectedUserDataSchema.safeParse(raw)
+    if (r.success) throw new Error('esperava falha')
+    return r.error.issues
+  }
+
+  it('altura em metros: cita o valor e pede em centímetros', () => {
+    const raw = { ...base, height_cm: 1.75 }
+    const msg = describeInvalidFields(issuesFor(raw), raw)
+    expect(msg).toContain('1.75')
+    expect(msg).toMatch(/centímetros/)
+  })
+
+  it('peso implausível: pede confirmação em kg', () => {
+    const raw = { ...base, weight_kg: 600 }
+    expect(describeInvalidFields(issuesFor(raw), raw)).toMatch(/600 kg/)
+  })
+
+  it('idade: pede confirmação', () => {
+    const raw = { ...base, age: 140 }
+    expect(describeInvalidFields(issuesFor(raw), raw)).toMatch(/140 anos/)
+  })
+
+  it('lista longa: pede resumo', () => {
+    const raw = { ...base, allergies: Array.from({ length: 11 }, (_, i) => `a${i}`) }
+    expect(describeInvalidFields(issuesFor(raw), raw)).toMatch(/até 10/)
+  })
+
+  it('vários campos: junta as perguntas', () => {
+    const raw = { ...base, height_cm: 1.75, weight_kg: 600 }
+    const msg = describeInvalidFields(issuesFor(raw), raw)
+    expect(msg).toContain('1.75')
+    expect(msg).toContain('600')
+  })
+
+  it('campo sem template: mensagem genérica de peso/altura', () => {
+    const issues: z.ZodIssue[] = [{ code: 'custom', path: ['gender'], message: 'x' }]
+    expect(describeInvalidFields(issues, base)).toMatch(/confirmar seu peso e altura/)
   })
 })

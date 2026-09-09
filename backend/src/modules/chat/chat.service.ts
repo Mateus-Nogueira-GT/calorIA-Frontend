@@ -5,6 +5,7 @@ import { buildModelsField, logAiUsage } from '../../shared/ai-usage.js'
 import { type CollectedUserData, collectedUserDataSchema } from '../../shared/diet-ai-schema.js'
 import { env } from '../../shared/env.js'
 import { AppError } from '../../shared/errors.js'
+import { assessSafety, describeInvalidFields } from '../../shared/guardrails/index.js'
 import { createDietJob } from '../diets/jobs.service.js'
 import { fetchUserContext, formatKnownData, formatUserContext } from './chat-context.js'
 import type { ChatMessageBody, ChatResponse } from './chat.schemas.js'
@@ -311,8 +312,8 @@ async function handleDietGeneration(
       { errors: parseResult.error.flatten() },
       'Dados coletados pela IA são inválidos',
     )
-    const fallbackMsg =
-      'Preciso de mais algumas informações antes de gerar sua dieta. Poderia confirmar seu peso e altura?'
+    // S4: pergunta específica por campo (altura em metros, peso implausível…).
+    const fallbackMsg = describeInvalidFields(parseResult.error.issues, rawArgs)
     history.push({ role: 'assistant', content: fallbackMsg })
     await persistHistory(fastify, userId, conversationId, history, 'collecting')
     return {
@@ -325,7 +326,31 @@ async function handleDietGeneration(
   }
 
   const userData = parseResult.data
-  const userMessage = userData.message_to_user
+
+  // S2/S3: menor de idade, condição de saúde ou IMC baixo com déficit → o coach
+  // recusa em TEXTO (status collecting), sem job e sem gravar perfil. A recusa
+  // fica no histórico: nas rodadas seguintes o modelo a vê e não insiste (S6).
+  const safety = assessSafety(userData)
+  if (!safety.ok) {
+    fastify.log.info({ userId, reason: safety.reason }, 'Geração de dieta recusada por segurança')
+    history.push({ role: 'assistant', content: safety.userMessage })
+    await persistHistory(fastify, userId, conversationId, history, 'collecting')
+    return {
+      conversation_id: conversationId,
+      message: {
+        role: 'assistant',
+        content: safety.userMessage,
+        created_at: new Date().toISOString(),
+      },
+      diet_generated: false,
+      diet_id: null,
+      diet_job_id: null,
+    }
+  }
+
+  const userMessage = safety.warningMessage
+    ? `${userData.message_to_user}\n\n${safety.warningMessage}`
+    : userData.message_to_user
 
   // ── Enfileira o job de geração (gera 1 dia por chamada, via polling) ──────
   // Não gera os 7 dias aqui: estouraria o limite de tempo da função serverless.

@@ -1,3 +1,4 @@
+import type { ZodIssue } from 'zod'
 import type { CollectedUserData } from '../diet-ai-schema.js'
 
 /**
@@ -78,4 +79,57 @@ export function assessSafety(
     return { ok: true, warning: 'HIGH_BMI', warningMessage: HIGH_BMI_WARNING }
   }
   return { ok: true, warning: null, warningMessage: null }
+}
+
+const GENERIC_INVALID_MESSAGE =
+  'Preciso de mais algumas informações antes de gerar sua dieta. Poderia confirmar seu peso ' +
+  'e altura?'
+
+// Parte fixa de cada pergunta de campo, isolada do valor interpolado (que muda a cada
+// chamada) — mesmo truque do HEALTH_CONDITION_TAIL acima: mantém a linha dentro de 100
+// colunas sem precisar de `+` com uma expressão, o que o linter (useTemplate) rejeitaria.
+const WEIGHT_CONFIRM_TAIL = ' kg de peso — está certo? Se for outra unidade, me diga em kg.'
+const HEIGHT_CONFIRM_TAIL = ' cm de altura — confere? Me passe em centímetros (ex.: 175).'
+const LIST_SUMMARY_MESSAGE =
+  'Me passe suas restrições, alergias e preferências de forma resumida (até 10 itens, poucas ' +
+  'palavras cada).'
+
+function valueAt(raw: unknown, key: string): string {
+  const v = (raw as Record<string, unknown> | null)?.[key]
+  return v == null ? '?' : String(v)
+}
+
+/**
+ * S4: zod falhou por bounds → pergunta ESPECÍFICA por campo, em vez de "confirme
+ * peso e altura" para tudo. O valor citado é o que o modelo mandou (raw), para
+ * o usuário reconhecer o erro ("1.75" → quis dizer 175).
+ */
+export function describeInvalidFields(issues: ZodIssue[], raw: unknown): string {
+  const fields = [...new Set(issues.map((i) => String(i.path[0] ?? '')))]
+  const parts: string[] = []
+  for (const f of fields) {
+    switch (f) {
+      case 'weight_kg':
+        parts.push(`Você informou ${valueAt(raw, f)}${WEIGHT_CONFIRM_TAIL}`)
+        break
+      case 'height_cm':
+        parts.push(`Você informou ${valueAt(raw, f)}${HEIGHT_CONFIRM_TAIL}`)
+        break
+      case 'age':
+        parts.push(`Você informou ${valueAt(raw, f)} anos — pode confirmar sua idade?`)
+        break
+      case 'meals_per_day':
+        parts.push('Consigo montar de 3 a 6 refeições por dia — quantas você prefere?')
+        break
+      case 'dietary_restrictions':
+      case 'allergies':
+      case 'health_conditions':
+      case 'food_preferences':
+        parts.push(LIST_SUMMARY_MESSAGE)
+        break
+      default:
+        break
+    }
+  }
+  return parts.length > 0 ? [...new Set(parts)].join(' ') : GENERIC_INVALID_MESSAGE
 }
