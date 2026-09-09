@@ -11,6 +11,7 @@ import {
 import { env } from '../../shared/env.js'
 import { AppError } from '../../shared/errors.js'
 import { mealTypesFor, reconcileDay } from '../../shared/guardrails/day.js'
+import { type DayGuardrailResult, applyDayGuardrails } from '../../shared/guardrails/index.js'
 import { createSystemPost } from '../feed/feed.service.js'
 
 // Reexport: reconcileDay migrou para shared/guardrails/day.ts (guardrails de
@@ -323,6 +324,73 @@ export async function getActiveJob(fastify: FastifyInstance, userId: string): Pr
   return toStatus(job)
 }
 
+/** O4: uma regeneração com feedback; na segunda falha o job vai para failed. */
+const MAX_DAY_ATTEMPTS = 2
+
+async function generateDay(
+  fastify: FastifyInstance,
+  userId: string,
+  dayNumber: number,
+  userData: CollectedUserData,
+  targets: DietTargets,
+  previousDays: string,
+  feedback: string,
+): Promise<AiSingleDay> {
+  const completion = await fastify.openai.beta.chat.completions.parse(
+    {
+      // I5.1: modelo dedicado da geração de dias (default = OPENAI_MODEL).
+      model: env.OPENAI_DIET_MODEL,
+      // I5.2: fallbacks do OpenRouter (spread não dispara excess-property check).
+      ...buildModelsField(env.OPENAI_DIET_MODEL, env.OPENAI_FALLBACK_MODELS),
+      messages: [
+        { role: 'system', content: DAY_SYSTEM_PROMPT },
+        {
+          role: 'user',
+          content: buildDayPrompt(userData, targets, dayNumber, previousDays, feedback),
+        },
+      ],
+      response_format: zodResponseFormat(aiSingleDaySchema, 'diet_day'),
+      // Reasoning tokens consomem este mesmo orçamento no GPT-5; 6000 truncava
+      // o JSON do dia ("length limit was reached"). Folga grande — o teto real
+      // de tempo é o maxDuration (300s) + timeout abaixo.
+      max_tokens: 20000,
+      // Reasoning baixo pra reduzir a latência por dia.
+      reasoning_effort: 'low',
+    },
+    // Timeout explícito abaixo do maxDuration (300s) pra falhar tratável.
+    { timeout: 120_000 },
+  )
+  logAiUsage(fastify, {
+    feature: 'diet_day',
+    model: env.OPENAI_DIET_MODEL,
+    userId,
+    usage: completion.usage,
+  })
+  const parsed = completion.choices[0]?.message?.parsed
+  if (!parsed) throw new Error('IA retornou dia vazio')
+  return parsed
+}
+
+/**
+ * Marca job e draft como failed. A dieta ATIVA anterior permanece intocada, e
+ * o /retry consegue devolver a draft e continuar de onde parou.
+ */
+async function failJob(
+  fastify: FastifyInstance,
+  jobId: string,
+  dietId: string,
+  error: string,
+): Promise<void> {
+  await fastify.db`
+    UPDATE diet_jobs SET status = 'failed', error = ${error.slice(0, 300)}, updated_at = NOW()
+    WHERE id = ${jobId}
+  `
+  await fastify.db`
+    UPDATE diets SET status = 'failed', updated_at = NOW()
+    WHERE id = ${dietId} AND status = 'draft'
+  `
+}
+
 /**
  * Gera e persiste o PRÓXIMO dia do job. Cada chamada = 1 dia = 1 chamada GPT-5.
  * O cliente chama repetidamente (polling) até status 'completed'.
@@ -366,59 +434,47 @@ export async function processJobStep(
   `
   const previousDays = summarizePreviousDays(prevRows)
 
-  // 1) Gera o dia (chamada longa — SEM segurar transação/lock).
+  // 1) Gera o dia (chamada longa — SEM segurar transação/lock) e passa pelos
+  //    guardrails (O4): alérgeno, kcal, reconcile, estrutura. Uma regeneração
+  //    com o feedback das violações; se ainda falhar, o job vai para failed.
+  //    NUNCA persiste um dia que não passou.
   let aiDay: AiSingleDay
   try {
-    const completion = await fastify.openai.beta.chat.completions.parse(
-      {
-        // I5.1: modelo dedicado da geração de dias (default = OPENAI_MODEL).
-        model: env.OPENAI_DIET_MODEL,
-        // I5.2: fallbacks do OpenRouter (spread não dispara excess-property check).
-        ...buildModelsField(env.OPENAI_DIET_MODEL, env.OPENAI_FALLBACK_MODELS),
-        messages: [
-          { role: 'system', content: DAY_SYSTEM_PROMPT },
-          { role: 'user', content: buildDayPrompt(userData, targets, dayNumber, previousDays) },
-        ],
-        response_format: zodResponseFormat(aiSingleDaySchema, 'diet_day'),
-        // Reasoning tokens consomem este mesmo orçamento no GPT-5; 6000 truncava
-        // o JSON do dia ("length limit was reached"). Folga grande — o teto real
-        // de tempo é o maxDuration (300s) + timeout abaixo.
-        max_tokens: 20000,
-        // Reasoning baixo pra reduzir a latência por dia.
-        reasoning_effort: 'low',
-      },
-      // Timeout explícito abaixo do maxDuration (300s) pra falhar tratável.
-      { timeout: 120_000 },
-    )
-    logAiUsage(fastify, {
-      feature: 'diet_day',
-      model: env.OPENAI_DIET_MODEL,
-      userId,
-      usage: completion.usage,
-    })
-    const parsed = completion.choices[0]?.message?.parsed
-    if (!parsed) throw new Error('IA retornou dia vazio')
-    // I4: reescala determinística se o dia veio >10% fora da meta de calorias.
-    const reconciled = reconcileDay(parsed, targets.targetCalories)
-    if (reconciled.scaled) {
-      fastify.log.info(
-        { jobId, dayNumber, factor: Number(reconciled.factor.toFixed(3)) },
-        'Dia reescalonado para a meta',
+    let feedback = ''
+    let result: DayGuardrailResult | null = null
+    for (let attempt = 1; attempt <= MAX_DAY_ATTEMPTS; attempt++) {
+      const generated = await generateDay(
+        fastify,
+        userId,
+        dayNumber,
+        userData,
+        targets,
+        previousDays,
+        feedback,
+      )
+      result = applyDayGuardrails(generated, userData, targets)
+      if (result.ok) break
+      fastify.log.warn(
+        { jobId, dayNumber, attempt, code: result.code, violations: result.violations },
+        'Dia rejeitado pelos guardrails',
+      )
+      feedback = result.feedback
+    }
+    if (!result || !result.ok) {
+      const code = result?.code ?? 'DAY_VALIDATION_FAILED'
+      await failJob(fastify, jobId, job.diet_id, code)
+      throw new AppError(
+        502,
+        code,
+        'A dieta gerada não passou nas verificações de segurança. Tente novamente.',
       )
     }
-    aiDay = reconciled.day
+    for (const note of result.notes) fastify.log.info({ jobId, dayNumber }, note)
+    aiDay = result.day
   } catch (err) {
+    if (err instanceof AppError) throw err
     fastify.log.error({ err, jobId, dayNumber }, 'Falha ao gerar dia da dieta')
-    await fastify.db`
-      UPDATE diet_jobs SET status = 'failed', error = ${String(err).slice(0, 300)}, updated_at = NOW()
-      WHERE id = ${jobId}
-    `
-    // A draft vira 'failed' — a dieta ATIVA anterior permanece intocada, e o
-    // /retry consegue devolvê-la para 'draft' e continuar de onde parou.
-    await fastify.db`
-      UPDATE diets SET status = 'failed', updated_at = NOW()
-      WHERE id = ${job.diet_id} AND status = 'draft'
-    `
+    await failJob(fastify, jobId, job.diet_id, String(err))
     throw new AppError(502, 'DIET_STEP_FAILED', 'Falha ao gerar um dia da dieta. Tente novamente.')
   }
 

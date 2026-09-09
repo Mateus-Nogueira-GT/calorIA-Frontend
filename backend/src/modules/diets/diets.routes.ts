@@ -304,7 +304,9 @@ const dietsRoutes: FastifyPluginAsyncZod = async (fastify) => {
           401: errorSchema,
           404: errorSchema,
           422: errorSchema,
-          502: errorSchema,
+          502: errorSchema.describe(
+            'DIET_STEP_FAILED (IA indisponível) | ALLERGEN_IN_OUTPUT | DAY_VALIDATION_FAILED | RECONCILE_FAILED (dia gerado reprovado nos guardrails; o job vai para failed e /retry continua do mesmo dia)',
+          ),
         },
       },
     },
