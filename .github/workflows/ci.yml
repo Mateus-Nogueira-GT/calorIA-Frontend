@@ -1,0 +1,91 @@
+# Gate de qualidade. Antes deste arquivo o único guarda do repositório era o
+# hook de pre-commit do husky, que roda `lint-staged` (eslint --fix + prettier)
+# só nos arquivos staged. Nada barrava erro de tipo nem teste quebrado — foi
+# assim que um `TabNavigator.next.tsx` de 2 bytes com o texto "ok", uma variante
+# `heading3` inexistente e 4 testes vermelhos chegaram à main e sobreviveram a
+# um release publicado.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  app:
+    name: app (React Native)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          # O package.json do app exige >= 22.13.0.
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - run: npm ci
+
+      # ── Gates que BARRAM o merge ───────────────────────────────────────────
+      - name: type-check
+        run: npm run type-check
+
+      - name: test
+        run: npm test
+
+      # Garante que o caminho de release do JS não regrediu. Não substitui o
+      # build nativo (que exige SDK/Xcode), mas pega quebra de resolução de
+      # módulo e de bundling — inclusive `@env`, que já derrubou o app antes.
+      - name: bundle de release (Android)
+        run: >
+          npx react-native bundle --platform android --dev false
+          --entry-file index.js --bundle-output /tmp/verify.jsbundle
+          --assets-dest /tmp/verify-assets
+
+      # ── Reporta, mas ainda NÃO barra ───────────────────────────────────────
+      # `npm run lint` tem 42 erros pré-existentes na main (medidos em
+      # 2026-09-09). A maioria é falso positivo de regras do
+      # eslint-plugin-react-native que não enxergam os componentes próprios do
+      # app: `no-raw-text` acusa o <Button children: string> (19x),
+      # `no-unused-styles` acusa as 6 variantes do <Text> porque o acesso é
+      # dinâmico (`styles[variant]`), e `split-platform-components` acusa o
+      # import de PermissionsAndroid num arquivo compartilhado que já checa
+      # Platform.OS. Sobram ~12 reais, 5 deles exhaustive-deps sobre o objeto
+      # do zustand — cuja correção é refatoração com risco de comportamento.
+      # Zerar isso é decisão de escopo em aberto; até lá o job reporta sem
+      # bloquear, para não nascer vermelho e ser ignorado.
+      # TODO: remover o continue-on-error quando o lint estiver zerado.
+      - name: lint (não bloqueante — ver comentário)
+        run: npm run lint
+        continue-on-error: true
+
+  backend:
+    name: backend (Fastify)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - run: npm ci
+
+      - name: typecheck
+        run: npm run typecheck
+
+      - name: test
+        run: npm test
+
+      # O biome do backend está com 7 warnings e sai diferente de zero.
+      # Mesmo tratamento do app até a decisão de escopo.
+      # TODO: remover o continue-on-error quando o biome estiver limpo.
+      - name: lint (não bloqueante — ver comentário)
+        run: npm run lint
+        continue-on-error: true

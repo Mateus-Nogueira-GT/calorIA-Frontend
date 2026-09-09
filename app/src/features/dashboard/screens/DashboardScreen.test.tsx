@@ -1,14 +1,28 @@
 import React from 'react';
 import { render } from '@testing-library/react-native';
+import { NavigationContainer } from '@react-navigation/native';
 import { DashboardScreen } from './DashboardScreen';
 import { useFoodLogStore } from '@features/food-log/store';
 import { useAuthStore } from '@features/auth/store';
 import { useDietStore } from '@features/diet/store';
 
+/**
+ * DietPlanSection chama useNavigation. No app o dashboard está dentro do tab
+ * navigator; o teste precisa do mesmo contexto, senão quebra em
+ * "Couldn't find a navigation object".
+ */
+function renderDashboard() {
+  return render(
+    <NavigationContainer>
+      <DashboardScreen />
+    </NavigationContainer>,
+  );
+}
+
 jest.mock('@shared/services/food-log.service', () => ({
   foodLogService: {
     getMeals: jest.fn().mockResolvedValue([
-      { id: 'm1', name: 'Frango', calories: 450, protein: 38, carbs: 52, fat: 8, loggedAt: new Date().toISOString() },
+      { id: 'm1', name: 'Frango', calories: 450, protein: 38, carbs: 52, fat: 8, loggedAt: new Date().toISOString(), mealType: 'other' },
     ]),
   },
 }));
@@ -21,17 +35,17 @@ beforeEach(() => {
 
 describe('DashboardScreen', () => {
   it('renderiza saudacao com o nome do usuario', () => {
-    const { getByText } = render(<DashboardScreen />);
+    const { getByText } = renderDashboard();
     expect(getByText(/Joao/)).toBeTruthy();
   });
 
   it('exibe refeicoes do dia apos carregamento', async () => {
-    const { findByText } = render(<DashboardScreen />);
+    const { findByText } = renderDashboard();
     expect(await findByText('Frango')).toBeTruthy();
   });
 
   it('exibe a secao de diario alimentar', () => {
-    const { getByText } = render(<DashboardScreen />);
+    const { getByText } = renderDashboard();
     expect(getByText('Diario alimentar')).toBeTruthy();
   });
 });

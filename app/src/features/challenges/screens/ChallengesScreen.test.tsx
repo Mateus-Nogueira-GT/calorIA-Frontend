@@ -27,6 +27,7 @@ const challenge: Challenge = {
   metric: 'streak',
   joinedByMe: false,
   inviteCode: 'ABC',
+  finished: false,
 };
 
 const navigation = { navigate: jest.fn() } as never;

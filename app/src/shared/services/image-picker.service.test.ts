@@ -20,7 +20,9 @@ function withPlatform(os: string, fn: () => Promise<void>): () => Promise<void> 
 }
 
 describe('pickImage', () => {
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
 
   it('camera: retorna data URL a partir do base64', async () => {
     picker.launchCamera.mockResolvedValue({ assets: [{ base64: 'AAA', type: 'image/jpeg' }] });

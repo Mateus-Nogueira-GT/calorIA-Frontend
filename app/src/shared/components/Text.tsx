@@ -2,7 +2,7 @@ import React from 'react';
 import { Text as RNText, StyleSheet, TextProps } from 'react-native';
 import { colors, typography } from '@theme';
 
-type Variant = 'heading1' | 'heading2' | 'body' | 'caption' | 'label';
+type Variant = 'heading1' | 'heading2' | 'heading3' | 'body' | 'caption' | 'label';
 
 interface Props extends TextProps {
   variant?: Variant;
@@ -30,6 +30,15 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.xl,
     color: colors.textPrimary,
     lineHeight: typography.fontSize.xl * typography.lineHeight.tight,
+  },
+  // Degrau entre heading2 (xl) e body (base). ProfileGoalsScreen e
+  // ProfileCoachPersonalityScreen já pediam `heading3`; sem ele no StyleSheet,
+  // `styles[variant]` era undefined e o título saía na fonte do sistema.
+  heading3: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: typography.fontSize.lg,
+    color: colors.textPrimary,
+    lineHeight: typography.fontSize.lg * typography.lineHeight.tight,
   },
   body: {
     fontFamily: typography.fontFamily.regular,

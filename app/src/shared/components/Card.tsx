@@ -7,7 +7,10 @@ import {
 } from 'react-native';
 import { colors, spacing, radius } from '@theme';
 
-interface Props extends ViewProps {
+// onBlur/onFocus têm assinaturas diferentes em ViewProps e TouchableOpacityProps, e o
+// Card repassa os mesmos props para os dois. Card não usa foco: omitir os dois resolve
+// sem alargar tipo nenhum.
+interface Props extends Omit<ViewProps, 'onBlur' | 'onFocus'> {
   onPress?: () => void;
   testID?: string;
   children: React.ReactNode;

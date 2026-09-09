@@ -4,8 +4,9 @@ import {
   Platform,
   Pressable,
   PressableProps,
-  StyleSheet,
+  PressableStateCallbackType,
   StyleProp,
+  StyleSheet,
   TextStyle,
   ViewStyle,
 } from 'react-native';
@@ -26,6 +27,16 @@ interface Props extends Omit<PressableProps, 'children' | 'style'> {
 }
 
 type PressablePressEvent = Parameters<NonNullable<PressableProps['onPress']>>[0];
+
+/**
+ * O react-native-web acrescenta `hovered` e `focused` ao state do Pressable; os tipos
+ * do RN só declaram `pressed`. Como os dois são opcionais, um PressableStateCallbackType
+ * nativo continua atribuível a este tipo — nada quebra no iOS/Android.
+ */
+export type PressableState = PressableStateCallbackType & {
+  hovered?: boolean;
+  focused?: boolean;
+};
 
 interface WebKeyboardEvent {
   key?: string;
@@ -58,7 +69,7 @@ export function Button({
 
   return (
     <Pressable
-      style={(state) => [
+      style={(state: PressableState) => [
         styles.base,
         variant === 'primary' && styles.primary,
         variant === 'secondary' && styles.secondary,
@@ -68,8 +79,8 @@ export function Button({
         size === 'lg' && styles.lg,
         (disabled || loading) && styles.disabled,
         !disabled && !loading && state.pressed && styles.pressed,
-        !disabled && !loading && 'hovered' in state && state.hovered && styles.hovered,
-        'focused' in state && state.focused && styles.focused,
+        !disabled && !loading && state.hovered && styles.hovered,
+        state.focused && styles.focused,
         style,
       ]}
       disabled={disabled || loading}

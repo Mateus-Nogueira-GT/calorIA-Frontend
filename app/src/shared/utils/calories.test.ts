@@ -6,7 +6,7 @@ import type { Meal } from '@shared/services/food-log.service';
 const plan = (totalCalories: number): DietPlan => ({
   id: 'p', date: '2026-06-25', meals: [], totalCalories, totalProtein: 0, totalCarbs: 0, totalFat: 0, generatedAt: '2026-06-25T00:00:00Z',
 });
-const meal = (calories: number): Meal => ({ id: 'm', name: 'x', calories, protein: 0, carbs: 0, fat: 0, loggedAt: '2026-06-25T08:00:00Z' });
+const meal = (calories: number): Meal => ({ id: 'm', name: 'x', calories, protein: 0, carbs: 0, fat: 0, loggedAt: '2026-06-25T08:00:00Z', mealType: 'other' as const });
 
 describe('getDailyCalorieGoal', () => {
   it('usa o total do plano quando > 0', () => {
