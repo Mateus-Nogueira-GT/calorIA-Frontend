@@ -70,7 +70,7 @@ describe('computeTargets (Mifflin-St Jeor)', () => {
     expect(computeTargets({ ...base, goal: 'maintain' }).protein).toBe(144)
   })
 
-  it('nunca retorna alvo abaixo de 1000 kcal', () => {
+  it('piso de 1200 kcal para mulheres (mínimo sem supervisão)', () => {
     const t = computeTargets({
       ...base,
       weight_kg: 35,
@@ -80,7 +80,20 @@ describe('computeTargets (Mifflin-St Jeor)', () => {
       activity_level: 'sedentary',
       goal: 'lose_weight',
     })
-    expect(t.targetCalories).toBeGreaterThanOrEqual(1000)
+    expect(t.targetCalories).toBe(1200)
+  })
+
+  it('piso de 1500 kcal para homens e "outro"', () => {
+    const magro = {
+      ...base,
+      weight_kg: 40,
+      height_cm: 150,
+      age: 90,
+      activity_level: 'sedentary' as const,
+      goal: 'lose_weight' as const,
+    }
+    expect(computeTargets({ ...magro, gender: 'male' }).targetCalories).toBe(1500)
+    expect(computeTargets({ ...magro, gender: 'other' }).targetCalories).toBe(1500)
   })
 
   it('macros fecham com as calorias (4/4/9)', () => {

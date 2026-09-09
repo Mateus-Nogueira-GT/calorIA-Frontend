@@ -16,6 +16,11 @@ import { createSystemPost } from '../feed/feed.service.js'
 const TOTAL_DAYS = 7
 const DAYS_PT = ['', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo']
 
+// S5: piso mínimo sem supervisão profissional. 1000 (antes) fica abaixo do
+// que qualquer diretriz recomenda; abaixo do piso o plano vira risco.
+export const MIN_CALORIES_FEMALE = 1200
+export const MIN_CALORIES_OTHER = 1500
+
 export interface JobStatus {
   jobId: string
   status: 'pending' | 'running' | 'completed' | 'failed'
@@ -43,7 +48,8 @@ export function computeTargets(u: CollectedUserData): DietTargets {
   ]
   const tdee = bmr * factor
   const adjust = { lose_weight: -500, maintain: 0, gain_muscle: 300, gain_weight: 500 }[u.goal] ?? 0
-  const targetCalories = Math.max(1000, Math.round(tdee + adjust))
+  const floor = u.gender === 'female' ? MIN_CALORIES_FEMALE : MIN_CALORIES_OTHER
+  const targetCalories = Math.max(floor, Math.round(tdee + adjust))
   const protein = Math.round((u.goal === 'gain_muscle' ? 2.0 : 1.8) * u.weight_kg)
   const fat = Math.round((targetCalories * 0.25) / 9)
   const carbs = Math.max(0, Math.round((targetCalories - protein * 4 - fat * 9) / 4))
