@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { screenShellStyle } from '@shared/components';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, typography, spacing, radius } from '@theme';
 import { Button } from '@shared/components/Button';
@@ -94,7 +95,7 @@ export function CreatePostScreen({ navigation }: Props): React.JSX.Element {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.brandBackground },
-  content: { padding: spacing.xl, gap: spacing.lg },
+  content: { ...screenShellStyle, padding: spacing.xl, gap: spacing.lg },
   input: {
     minHeight: 120,
     backgroundColor: colors.white,

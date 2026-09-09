@@ -1,7 +1,7 @@
 import React from 'react';
 import { ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { useAuthStore, type CoachPersonalityPreference } from '@features/auth/store';
-import { Text } from '@shared/components';
+import { Text, screenShellStyle } from '@shared/components';
 import { colors, radius, spacing, typography } from '@theme';
 import type { RootStackScreenProps } from '@navigation/types';
 
@@ -82,6 +82,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.brandBackground,
   },
   content: {
+    ...screenShellStyle,
     padding: spacing.xl,
     paddingTop: 28,
   },

@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, ScrollView, StyleSheet, Alert, Linking } from 'react-native';
+import { screenShellStyle } from '@shared/components';
 import { colors, radius, spacing } from '@theme';
 import type { TabScreenProps } from '@navigation/types';
 import { useProfile } from '../hooks/useProfile';
@@ -135,7 +136,7 @@ export function ProfileScreen({ navigation }: TabScreenProps<'Profile'>): React.
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background, paddingTop: 56 },
-  content: { padding: spacing.lg },
+  content: { ...screenShellStyle, padding: spacing.lg },
   section: { marginTop: spacing.xl, marginBottom: spacing.sm },
   menuCard: { marginTop: spacing.lg, backgroundColor: colors.white, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, overflow: 'hidden' },
 });

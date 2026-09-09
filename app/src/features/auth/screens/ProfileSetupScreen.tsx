@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { authService, ProfileSetupPayload } from '@shared/services/auth.service';
 import { useAuthStore } from '@features/auth/store';
-import { Text } from '@shared/components';
+import { Text, screenShellStyle } from '@shared/components';
 import { OnboardingChatBubble } from '../components/OnboardingChatBubble';
 import { OnboardingOptionCard } from '../components/OnboardingOptionCard';
 import { OnboardingProgressBar } from '../components/OnboardingProgressBar';
@@ -334,7 +334,7 @@ export function ProfileSetupScreen({ navigation }: AuthStackScreenProps<'Profile
 
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: colors.background },
-  chatContent: { padding: spacing.lg },
+  chatContent: { ...screenShellStyle, padding: spacing.lg },
   options: { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
   inputRow: {
     flexDirection: 'row',

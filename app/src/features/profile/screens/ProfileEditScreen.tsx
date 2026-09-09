@@ -11,7 +11,7 @@ import {
   View,
 } from 'react-native';
 import { colors, typography } from '@theme';
-import { Button } from '@shared/components';
+import { Button, screenShellStyle } from '@shared/components';
 import type { RootStackScreenProps } from '@navigation/types';
 import { useAuthStore } from '@features/auth/store';
 import { profileService } from '@shared/services/profile.service';
@@ -204,7 +204,7 @@ const AVATAR = 96;
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.brandBackground },
-  content: { padding: 20, gap: 16 },
+  content: { ...screenShellStyle, padding: 20, gap: 16 },
   avatarBlock: { alignItems: 'center', gap: 12 },
   avatarImage: { width: AVATAR, height: AVATAR, borderRadius: AVATAR / 2, backgroundColor: colors.brandMutedSurface },
   avatarEmojiWrap: {

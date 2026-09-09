@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { authService } from '@shared/services/auth.service';
-import { Button, Input, Text } from '@shared/components';
+import { Button, Input, Text, screenShellStyle } from '@shared/components';
 import { colors, spacing } from '@theme';
 import type { AuthStackScreenProps } from '@navigation/types';
 
@@ -105,6 +105,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { padding: spacing.xl, paddingTop: spacing.xxl },
   centered: {
+    ...screenShellStyle,
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',

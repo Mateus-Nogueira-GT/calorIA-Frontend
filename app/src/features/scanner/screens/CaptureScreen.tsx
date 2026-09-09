@@ -10,6 +10,11 @@ import { showAlert } from '@shared/utils/show-alert';
 
 type Props = ScannerStackScreenProps<'Capture'>;
 
+/**
+ * R7 — SEM limite de largura, por design.
+ * A câmera ocupa a tela inteira de propósito: limitar a largura deixaria
+ * tarjas nas laterais no tablet. Exceção registrada em ScreenShell.test.tsx.
+ */
 export function CaptureScreen({ navigation }: Props): React.JSX.Element {
   const go = (image: string) => navigation.navigate('Analyzing', { image });
 

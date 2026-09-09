@@ -9,6 +9,11 @@ import type { ScannerStackScreenProps } from '@navigation/types';
 
 type Props = ScannerStackScreenProps<'Analyzing'>;
 
+/**
+ * R7 — SEM limite de largura, por design.
+ * Full-bleed junto com a CaptureScreen — é a continuação visual dela.
+ * Exceção registrada em ScreenShell.test.tsx.
+ */
 export function AnalyzingScreen({ navigation, route }: Props): React.JSX.Element {
   const analyze = useScannerStore((s) => s.analyze);
   const isAnalyzing = useScannerStore((s) => s.isAnalyzing);

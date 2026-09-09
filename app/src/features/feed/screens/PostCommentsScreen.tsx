@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing, radius, typography } from '@theme';
-import { ErrorState } from '@shared/components';
+import { ErrorState, screenShellStyle } from '@shared/components';
 import { useFeedStore } from '../store';
 import { CommentRow } from '../components/CommentRow';
 import type { CommunityStackScreenProps } from '@navigation/types';
@@ -92,7 +92,7 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.brandBackground },
   flex: { flex: 1 },
   loader: { marginTop: spacing.xxxl },
-  list: { padding: spacing.lg, flexGrow: 1 },
+  list: { ...screenShellStyle, padding: spacing.lg, flexGrow: 1 },
   empty: { textAlign: 'center', color: colors.brandTextMuted, marginTop: spacing.xxxl, fontSize: typography.fontSize.base },
   composer: {
     flexDirection: 'row',

@@ -8,6 +8,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import { screenShellStyle } from '@shared/components';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, typography, spacing } from '@theme';
 import { useFeed } from '../hooks/useFeed';
@@ -139,7 +140,7 @@ const styles = StyleSheet.create({
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   headerAction: { padding: spacing.xs },
   headerActionIcon: { fontSize: 22 },
-  listContent: { paddingHorizontal: spacing.lg, paddingBottom: 96, flexGrow: 1 },
+  listContent: { ...screenShellStyle, paddingHorizontal: spacing.lg, paddingBottom: 96, flexGrow: 1 },
   footer: { paddingVertical: spacing.lg },
   fab: {
     position: 'absolute',

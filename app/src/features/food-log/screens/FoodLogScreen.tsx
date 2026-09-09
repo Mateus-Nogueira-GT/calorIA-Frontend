@@ -1,6 +1,6 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { RefreshControl, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
-import { Text, ErrorState } from '@shared/components';
+import { ErrorState, Text, screenShellStyle } from '@shared/components';
 import { colors, typography, spacing, radius } from '@theme';
 import { useFoodLog } from '../hooks/useFoodLog';
 import { DateChip } from '../components/DateChip';
@@ -142,7 +142,7 @@ export function FoodLogScreen(): React.JSX.Element {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.brandBackground, paddingTop: 56 },
-  shell: { flex: 1, width: '100%', maxWidth: 760, alignSelf: 'center' },
+  shell: { ...screenShellStyle, flex: 1 },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',

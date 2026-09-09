@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { screenShellStyle } from '@shared/components';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, typography, spacing } from '@theme';
 import { useNotificationsStore } from '../store';
@@ -70,6 +71,7 @@ export function NotificationsScreen({ navigation }: Props): React.JSX.Element {
           renderItem={({ item }) => (
             <NotificationRow notification={item} onPress={() => onPressItem(item)} />
           )}
+          contentContainerStyle={styles.listContent}
           ItemSeparatorComponent={() => <View style={styles.separator} />}
           ListEmptyComponent={<Text style={styles.empty}>Nenhuma notificação por aqui.</Text>}
         />
@@ -79,6 +81,7 @@ export function NotificationsScreen({ navigation }: Props): React.JSX.Element {
 }
 
 const styles = StyleSheet.create({
+  listContent: screenShellStyle,
   safe: { flex: 1, backgroundColor: colors.brandBackground },
   header: {
     flexDirection: 'row',

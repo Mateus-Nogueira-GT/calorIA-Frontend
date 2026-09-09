@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
-import { ErrorState, Text } from '@shared/components';
+import { ErrorState, Text, screenShellStyle } from '@shared/components';
 import { colors, typography, spacing, radius } from '@theme';
 import { useAuthStore } from '@features/auth/store';
 import { useFoodLogStore } from '@features/food-log/store';
@@ -220,7 +220,7 @@ export function DashboardScreen(): React.JSX.Element {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.brandBackground, paddingTop: 56 },
   content: { paddingHorizontal: spacing.lg, paddingBottom: 110 },
-  shell: { width: '100%', maxWidth: 760, alignSelf: 'center' },
+  shell: screenShellStyle,
   headerRow: { marginBottom: spacing.xxl },
   greeting: {
     fontSize: typography.fontSize.xxl,
