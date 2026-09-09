@@ -27,6 +27,26 @@ describe('buildSystemPrompt (personality)', () => {
   })
 })
 
+describe('CHAT_SYSTEM_PROMPT — segurança e escopo (S6)', () => {
+  const prompt = buildSystemPrompt('direct')
+
+  it('pergunta sobre gestação/condições de saúde antes da tool', () => {
+    expect(prompt).toMatch(/gestante|gestação/i)
+    expect(prompt).toContain('health_conditions')
+  })
+
+  it('não ensina mais a fórmula de cálculo (o servidor calcula)', () => {
+    expect(prompt).not.toContain('Mifflin')
+    expect(prompt).not.toContain('TDEE − 500')
+    expect(prompt).toMatch(/não calcule nem prometa/i)
+  })
+
+  it('tem regra de escopo e de não insistir após recusa', () => {
+    expect(prompt).toMatch(/fora de nutrição/i)
+    expect(prompt).toMatch(/recusa por segurança/i)
+  })
+})
+
 describe('mapOpenAIError', () => {
   it('timeout -> 504 AI_TIMEOUT', () => {
     expect(mapOpenAIError({ name: 'APIConnectionTimeoutError' }).statusCode).toBe(504)
