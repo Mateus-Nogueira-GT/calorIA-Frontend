@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, fireEvent } from '@testing-library/react-native';
+import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import { ProfileScreen } from './ProfileScreen';
 import { useAuthStore } from '@features/auth/store';
 import { Alert, Linking } from 'react-native';
@@ -102,5 +102,40 @@ describe('ProfileScreen', () => {
 
     expect(spy).toHaveBeenCalledWith(expect.stringContaining('politica-de-privacidade'));
     spy.mockRestore();
+  });
+  /**
+   * AP1: a conta demo entregue à App Review é protegida no servidor. Sem esta
+   * mensagem o revisor veria "tente novamente em instantes" e insistiria.
+   */
+  it('conta de demonstração mostra a mensagem certa, não o erro genérico', async () => {
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    (profileService.deleteAccount as jest.Mock).mockRejectedValueOnce({
+      response: {
+        status: 403,
+        data: {
+          error: 'DEMO_ACCOUNT_PROTECTED',
+          message: 'Esta é uma conta de demonstração e não pode ser excluída.',
+        },
+      },
+    });
+
+    const { findByTestId } = render(
+      <ProfileScreen navigation={{ navigate: jest.fn() } as never} route={{} as never} />,
+    );
+    fireEvent.press(await findByTestId('delete-account-btn'));
+
+    // A exclusão exige DOIS diálogos (ver o teste acima).
+    const primeiro = alertSpy.mock.calls.at(-1)![2] as AlertButton[];
+    primeiro.find((b) => b.text === 'Continuar')?.onPress?.();
+    const segundo = alertSpy.mock.calls.at(-1)![2] as AlertButton[];
+    segundo.find((b) => b.text === 'Excluir conta')?.onPress?.();
+
+    await waitFor(() =>
+      expect(alertSpy).toHaveBeenCalledWith(
+        'Conta de demonstração',
+        expect.stringContaining('não pode ser excluída'),
+      ),
+    );
+    alertSpy.mockRestore();
   });
 });

@@ -1,7 +1,7 @@
 import React from 'react';
 import { readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
-import { StyleSheet, Text as RNText } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { render } from '@testing-library/react-native';
 import { ScreenShell, MAX_CONTENT_WIDTH } from './ScreenShell';
 
@@ -21,7 +21,7 @@ describe('ScreenShell', () => {
   it('limita a largura do conteúdo e centraliza', () => {
     const { getByTestId } = render(
       <ScreenShell testID="shell">
-        <RNText>oi</RNText>
+        <View testID="filho" />
       </ScreenShell>,
     );
     const style = StyleSheet.flatten(getByTestId('shell').props.style);
@@ -32,7 +32,7 @@ describe('ScreenShell', () => {
   it('fill acrescenta flex: 1 sem perder a limitação', () => {
     const { getByTestId } = render(
       <ScreenShell fill testID="shell">
-        <RNText>oi</RNText>
+        <View testID="filho" />
       </ScreenShell>,
     );
     const style = StyleSheet.flatten(getByTestId('shell').props.style);

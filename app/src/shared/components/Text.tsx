@@ -18,6 +18,9 @@ export function Text({ variant = 'body', color, style, ...rest }: Props): React.
   );
 }
 
+// O acesso é dinâmico (`styles[variant]`), coisa que a regra no-unused-styles
+// não consegue enxergar: ela acusa TODAS as variantes como não usadas.
+// eslint-disable-next-line react-native/no-unused-styles
 const styles = StyleSheet.create({
   heading1: {
     fontFamily: typography.fontFamily.bold,

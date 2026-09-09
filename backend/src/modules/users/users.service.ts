@@ -150,7 +150,30 @@ export async function uploadUserAvatar(
  * DELETEs manuais além disso só criaria uma segunda lista para manter em dia a
  * cada tabela nova.
  */
+/**
+ * AP1: a conta demo entregue à App Review não pode ser destruída pelo próprio
+ * revisor. A guideline 5.1.1(v) obriga o app a oferecer exclusão de conta, e o
+ * revisor testa esse fluxo — sem esta trava, a credencial que está no App Store
+ * Connect morre e a submissão seguinte volta com "demo account does not work".
+ *
+ * Vale para QUALQUER conta marcada is_demo, não só a da Apple.
+ */
+export function assertNotDemoAccount(profile: { is_demo?: boolean } | undefined): void {
+  if (profile?.is_demo) {
+    throw new AppError(
+      403,
+      'DEMO_ACCOUNT_PROTECTED',
+      'Esta é uma conta de demonstração e não pode ser excluída.',
+    )
+  }
+}
+
 export async function deleteUserAccount(fastify: FastifyInstance, userId: string): Promise<void> {
+  const [profile] = await fastify.db<{ is_demo: boolean }[]>`
+    SELECT is_demo FROM profiles WHERE id = ${userId}
+  `
+  assertNotDemoAccount(profile)
+
   // Best-effort: uma falha aqui não pode impedir o usuário de excluir a conta —
   // o direito à exclusão vale mais do que alguns arquivos órfãos no bucket.
   try {

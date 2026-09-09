@@ -1,7 +1,7 @@
 {
   "name": "caloria-api",
   "version": "1.0.0",
-  "description": "CalorIA Backend API — Dietas com IA",
+  "description": "CalorIA Backend API \u2014 Dietas com IA",
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
@@ -10,8 +10,9 @@
     "start": "node dist/index.js",
     "lint": "biome check src",
     "format": "biome format --write src",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.scripts.json",
+    "test": "vitest run",
+    "seed:demo": "tsx scripts/seed-demo-account.ts"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.2",

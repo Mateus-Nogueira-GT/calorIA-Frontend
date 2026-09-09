@@ -1,0 +1,11 @@
+{
+  // O tsconfig de build tem rootDir=src (o dist/ depende disso), então scripts/
+  // ficava FORA de qualquer checagem de tipo — erro ali passaria batido pelo CI.
+  // Este config só checa, não emite.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "noEmit": true
+  },
+  "include": ["scripts/**/*", "src/**/*"]
+}

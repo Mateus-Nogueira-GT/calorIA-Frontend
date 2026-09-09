@@ -44,7 +44,19 @@ export function ProfileScreen({ navigation }: TabScreenProps<'Profile'>): React.
   async function deleteAccount() {
     try {
       await handleDeleteAccount();
-    } catch {
+    } catch (error) {
+      // AP1: a conta de demonstração da App Review é protegida no servidor
+      // (403 DEMO_ACCOUNT_PROTECTED). Sem tratar aqui, o revisor veria
+      // "tente novamente em instantes" e tentaria de novo, para sempre.
+      const e = error as { response?: { status?: number; data?: { error?: string; message?: string } } };
+      if (e?.response?.status === 403 && e.response.data?.error === 'DEMO_ACCOUNT_PROTECTED') {
+        Alert.alert(
+          'Conta de demonstração',
+          e.response.data.message ??
+            'Esta é uma conta de demonstração e não pode ser excluída.',
+        );
+        return;
+      }
       Alert.alert(
         'Não foi possível excluir',
         'Sua conta continua ativa. Tente novamente em instantes.',
