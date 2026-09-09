@@ -43,6 +43,7 @@ const base: CollectedUserData = {
   allergies: [],
   food_preferences: null,
   message_to_user: 'ok',
+  health_conditions: [],
 }
 
 describe('computeTargets (Mifflin-St Jeor)', () => {

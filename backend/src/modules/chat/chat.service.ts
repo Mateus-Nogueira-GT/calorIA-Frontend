@@ -137,7 +137,7 @@ const COLLECT_DIET_DATA_TOOL: OpenAI.Chat.ChatCompletionTool = {
   function: {
     name: 'collect_diet_data',
     description:
-      'Chame esta função APENAS quando tiver coletado TODOS os dados obrigatórios do usuário (peso, altura, idade, sexo, objetivo, nível de atividade e número de refeições por dia). Não chame antes de ter todas essas informações.',
+      'Chame esta função APENAS quando tiver coletado TODOS os dados obrigatórios do usuário (peso, altura, idade, sexo, objetivo, nível de atividade e número de refeições por dia). Não chame antes de ter todas essas informações. Pergunte antes sobre gestação e condições de saúde e preencha health_conditions.',
     parameters: {
       type: 'object',
       required: [
@@ -152,11 +152,17 @@ const COLLECT_DIET_DATA_TOOL: OpenAI.Chat.ChatCompletionTool = {
         'dietary_restrictions',
         'allergies',
         'food_preferences',
+        'health_conditions',
       ],
       properties: {
-        weight_kg: { type: 'number', description: 'Peso em kg' },
-        height_cm: { type: 'number', description: 'Altura em cm' },
-        age: { type: 'integer', description: 'Idade em anos' },
+        weight_kg: { type: 'number', minimum: 30, maximum: 300, description: 'Peso em kg' },
+        height_cm: {
+          type: 'number',
+          minimum: 120,
+          maximum: 250,
+          description: 'Altura em centímetros (175, nunca 1.75)',
+        },
+        age: { type: 'integer', minimum: 10, maximum: 100, description: 'Idade em anos' },
         gender: { type: 'string', enum: ['male', 'female', 'other'] },
         goal: { type: 'string', enum: ['lose_weight', 'maintain', 'gain_muscle', 'gain_weight'] },
         activity_level: {
@@ -164,10 +170,23 @@ const COLLECT_DIET_DATA_TOOL: OpenAI.Chat.ChatCompletionTool = {
           enum: ['sedentary', 'light', 'moderate', 'active', 'very_active'],
         },
         meals_per_day: { type: 'integer', minimum: 3, maximum: 6 },
-        dietary_restrictions: { type: 'array', items: { type: 'string' } },
-        allergies: { type: 'array', items: { type: 'string' } },
+        dietary_restrictions: {
+          type: 'array',
+          maxItems: 10,
+          items: { type: 'string', maxLength: 40 },
+        },
+        allergies: { type: 'array', maxItems: 10, items: { type: 'string', maxLength: 40 } },
+        health_conditions: {
+          type: 'array',
+          maxItems: 10,
+          items: { type: 'string', maxLength: 40 },
+          description:
+            'Gestação/amamentação, doenças diagnosticadas (diabetes, renal, cardíaca…), ' +
+            'transtorno alimentar, medicação contínua. Vazio se o usuário disse não ter nenhuma.',
+        },
         food_preferences: {
           type: ['string', 'null'],
+          maxLength: 300,
           description: 'Preferências e aversões alimentares',
         },
         message_to_user: {
