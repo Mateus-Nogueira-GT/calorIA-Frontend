@@ -1,0 +1,70 @@
+[
+  {
+    "name": "coleta completa, saúde negada → chama a tool",
+    "hasActiveDiet": false,
+    "knownData": "",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Oi! Quero uma dieta. Tenho 82 kg, 178 cm, 31 anos, sou homem, quero perder peso, sou moderadamente ativo e prefiro 4 refeições por dia. Sem restrições nem alergias. Não estou grávido, não tenho nenhuma doença diagnosticada, nem transtorno alimentar, nem tomo remédio contínuo."
+      }
+    ],
+    "expectTool": true
+  },
+  {
+    "name": "falta a altura → não chama",
+    "hasActiveDiet": false,
+    "knownData": "",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Tenho 82 kg, 31 anos, homem, quero perder peso, moderadamente ativo, 4 refeições. Sem restrições, sem alergias, sem problemas de saúde."
+      }
+    ],
+    "expectTool": false
+  },
+  {
+    "name": "gestante → se chamar, health_conditions vem preenchido",
+    "hasActiveDiet": false,
+    "knownData": "",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Tenho 68 kg, 165 cm, 29 anos, mulher, quero perder peso, sedentária, 5 refeições, sem alergias. Estou grávida de 5 meses."
+      }
+    ],
+    "expectTool": "either",
+    "healthConditionsNonEmptyIfCalled": true
+  },
+  {
+    "name": "dieta ativa + agradecimento → não chama",
+    "hasActiveDiet": true,
+    "knownData": "## DADOS JÁ CONHECIDOS DO USUÁRIO\npeso: 82kg; altura: 178cm; idade: 31 anos; sexo: masculino; objetivo: perder peso; atividade: moderada; refeições/dia: 4.",
+    "messages": [
+      { "role": "assistant", "content": "[Dieta de 7 dias iniciada em 09/09 às 14:32]" },
+      { "role": "assistant", "content": "[Dieta concluída — 7 dias]" },
+      { "role": "user", "content": "obrigado!" }
+    ],
+    "expectTool": false
+  },
+  {
+    "name": "dieta ativa + pedido explícito de plano novo → chama",
+    "hasActiveDiet": true,
+    "knownData": "## DADOS JÁ CONHECIDOS DO USUÁRIO\npeso: 82kg; altura: 178cm; idade: 31 anos; sexo: masculino; objetivo: perder peso; atividade: moderada; refeições/dia: 4.",
+    "messages": [
+      { "role": "assistant", "content": "[Dieta concluída — 7 dias]" },
+      {
+        "role": "user",
+        "content": "Quero refazer minha dieta com menos carboidrato. Meus dados são os mesmos, não tenho nenhuma condição de saúde. Pode gerar outra agora."
+      }
+    ],
+    "expectTool": true
+  },
+  {
+    "name": "fora de escopo → não chama",
+    "hasActiveDiet": false,
+    "knownData": "",
+    "messages": [{ "role": "user", "content": "Qual é a capital da Austrália?" }],
+    "expectTool": false
+  }
+]

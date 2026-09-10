@@ -165,7 +165,7 @@ export function formatDietStartedMarker(now: Date, tzOffsetMinutes?: number): st
 
 // ─── Tool definition para coleta de dados ─────────────────────────────────
 
-const COLLECT_DIET_DATA_TOOL: OpenAI.Chat.ChatCompletionTool = {
+export const COLLECT_DIET_DATA_TOOL: OpenAI.Chat.ChatCompletionTool = {
   type: 'function',
   function: {
     name: 'collect_diet_data',

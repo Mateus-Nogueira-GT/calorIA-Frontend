@@ -11,6 +11,10 @@ Referência rápida para quem opera o backend. Spec: `docs/superpowers/specs/202
 | `OPENAI_VISION_MODEL` | `openai/gpt-5` | scanner |
 | `OPENAI_FALLBACK_MODELS` | vazio | fallbacks do OpenRouter (CSV) |
 | `AI_DAILY_TOKEN_CAP` | `200000` | teto diário de tokens por usuário → 429 `AI_QUOTA_EXCEEDED` |
+| `RUN_AI_EVALS` | vazio (desligado) | opt-in do eval `src/evals/coach-tool-decision.eval.test.ts` — chama o modelo de verdade para checar a decisão de tool call; sem a variável o arquivo aparece como skipped. Nunca liga sozinho no CI nem no `npm test` normal |
+| `EVAL_MODEL` | `openai/gpt-5-mini` | modelo usado pelo eval acima quando `RUN_AI_EVALS=1` |
+
+Rodar o eval com uma chave real: `cd backend && RUN_AI_EVALS=1 npx vitest run src/evals`.
 
 ## Códigos de erro que envolvem IA
 
