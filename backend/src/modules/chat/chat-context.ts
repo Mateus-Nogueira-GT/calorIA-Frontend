@@ -185,32 +185,15 @@ function consumedToday(data: UserContextData): {
   return { calories: Math.round(calories), protein: Math.round(protein), planCompleted, planTotal }
 }
 
-/** Bloco de contexto (pura). String vazia se não houver nada útil. */
+/**
+ * Bloco de contexto (pura). String vazia se não houver nada útil.
+ * C4: linhas numéricas primeiro (meta, consumido, faltam, próxima) e corte POR
+ * LINHA — o corte por caractere podia virar "Faltam: 12" logo abaixo de "nunca
+ * invente valores".
+ */
 export function formatUserContext(data: UserContextData): string {
   const lines: string[] = []
   const p = data.profile
-
-  if (p && (p.weight_kg || p.height_cm || p.goal)) {
-    const bits: string[] = []
-    if (p.weight_kg) bits.push(`${p.weight_kg}kg`)
-    if (p.height_cm) bits.push(`${p.height_cm}cm`)
-    const age = ageFromBirthDate(p.birth_date)
-    if (age != null) bits.push(`${age} anos`)
-    if (p.gender) bits.push(GENDER_LABELS[p.gender] ?? p.gender)
-    if (p.goal) bits.push(`objetivo: ${GOAL_LABELS[p.goal] ?? p.goal}`)
-    if (p.activity_level)
-      bits.push(`atividade: ${ACTIVITY_LABELS[p.activity_level] ?? p.activity_level}`)
-    lines.push(`Perfil: ${bits.join(', ')}.`)
-  }
-
-  if (p?.dietary_restrictions?.length || p?.allergies?.length) {
-    const parts: string[] = []
-    if (p.dietary_restrictions?.length)
-      parts.push(`Restrições: ${p.dietary_restrictions.slice(0, LIST_MAX_ITEMS).join(', ')}`)
-    if (p.allergies?.length)
-      parts.push(`Alergias: ${p.allergies.slice(0, LIST_MAX_ITEMS).join(', ')}`)
-    lines.push(`${parts.join('. ')}.`)
-  }
 
   if (data.diet) {
     lines.push(
@@ -241,13 +224,44 @@ export function formatUserContext(data: UserContextData): string {
     }
   }
 
+  if (p && (p.weight_kg || p.height_cm || p.goal)) {
+    const bits: string[] = []
+    if (p.weight_kg) bits.push(`${p.weight_kg}kg`)
+    if (p.height_cm) bits.push(`${p.height_cm}cm`)
+    const age = ageFromBirthDate(p.birth_date)
+    if (age != null) bits.push(`${age} anos`)
+    if (p.gender) bits.push(GENDER_LABELS[p.gender] ?? p.gender)
+    if (p.goal) bits.push(`objetivo: ${GOAL_LABELS[p.goal] ?? p.goal}`)
+    if (p.activity_level)
+      bits.push(`atividade: ${ACTIVITY_LABELS[p.activity_level] ?? p.activity_level}`)
+    lines.push(`Perfil: ${bits.join(', ')}.`)
+  }
+
+  if (p?.dietary_restrictions?.length || p?.allergies?.length) {
+    const parts: string[] = []
+    if (p.dietary_restrictions?.length)
+      parts.push(`Restrições: ${p.dietary_restrictions.slice(0, LIST_MAX_ITEMS).join(', ')}`)
+    if (p.allergies?.length)
+      parts.push(`Alergias: ${p.allergies.slice(0, LIST_MAX_ITEMS).join(', ')}`)
+    lines.push(`${parts.join('. ')}.`)
+  }
+
   if (data.streak != null && data.streak > 0) lines.push(`Streak atual: ${data.streak} dias.`)
 
   if (lines.length === 0) return ''
 
   const header = '## CONTEXTO DO USUÁRIO (dados reais — use-os; não invente valores)'
-  const block = `${header}\n${lines.join('\n')}`
-  return block.length > CONTEXT_MAX_CHARS ? block.slice(0, CONTEXT_MAX_CHARS) : block
+  return truncateByLines(header, lines, CONTEXT_MAX_CHARS)
+}
+
+/** Acrescenta linhas inteiras até o teto; a primeira que não couber encerra. */
+export function truncateByLines(header: string, lines: string[], max: number): string {
+  let out = header
+  for (const line of lines) {
+    if (out.length + 1 + line.length > max) break
+    out += `\n${line}`
+  }
+  return out
 }
 
 // ─── I2: bloco de DADOS JÁ CONHECIDOS (pré-preenche a coleta) ─────────────────
