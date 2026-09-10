@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { FastifyInstance } from 'fastify'
 import type OpenAI from 'openai'
-import { buildModelsField, logAiUsage } from '../../shared/ai-usage.js'
+import { buildModelsField, checkDailyQuota, logAiUsage } from '../../shared/ai-usage.js'
 import { type CollectedUserData, collectedUserDataSchema } from '../../shared/diet-ai-schema.js'
 import { env } from '../../shared/env.js'
 import { AppError } from '../../shared/errors.js'
@@ -250,6 +250,10 @@ export async function sendChatMessage(
   userId: string,
   data: ChatMessageBody,
 ): Promise<ChatResponse> {
+  // OP2: teto diário de tokens antes de qualquer chamada de IA — usuário acima
+  // da cota não paga nem a primeira chamada do turno.
+  await checkDailyQuota(fastify, userId)
+
   const conversationId = data.conversation_id ?? randomUUID()
   const history = await loadHistory(fastify, userId, conversationId)
 

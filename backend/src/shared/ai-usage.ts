@@ -1,4 +1,6 @@
 import type { FastifyInstance } from 'fastify'
+import { env } from './env.js'
+import { AppError } from './errors.js'
 
 /**
  * Telemetria e resiliência das chamadas de IA (Workstream I5).
@@ -66,6 +68,34 @@ export function logAiUsage(fastify: FastifyInstance, params: AiUsageParams): voi
     })
   } catch {
     // Telemetria nunca deve derrubar a request.
+  }
+}
+
+/**
+ * OP2: teto diário por usuário. Rate limits por minuto existiam; por dia, não —
+ * e ai_usage era gravada e nunca lida. Fail-open: se a tabela estiver fora,
+ * libera com warn; telemetria não pode bloquear o produto.
+ */
+export async function checkDailyQuota(fastify: FastifyInstance, userId: string): Promise<void> {
+  let used = 0
+  try {
+    const [row] = await fastify.db<{ used: number }[]>`
+      SELECT COALESCE(SUM(total_tokens), 0)::INT AS used
+      FROM ai_usage
+      WHERE user_id = ${userId} AND created_at >= NOW() - interval '24 hours'
+    `
+    used = row?.used ?? 0
+  } catch (err) {
+    fastify.log.warn(err, 'Falha ao consultar quota diária de IA — liberando (fail-open)')
+    return
+  }
+  if (used >= env.AI_DAILY_TOKEN_CAP) {
+    fastify.log.warn({ userId, used, cap: env.AI_DAILY_TOKEN_CAP }, 'Quota diária de IA excedida')
+    throw new AppError(
+      429,
+      'AI_QUOTA_EXCEEDED',
+      'Você atingiu o limite diário de uso da IA. Tente novamente amanhã.',
+    )
   }
 }
 

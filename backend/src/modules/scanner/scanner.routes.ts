@@ -42,6 +42,7 @@ const scannerRoutes: FastifyPluginAsyncZod = async (fastify) => {
           200: scanResponseSchema,
           401: errorSchema,
           422: errorSchema.describe('Imagem não contém comida'),
+          429: errorSchema.describe('TOO_MANY_REQUESTS | AI_QUOTA_EXCEEDED'),
           502: errorSchema.describe('Serviço de IA indisponível'),
         },
       },

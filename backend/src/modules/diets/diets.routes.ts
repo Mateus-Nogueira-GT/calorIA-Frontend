@@ -311,7 +311,7 @@ const dietsRoutes: FastifyPluginAsyncZod = async (fastify) => {
           401: errorSchema,
           404: errorSchema,
           422: errorSchema,
-          429: errorSchema.describe('TOO_MANY_REQUESTS — 30 steps/min'),
+          429: errorSchema.describe('TOO_MANY_REQUESTS (30/min) | AI_QUOTA_EXCEEDED (teto diário)'),
           502: errorSchema.describe(
             'DIET_STEP_FAILED (IA indisponível) | ALLERGEN_IN_OUTPUT | DAY_VALIDATION_FAILED | RECONCILE_FAILED (dia gerado reprovado nos guardrails; o job vai para failed e /retry continua do mesmo dia)',
           ),

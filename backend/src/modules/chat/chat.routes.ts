@@ -60,7 +60,7 @@ Envia uma mensagem para o assistente de dietas com IA.
           200: chatResponseSchema,
           401: errorSchema,
           422: errorSchema.describe('AI_CONTENT_FILTERED — o modelo recusou a mensagem'),
-          429: errorSchema.describe('Limite de mensagens atingido (TOO_MANY_REQUESTS)'),
+          429: errorSchema.describe('TOO_MANY_REQUESTS | AI_QUOTA_EXCEEDED'),
           500: errorSchema.describe('HISTORY_WRITE_FAILED — a conversa não foi salva; reenviar'),
           502: errorSchema.describe(
             'AI_ERROR | AI_UNAVAILABLE | AI_TRUNCATED — nada foi persistido',

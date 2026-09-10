@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { FastifyInstance } from 'fastify'
 import { zodResponseFormat } from 'openai/helpers/zod.js'
-import { buildModelsField, logAiUsage } from '../../shared/ai-usage.js'
+import { buildModelsField, checkDailyQuota, logAiUsage } from '../../shared/ai-usage.js'
 import { env } from '../../shared/env.js'
 import { AppError } from '../../shared/errors.js'
 import { type ScanResponse, visionAnalysisSchema } from './scanner.schemas.js'
@@ -27,6 +27,9 @@ export async function analyzePhoto(
   imageDataUrl: string,
   userId: string,
 ): Promise<ScanResponse> {
+  // OP2: teto diário de tokens antes de qualquer chamada de IA.
+  await checkDailyQuota(fastify, userId)
+
   let analysis: import('./scanner.schemas.js').VisionAnalysis
   try {
     const completion = await fastify.openai.beta.chat.completions.parse({

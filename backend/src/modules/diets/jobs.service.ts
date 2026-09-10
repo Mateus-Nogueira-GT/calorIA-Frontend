@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { FastifyInstance } from 'fastify'
 import { zodResponseFormat } from 'openai/helpers/zod.js'
-import { buildModelsField, logAiUsage } from '../../shared/ai-usage.js'
+import { buildModelsField, checkDailyQuota, logAiUsage } from '../../shared/ai-usage.js'
 import {
   type AiSingleDay,
   type CollectedUserData,
@@ -469,6 +469,11 @@ export async function processJobStep(
     ORDER BY dd.day_number
   `
   const previousDays = summarizePreviousDays(prevRows)
+
+  // OP2: teto diário de tokens ANTES de adquirir o lock (OP1) — quem estourou
+  // a cota não deve travar um lock que não vai poder usar, nem esperar
+  // STEP_LOCK_EXPIRY_SECONDS para ele expirar sozinho.
+  await checkDailyQuota(fastify, userId)
 
   // OP1: lock em voo. Sem ele, dois aparelhos (ou o app reaberto) pagavam duas
   // gerações do mesmo dia — o lock otimista lá embaixo só evitava persistir em
