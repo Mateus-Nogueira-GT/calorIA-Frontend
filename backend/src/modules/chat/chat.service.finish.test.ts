@@ -74,4 +74,17 @@ describe('sendChatMessage — finish_reason (C3)', () => {
     expect(r.message.content).toBe('Olá!')
     expect(calls.some((c) => c.sql.includes('INSERT INTO chat_history'))).toBe(true)
   })
+
+  it('falha ao gravar o histórico → 500 HISTORY_WRITE_FAILED (o app oferece reenviar)', async () => {
+    const { fastify } = fakeFastify([['INSERT INTO chat_history', new Error('db down')]], {
+      chatCreate: async () => textCompletion('Olá!'),
+    })
+
+    await expect(
+      sendChatMessage(fastify, USER, { message: 'oi', conversation_id: CONV }),
+    ).rejects.toMatchObject({
+      statusCode: 500,
+      code: 'HISTORY_WRITE_FAILED',
+    })
+  })
 })

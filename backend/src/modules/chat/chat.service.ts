@@ -560,8 +560,8 @@ async function persistHistory(
   messages: ChatHistoryMessage[],
   status: string,
 ): Promise<void> {
+  const messagesStr = JSON.stringify(messages)
   try {
-    const messagesStr = JSON.stringify(messages)
     await fastify.db`
       INSERT INTO chat_history (id, user_id, messages, status)
       VALUES (${conversationId}, ${userId}, ${messagesStr}::jsonb, ${status})
@@ -571,6 +571,14 @@ async function persistHistory(
             updated_at = NOW()
     `
   } catch (err) {
-    fastify.log.warn({ err }, 'Falha ao persistir histórico de chat')
+    // C5: o histórico é a fonte de verdade da conversa. Engolir a falha
+    // devolvia conversation_id ao app e a próxima mensagem vinha sem o turno
+    // anterior. O app já trata falha de envio com "Tentar novamente".
+    fastify.log.error({ err, conversationId }, 'Falha ao persistir histórico de chat')
+    throw new AppError(
+      500,
+      'HISTORY_WRITE_FAILED',
+      'Não consegui salvar a conversa. Envie a mensagem de novo.',
+    )
   }
 }
