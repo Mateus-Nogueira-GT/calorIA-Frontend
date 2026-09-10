@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import { describe, expect, it, vi } from 'vitest'
-import { buildModelsField, logAiUsage, parseFallbackModels } from './ai-usage.js'
+import { buildModelsField, checkDailyQuota, logAiUsage, parseFallbackModels } from './ai-usage.js'
+import { fakeFastify } from './testing/fake-fastify.js'
 
 describe('parseFallbackModels', () => {
   it('CSV com espaços e vazios vira lista limpa', () => {
@@ -124,5 +125,56 @@ describe('logAiUsage — persistência (M3)', () => {
 
     // O warn foi chamado (mesmo que tenha lançado).
     expect(warn).toHaveBeenCalled()
+  })
+})
+
+describe('logAiUsage — contexto (OP4)', () => {
+  it('grava conversation_id, finish_reason e tool_called quando informados', async () => {
+    const { fastify, calls } = fakeFastify()
+    logAiUsage(fastify, {
+      feature: 'chat',
+      model: 'm',
+      userId: 'u',
+      usage: { total_tokens: 10 },
+      conversationId: 'conv-1',
+      finishReason: 'tool_calls',
+      toolCalled: true,
+    })
+    await new Promise((r) => setTimeout(r, 0))
+    const ins = calls.find((c) => c.sql.includes('INSERT INTO ai_usage'))
+    expect(ins?.sql).toContain('conversation_id')
+    expect(ins?.params).toContain('conv-1')
+    expect(ins?.params).toContain('tool_calls')
+    expect(ins?.params).toContain(true)
+  })
+})
+
+describe('checkDailyQuota (OP2)', () => {
+  const USER = '11111111-1111-1111-1111-111111111111'
+
+  it('abaixo do teto: resolve', async () => {
+    const { fastify } = fakeFastify([['FROM ai_usage', [{ used: 10 }]]])
+    await expect(checkDailyQuota(fastify, USER)).resolves.toBeUndefined()
+  })
+
+  it('no teto ou acima: 429 AI_QUOTA_EXCEEDED', async () => {
+    const { fastify } = fakeFastify([['FROM ai_usage', [{ used: 200_000 }]]])
+    await expect(checkDailyQuota(fastify, USER)).rejects.toMatchObject({
+      statusCode: 429,
+      code: 'AI_QUOTA_EXCEEDED',
+    })
+  })
+
+  it('consulta só as últimas 24h do usuário', async () => {
+    const { fastify, calls } = fakeFastify([['FROM ai_usage', [{ used: 0 }]]])
+    await checkDailyQuota(fastify, USER)
+    expect(calls[0].sql).toContain("interval '24 hours'")
+    expect(calls[0].params).toContain(USER)
+  })
+
+  it('telemetria indisponível: libera com warn (fail-open)', async () => {
+    const { fastify, logs } = fakeFastify([['FROM ai_usage', new Error('tabela sumiu')]])
+    await expect(checkDailyQuota(fastify, USER)).resolves.toBeUndefined()
+    expect(logs.some((l) => l.level === 'warn')).toBe(true)
   })
 })

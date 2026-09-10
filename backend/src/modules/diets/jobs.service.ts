@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { FastifyInstance } from 'fastify'
 import { zodResponseFormat } from 'openai/helpers/zod.js'
-import { buildModelsField, logAiUsage } from '../../shared/ai-usage.js'
+import { buildModelsField, checkDailyQuota, logAiUsage } from '../../shared/ai-usage.js'
 import {
   type AiSingleDay,
   type CollectedUserData,
@@ -10,11 +10,26 @@ import {
 } from '../../shared/diet-ai-schema.js'
 import { env } from '../../shared/env.js'
 import { AppError } from '../../shared/errors.js'
+import { mealTypesFor, reconcileDay } from '../../shared/guardrails/day.js'
+import { type DayGuardrailResult, applyDayGuardrails } from '../../shared/guardrails/index.js'
 import { createSystemPost } from '../feed/feed.service.js'
+
+// Reexport: reconcileDay migrou para shared/guardrails/day.ts (guardrails de
+// saída do dia gerado); mantido aqui para não quebrar quem já importa daqui.
+export { reconcileDay }
 
 // B1 da spec: 7 dias — sábado/domingo ficavam sem plano com 5.
 const TOTAL_DAYS = 7
 const DAYS_PT = ['', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo']
+
+// C2: contraparte do marcador de início (chat.service.ts) — o modelo passa a
+// ver, no próprio histórico, que a geração terminou.
+export const DIET_COMPLETED_MARKER = `[Dieta concluída — ${TOTAL_DAYS} dias]`
+
+// S5: piso mínimo sem supervisão profissional. 1000 (antes) fica abaixo do
+// que qualquer diretriz recomenda; abaixo do piso o plano vira risco.
+export const MIN_CALORIES_FEMALE = 1200
+export const MIN_CALORIES_OTHER = 1500
 
 export interface JobStatus {
   jobId: string
@@ -43,7 +58,8 @@ export function computeTargets(u: CollectedUserData): DietTargets {
   ]
   const tdee = bmr * factor
   const adjust = { lose_weight: -500, maintain: 0, gain_muscle: 300, gain_weight: 500 }[u.goal] ?? 0
-  const targetCalories = Math.max(1000, Math.round(tdee + adjust))
+  const floor = u.gender === 'female' ? MIN_CALORIES_FEMALE : MIN_CALORIES_OTHER
+  const targetCalories = Math.max(floor, Math.round(tdee + adjust))
   const protein = Math.round((u.goal === 'gain_muscle' ? 2.0 : 1.8) * u.weight_kg)
   const fat = Math.round((targetCalories * 0.25) / 9)
   const carbs = Math.max(0, Math.round((targetCalories - protein * 4 - fat * 9) / 4))
@@ -72,6 +88,25 @@ export function parseInput(raw: unknown): CollectedUserData | null {
 // ─── Criação do job ───────────────────────────────────────────────────────────
 
 /**
+ * Job de geração em andamento (pending/running) mais recente do usuário, ou
+ * null. Usado por createDietJob (não abrir duas gerações) e pelo chat (C1:
+ * não oferecer a tool ao modelo enquanto há geração em voo).
+ */
+export async function getPendingJob(
+  fastify: FastifyInstance,
+  userId: string,
+): Promise<{ id: string; diet_id: string } | null> {
+  const [row] = await fastify.db<{ id: string; diet_id: string }[]>`
+    SELECT id, diet_id
+    FROM diet_jobs
+    WHERE user_id = ${userId} AND status IN ('pending', 'running')
+    ORDER BY created_at DESC
+    LIMIT 1
+  `
+  return row ?? null
+}
+
+/**
  * Cria o job de geração e o cabeçalho da dieta (metas determinísticas), sem
  * gerar os dias ainda. A dieta nasce como RASCUNHO (draft) — a ativa anterior
  * só é substituída quando o último dia é gerado (B3 da spec). Se a geração
@@ -94,13 +129,7 @@ export async function createDietJob(
   // Este guard é a rede determinística — mesmo que o prompt falhe, não dá para
   // ter duas gerações concorrentes do mesmo usuário. A instrução de prompt
   // (EXISTING_DIET_INSTRUCTION, no chat.service) evita a tentativa antes daqui.
-  const [emAndamento] = await fastify.db<{ id: string; diet_id: string }[]>`
-    SELECT id, diet_id
-    FROM diet_jobs
-    WHERE user_id = ${userId} AND status IN ('pending', 'running')
-    ORDER BY created_at DESC
-    LIMIT 1
-  `
+  const emAndamento = await getPendingJob(fastify, userId)
   if (emAndamento) {
     fastify.log.info(
       { userId, jobId: emAndamento.id },
@@ -140,10 +169,16 @@ export async function createDietJob(
 
 // ─── Geração de 1 dia (1 chamada GPT-5, cabe no limite serverless) ───────────
 
+// O5: explicita meal_type/ordem e reforça alergia como proibição — o prompt
+// anterior só dizia "restrições informadas", o que deixava a IA livre para
+// escolher quantas/quais refeições gerar e tratar alergia como preferência.
 const DAY_SYSTEM_PROMPT =
   'Você é um nutricionista. Gere UM dia de plano alimentar em JSON, com alimentos ' +
   'brasileiros comuns e acessíveis, respeitando as metas e restrições informadas. ' +
-  'Some as calorias/macros dos itens de forma coerente com a meta diária.'
+  'Some as calorias/macros dos itens de forma coerente com a meta diária (kcal de cada ' +
+  'item = 4×proteína + 4×carboidrato + 9×gordura). Use EXATAMENTE os meal_type pedidos, ' +
+  'na ordem pedida, sem repetir. Alergias são PROIBIÇÕES absolutas, inclusive em ' +
+  'ingredientes e dicas de preparo.'
 
 // ─── Variedade entre dias (I3) ────────────────────────────────────────────────
 
@@ -169,11 +204,14 @@ export function summarizePreviousDays(rows: { day_name: string; foods: string[] 
   return lines.join('\n')
 }
 
-function buildDayPrompt(
+// Exportada: o snapshot do prompt (task 10) e o loop de regeneração com
+// feedback (task 11) precisam chamar isso de fora deste módulo.
+export function buildDayPrompt(
   u: CollectedUserData,
   t: DietTargets,
   dayNumber: number,
   previousDays = '',
+  feedback = '',
 ): string {
   const goalLabels: Record<string, string> = {
     lose_weight: 'perda de peso',
@@ -181,19 +219,27 @@ function buildDayPrompt(
     gain_muscle: 'ganho de massa',
     gain_weight: 'ganho de peso',
   }
+  // Mesma fonte que o validador (validateDay) usa para checar ordem/tipo —
+  // se o prompt derivasse a lista por conta própria, prompt e validador
+  // poderiam divergir sobre o que é "um dia de 4 refeições", e o dia gerado
+  // falharia a validação por um motivo que a IA nunca recebeu.
+  const mealTypes = mealTypesFor(u.meals_per_day)
   const varietySection = previousDays
     ? `\nDIAS JÁ GERADOS — para garantir variedade, evite repetir a mesma proteína principal do almoço/jantar em dias consecutivos e varie os carboidratos:\n${previousDays}\n`
     : ''
+  // Só existe quando uma tentativa anterior foi rejeitada pelos guardrails
+  // (task 11 monta essa string); sem isso a seção não aparece no prompt.
+  const feedbackSection = feedback ? `\n${feedback}\n` : ''
   return `Gere o dia ${dayNumber} de ${TOTAL_DAYS} (${DAYS_PT[dayNumber] ?? `Dia ${dayNumber}`}) de um plano alimentar.
 
 Perfil: ${u.weight_kg}kg, ${u.height_cm}cm, ${u.age} anos, ${u.gender}, objetivo ${goalLabels[u.goal] ?? u.goal}.
 Metas do DIA: ${t.targetCalories} kcal, ${t.protein}g proteína, ${t.carbs}g carboidrato, ${t.fat}g gordura.
-Refeições por dia: ${u.meals_per_day}.
-${u.dietary_restrictions?.length ? `Restrições: ${u.dietary_restrictions.join(', ')}.` : ''}
-${u.allergies?.length ? `Alergias (EVITAR): ${u.allergies.join(', ')}.` : ''}
+Refeições: exatamente ${mealTypes.length} refeições, com estes meal_type nesta ordem: ${mealTypes.join(', ')}.
+${u.dietary_restrictions?.length ? `Restrições alimentares (PROIBIDO qualquer ingrediente incompatível, inclusive em dicas de preparo): ${u.dietary_restrictions.join(', ')}. Ex.: vegetariano = sem carne nem peixe; sem glúten = sem trigo, pão ou massa comum.` : ''}
+${u.allergies?.length ? `Alergias (PROIBIDO, em qualquer ingrediente ou dica): ${u.allergies.join(', ')}.` : ''}
 ${u.food_preferences ? `Preferências: ${u.food_preferences}.` : ''}
-${varietySection}
-Regras: varie os alimentos (evite repetir em relação a um dia típico), especifique quantidade em gramas e calorias/macros por item. Distribua as ${u.meals_per_day} refeições ao longo do dia.`
+${varietySection}${feedbackSection}
+Regras: varie os alimentos (evite repetir em relação a um dia típico), especifique quantidade em gramas e calorias/macros por item. Distribua as ${mealTypes.length} refeições ao longo do dia.`
 }
 
 function dayTotals(day: AiSingleDay) {
@@ -210,64 +256,6 @@ function dayTotals(day: AiSingleDay) {
     }
   }
   return { cal: Math.round(cal), p: Math.round(p), c: Math.round(c), f: Math.round(f) }
-}
-
-// ─── Reconciliação com a meta (I4) ────────────────────────────────────────────
-
-const RECONCILE_TOLERANCE = 0.1 // ±10% da meta é aceitável
-const RECONCILE_MIN_FACTOR = 0.6
-const RECONCILE_MAX_FACTOR = 1.6
-
-/** Arredonda preservando frações pequenas: ≥10 → inteiro; <10 → 1 casa. */
-function roundSmart(n: number): number {
-  if (n >= 10) return Math.round(n)
-  return Math.round(n * 10) / 10
-}
-
-/**
- * Escala determinística do dia para bater a meta de calorias (I4). O modelo às
- * vezes entrega um dia 20-40% fora da meta; em vez de re-chamar a IA (caro/lento
- * e não-determinístico), reescalamos as quantidades proporcionalmente.
- * - Desvio ≤ 10% → intacto.
- * - Fora disso → fator = meta/total, limitado a [0.6, 1.6] (evita distorção
- *   absurda quando a geração vem muito errada).
- */
-export function reconcileDay(
-  day: AiSingleDay,
-  targetCalories: number,
-): { day: AiSingleDay; scaled: boolean; factor: number } {
-  let total = 0
-  for (const meal of day.meals) for (const it of meal.items) total += it.calories
-
-  if (total <= 0 || targetCalories <= 0) return { day, scaled: false, factor: 1 }
-  if (Math.abs(total - targetCalories) / targetCalories <= RECONCILE_TOLERANCE) {
-    return { day, scaled: false, factor: 1 }
-  }
-
-  const factor = Math.min(
-    RECONCILE_MAX_FACTOR,
-    Math.max(RECONCILE_MIN_FACTOR, targetCalories / total),
-  )
-
-  const scaledDay: AiSingleDay = {
-    ...day,
-    meals: day.meals.map((meal) => {
-      const items = meal.items.map((it) => ({
-        ...it,
-        quantity_g: roundSmart(it.quantity_g * factor),
-        calories: roundSmart(it.calories * factor),
-        protein_g: roundSmart(it.protein_g * factor),
-        carbs_g: roundSmart(it.carbs_g * factor),
-        fat_g: roundSmart(it.fat_g * factor),
-      }))
-      return {
-        ...meal,
-        items,
-        total_calories: roundSmart(items.reduce((s, i) => s + i.calories, 0)),
-      }
-    }),
-  }
-  return { day: scaledDay, scaled: true, factor }
 }
 
 interface JobRow {
@@ -353,6 +341,95 @@ export async function getActiveJob(fastify: FastifyInstance, userId: string): Pr
   return toStatus(job)
 }
 
+/** O4: uma regeneração com feedback; na segunda falha o job vai para failed. */
+const MAX_DAY_ATTEMPTS = 2
+
+// OP1: expira quando a function não pode mais existir — mesmo teto do
+// maxDuration (300s) do endpoint. Com MAX_DAY_ATTEMPTS=2 e timeout de 120s por
+// chamada de IA, o guardrail loop pode legitimamente levar ~240s num único
+// processJobStep sem nada de errado (só modelo lento + 1 dia rejeitado). Um
+// valor abaixo do maxDuration expiraria o lock com o step ainda vivo, e um
+// segundo chamador pagaria por uma segunda geração do mesmo dia — o dobro que
+// esta tarefa existe para evitar. Acima do maxDuration, um step morto só é
+// liberado quando é certo que a function não pode mais existir.
+const STEP_LOCK_EXPIRY_SECONDS = 300
+
+async function generateDay(
+  fastify: FastifyInstance,
+  userId: string,
+  jobId: string,
+  dayNumber: number,
+  userData: CollectedUserData,
+  targets: DietTargets,
+  previousDays: string,
+  feedback: string,
+): Promise<AiSingleDay> {
+  const completion = await fastify.openai.beta.chat.completions.parse(
+    {
+      // I5.1: modelo dedicado da geração de dias (default = OPENAI_MODEL).
+      model: env.OPENAI_DIET_MODEL,
+      // I5.2: fallbacks do OpenRouter (spread não dispara excess-property check).
+      ...buildModelsField(env.OPENAI_DIET_MODEL, env.OPENAI_FALLBACK_MODELS),
+      messages: [
+        { role: 'system', content: DAY_SYSTEM_PROMPT },
+        {
+          role: 'user',
+          content: buildDayPrompt(userData, targets, dayNumber, previousDays, feedback),
+        },
+      ],
+      response_format: zodResponseFormat(aiSingleDaySchema, 'diet_day'),
+      // Reasoning tokens consomem este mesmo orçamento no GPT-5; 6000 truncava
+      // o JSON do dia ("length limit was reached"). Folga grande — o teto real
+      // de tempo é o maxDuration (300s) + timeout abaixo.
+      max_tokens: 20000,
+      // Reasoning baixo pra reduzir a latência por dia.
+      reasoning_effort: 'low',
+    },
+    // Timeout explícito abaixo do maxDuration (300s) pra falhar tratável.
+    { timeout: 120_000 },
+  )
+  logAiUsage(fastify, {
+    feature: 'diet_day',
+    model: env.OPENAI_DIET_MODEL,
+    userId,
+    usage: completion.usage,
+    jobId,
+    finishReason: completion.choices[0]?.finish_reason ?? null,
+  })
+  const parsed = completion.choices[0]?.message?.parsed
+  if (!parsed) throw new Error('IA retornou dia vazio')
+  return parsed
+}
+
+/**
+ * Marca job e draft como failed. A dieta ATIVA anterior permanece intocada, e
+ * o /retry consegue devolver a draft e continuar de onde parou.
+ *
+ * `lockToken` fenceia o UPDATE ao `step_token` que ESTA chamada gravou ao
+ * adquirir o lock (OP1): sem isso, um chamador que demorou além dos 300s
+ * podia marcar failed e liberar o lock de um chamador mais novo que já
+ * reassumiu o job. 0 linhas afetadas é o caso correto e silencioso — outra
+ * chamada já é dona do job agora. (Revisão: fencear por timestamp não
+ * funciona com este driver — ver comentário na aquisição do lock.)
+ */
+async function failJob(
+  fastify: FastifyInstance,
+  jobId: string,
+  dietId: string,
+  error: string,
+  lockToken: string,
+): Promise<void> {
+  await fastify.db`
+    UPDATE diet_jobs
+    SET status = 'failed', error = ${error.slice(0, 300)}, step_started_at = NULL, step_token = NULL, updated_at = NOW()
+    WHERE id = ${jobId} AND step_token = ${lockToken}
+  `
+  await fastify.db`
+    UPDATE diets SET status = 'failed', updated_at = NOW()
+    WHERE id = ${dietId} AND status = 'draft'
+  `
+}
+
 /**
  * Gera e persiste o PRÓXIMO dia do job. Cada chamada = 1 dia = 1 chamada GPT-5.
  * O cliente chama repetidamente (polling) até status 'completed'.
@@ -396,59 +473,79 @@ export async function processJobStep(
   `
   const previousDays = summarizePreviousDays(prevRows)
 
-  // 1) Gera o dia (chamada longa — SEM segurar transação/lock).
+  // OP2: teto diário de tokens ANTES de adquirir o lock (OP1) — quem estourou
+  // a cota não deve travar um lock que não vai poder usar, nem esperar
+  // STEP_LOCK_EXPIRY_SECONDS para ele expirar sozinho.
+  await checkDailyQuota(fastify, userId)
+
+  // OP1: lock em voo. Sem ele, dois aparelhos (ou o app reaberto) pagavam duas
+  // gerações do mesmo dia — o lock otimista lá embaixo só evitava persistir em
+  // dobro. STEP_LOCK_EXPIRY_SECONDS explica o valor da expiração.
+  //
+  // step_token identifica O DONO do lock, não só se está livre: fencear a
+  // liberação por step_started_at (revisão anterior) não funciona com este
+  // driver — postgres.js arredonda TIMESTAMPTZ para milissegundos (JS Date)
+  // tanto ao ler quanto ao escrever, enquanto NOW() do Postgres grava em
+  // microssegundos, então o valor de RETURNING nunca bate de volta na
+  // comparação — nem para o dono legítimo. Um UUID opaco não sofre disso.
+  const acquired = await fastify.db<{ step_token: string }[]>`
+    UPDATE diet_jobs SET step_started_at = NOW(), step_token = gen_random_uuid()
+    WHERE id = ${jobId} AND status IN ('pending', 'running')
+      AND (step_started_at IS NULL
+           OR step_started_at < NOW() - make_interval(secs => ${STEP_LOCK_EXPIRY_SECONDS}))
+    RETURNING step_token
+  `
+  if (acquired.count === 0) {
+    fastify.log.info({ jobId, dayNumber }, 'Step já em andamento — sem nova chamada de IA')
+    return toStatus(job)
+  }
+  // Fenceia as liberações abaixo ao token que ESTA chamada gravou — evita que
+  // um chamador atrasado (lock já expirado e reassumido por outro) apague o
+  // lock vivo de quem é dono agora (finding 3 da revisão da task 16).
+  const lockToken = acquired[0].step_token
+
+  // 1) Gera o dia (chamada longa — SEM segurar transação/lock) e passa pelos
+  //    guardrails (O4): alérgeno, kcal, reconcile, estrutura. Uma regeneração
+  //    com o feedback das violações; se ainda falhar, o job vai para failed.
+  //    NUNCA persiste um dia que não passou.
   let aiDay: AiSingleDay
   try {
-    const completion = await fastify.openai.beta.chat.completions.parse(
-      {
-        // I5.1: modelo dedicado da geração de dias (default = OPENAI_MODEL).
-        model: env.OPENAI_DIET_MODEL,
-        // I5.2: fallbacks do OpenRouter (spread não dispara excess-property check).
-        ...buildModelsField(env.OPENAI_DIET_MODEL, env.OPENAI_FALLBACK_MODELS),
-        messages: [
-          { role: 'system', content: DAY_SYSTEM_PROMPT },
-          { role: 'user', content: buildDayPrompt(userData, targets, dayNumber, previousDays) },
-        ],
-        response_format: zodResponseFormat(aiSingleDaySchema, 'diet_day'),
-        // Reasoning tokens consomem este mesmo orçamento no GPT-5; 6000 truncava
-        // o JSON do dia ("length limit was reached"). Folga grande — o teto real
-        // de tempo é o maxDuration (300s) + timeout abaixo.
-        max_tokens: 20000,
-        // Reasoning baixo pra reduzir a latência por dia.
-        reasoning_effort: 'low',
-      },
-      // Timeout explícito abaixo do maxDuration (300s) pra falhar tratável.
-      { timeout: 120_000 },
-    )
-    logAiUsage(fastify, {
-      feature: 'diet_day',
-      model: env.OPENAI_DIET_MODEL,
-      userId,
-      usage: completion.usage,
-    })
-    const parsed = completion.choices[0]?.message?.parsed
-    if (!parsed) throw new Error('IA retornou dia vazio')
-    // I4: reescala determinística se o dia veio >10% fora da meta de calorias.
-    const reconciled = reconcileDay(parsed, targets.targetCalories)
-    if (reconciled.scaled) {
-      fastify.log.info(
-        { jobId, dayNumber, factor: Number(reconciled.factor.toFixed(3)) },
-        'Dia reescalonado para a meta',
+    let feedback = ''
+    let result: DayGuardrailResult | null = null
+    for (let attempt = 1; attempt <= MAX_DAY_ATTEMPTS; attempt++) {
+      const generated = await generateDay(
+        fastify,
+        userId,
+        jobId,
+        dayNumber,
+        userData,
+        targets,
+        previousDays,
+        feedback,
+      )
+      result = applyDayGuardrails(generated, userData, targets)
+      if (result.ok) break
+      fastify.log.warn(
+        { jobId, dayNumber, attempt, code: result.code, violations: result.violations },
+        'Dia rejeitado pelos guardrails',
+      )
+      feedback = result.feedback
+    }
+    if (!result || !result.ok) {
+      const code = result?.code ?? 'DAY_VALIDATION_FAILED'
+      await failJob(fastify, jobId, job.diet_id, code, lockToken)
+      throw new AppError(
+        502,
+        code,
+        'A dieta gerada não passou nas verificações de segurança. Tente novamente.',
       )
     }
-    aiDay = reconciled.day
+    for (const note of result.notes) fastify.log.info({ jobId, dayNumber }, note)
+    aiDay = result.day
   } catch (err) {
+    if (err instanceof AppError) throw err
     fastify.log.error({ err, jobId, dayNumber }, 'Falha ao gerar dia da dieta')
-    await fastify.db`
-      UPDATE diet_jobs SET status = 'failed', error = ${String(err).slice(0, 300)}, updated_at = NOW()
-      WHERE id = ${jobId}
-    `
-    // A draft vira 'failed' — a dieta ATIVA anterior permanece intocada, e o
-    // /retry consegue devolvê-la para 'draft' e continuar de onde parou.
-    await fastify.db`
-      UPDATE diets SET status = 'failed', updated_at = NOW()
-      WHERE id = ${job.diet_id} AND status = 'draft'
-    `
+    await failJob(fastify, jobId, job.diet_id, String(err), lockToken)
     throw new AppError(502, 'DIET_STEP_FAILED', 'Falha ao gerar um dia da dieta. Tente novamente.')
   }
 
@@ -485,17 +582,28 @@ export async function processJobStep(
         }
       }
       const res = await sql`
-        UPDATE diet_jobs SET days_completed = ${dayNumber}, status = 'running', updated_at = NOW()
+        UPDATE diet_jobs
+        SET days_completed = ${dayNumber}, status = 'running', step_started_at = NULL, step_token = NULL, updated_at = NOW()
         WHERE id = ${jobId} AND days_completed = ${dayNumber - 1}
       `
       if (res.count === 0) throw new Error('CONCURRENT_STEP')
     })
   } catch (err) {
     if (err instanceof Error && err.message === 'CONCURRENT_STEP') {
-      // Outra chamada avançou este dia; retorna o estado atual.
+      // Outra chamada avançou este dia; libera o lock (fenceado ao token desta
+      // chamada — finding 3) e retorna o estado atual.
+      await fastify.db`
+        UPDATE diet_jobs SET step_started_at = NULL, step_token = NULL
+        WHERE id = ${jobId} AND step_token = ${lockToken}
+      `
       return toStatus(await loadJob(fastify, userId, jobId))
     }
-    throw err
+    // OP1 (finding 1 da revisão): qualquer outra falha na persistência —
+    // conexão caiu, constraint, o que for — não pode deixar o lock preso nem
+    // pular o failJob. Mesmo tratamento do bloco de geração acima.
+    fastify.log.error({ err, jobId, dayNumber }, 'Falha ao persistir o dia da dieta')
+    await failJob(fastify, jobId, job.diet_id, String(err), lockToken)
+    throw new AppError(502, 'DIET_STEP_FAILED', 'Falha ao gerar um dia da dieta. Tente novamente.')
   }
 
   // 3) Finaliza se foi o último dia — SÓ AGORA a dieta nova substitui a antiga
@@ -515,8 +623,15 @@ export async function processJobStep(
     })
     if (job.conversation_id) {
       try {
+        // Concatena via JSONB (não lê+regrava o array): o job roda concorrente
+        // com o chat do usuário, e um read-modify-write aqui derrubaria
+        // mensagens enviadas enquanto o último dia gerava.
+        const marker = JSON.stringify([{ role: 'assistant', content: DIET_COMPLETED_MARKER }])
         await fastify.db`
-          UPDATE chat_history SET status = 'completed', diet_id = ${job.diet_id}, updated_at = NOW()
+          UPDATE chat_history
+          SET status = 'completed', diet_id = ${job.diet_id},
+              messages = messages || ${marker}::jsonb,
+              updated_at = NOW()
           WHERE id = ${job.conversation_id}
         `
       } catch (err) {

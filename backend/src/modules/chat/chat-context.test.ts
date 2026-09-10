@@ -151,6 +151,66 @@ describe('formatUserContext (I1)', () => {
   })
 })
 
+describe('formatUserContext — truncamento por linha (C4)', () => {
+  function bigData(): UserContextData {
+    return {
+      profile: fullProfile,
+      diet: {
+        name: 'Plano '.repeat(180).trim(), // ~1080 chars: força o corte
+        targetCalories: 2100,
+        targetProtein: 148,
+        targetCarbs: 210,
+        targetFat: 58,
+      },
+      today: todayPlan(),
+      freeMeals: [],
+      streak: 12,
+      mealsPerDay: 4,
+      date: '2026-07-24',
+    }
+  }
+
+  it('nunca corta uma linha no meio: toda linha termina com ponto', () => {
+    const out = formatUserContext(bigData())
+    expect(out.length).toBeLessThanOrEqual(1400)
+    const lines = out.split('\n').slice(1) // sem o cabeçalho
+    for (const l of lines) expect(l).toMatch(/\.$/)
+  })
+
+  it('as linhas numéricas (meta, consumido, faltam) vêm antes das descritivas', () => {
+    // Fixture normal (nome de dieta curto) — diferente de bigData(): aqui o corte
+    // não entra em ação, então tanto "Faltam:" quanto "Perfil:" sobrevivem e dá
+    // para comparar a posição relativa dos dois. Com bigData() o nome gigante da
+    // dieta consome todo o teto e "Perfil:" é descartado (indexOf === -1), o que
+    // quebraria esta asserção independente da ordem estar certa ou errada.
+    const data: UserContextData = {
+      profile: fullProfile,
+      diet: {
+        name: 'Plano personalizado',
+        targetCalories: 2100,
+        targetProtein: 148,
+        targetCarbs: 210,
+        targetFat: 58,
+      },
+      today: todayPlan(),
+      freeMeals: [],
+      streak: 12,
+      mealsPerDay: 4,
+      date: '2026-07-24',
+    }
+    const out = formatUserContext(data)
+    expect(out.indexOf('Faltam:')).toBeGreaterThan(-1)
+    expect(out.indexOf('Perfil:')).toBeGreaterThan(-1)
+    expect(out.indexOf('Faltam:')).toBeLessThan(out.indexOf('Perfil:'))
+  })
+
+  it('o que não cabe é a ÚLTIMA linha (streak), não a de "Faltam"', () => {
+    const out = formatUserContext(bigData())
+    expect(out).toContain('Faltam: 1480 kcal, 102g proteína.')
+    expect(out).not.toContain('Streak')
+  })
+})
+
 describe('formatKnownData (I2)', () => {
   it('perfil completo → lista todos os campos conhecidos', () => {
     const out = formatKnownData({ ...emptyData, profile: fullProfile, mealsPerDay: 4 })

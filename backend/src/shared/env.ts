@@ -56,6 +56,12 @@ const envSchema = z
       (v) => (v === '' || v == null ? undefined : v),
       z.string().optional(),
     ),
+    // OP2: teto diário de tokens por usuário (soma de ai_usage nas últimas 24h).
+    // Acima → 429 AI_QUOTA_EXCEEDED em chat, geração de dia e visão.
+    AI_DAILY_TOKEN_CAP: z.preprocess(
+      (v) => (v === '' || v == null ? undefined : v),
+      z.coerce.number().int().positive().default(200_000),
+    ),
   })
   .transform((e) => ({
     ...e,

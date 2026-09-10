@@ -1,10 +1,11 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import type { FastifyInstance } from 'fastify'
 import { zodResponseFormat } from 'openai/helpers/zod.js'
-import { buildModelsField, logAiUsage } from '../../shared/ai-usage.js'
+import { buildModelsField, checkDailyQuota, logAiUsage } from '../../shared/ai-usage.js'
 import { env } from '../../shared/env.js'
 import { AppError } from '../../shared/errors.js'
-import { type ScanResponse, visionAnalysisSchema } from './scanner.schemas.js'
+import { sanitizeVisionResult } from '../../shared/guardrails/index.js'
+import { type ScanItem, type ScanResponse, visionAnalysisSchema } from './scanner.schemas.js'
 
 const VISION_SYSTEM_PROMPT = `Você é um nutricionista especialista em análise visual de alimentos.
 Receberá a foto de um prato/refeição e deve estimar os valores nutricionais do que está visível.
@@ -18,6 +19,48 @@ Receberá a foto de um prato/refeição e deve estimar os valores nutricionais d
   e zere os demais valores.
 - Baseie-se em alimentos brasileiros comuns quando houver ambiguidade.`
 
+type CachedItem = Omit<ScanItem, 'id'>
+type CacheResult = { notFood: true } | { notFood: false; item: CachedItem }
+
+async function readCache(fastify: FastifyInstance, hash: string): Promise<CacheResult | null> {
+  try {
+    const [row] = await fastify.db<{ result: CacheResult }[]>`
+      SELECT result FROM scan_cache
+      WHERE image_hash = ${hash} AND created_at > NOW() - interval '24 hours'
+    `
+    return row?.result ?? null
+  } catch (err) {
+    fastify.log.warn(err, 'Falha ao ler scan_cache — seguindo sem cache')
+    return null
+  }
+}
+
+function writeCache(fastify: FastifyInstance, hash: string, result: CacheResult): void {
+  // try/catch em volta da tagged template: postgres.js devolve uma promise
+  // rejeitada em falhas normais, mas nada garante que a chamada em si nunca
+  // lance de forma síncrona. Sem isso, essa classe de erro escaparia daqui e
+  // derrubaria analyzePhoto por causa de uma escrita de cache best-effort.
+  try {
+    void fastify.db`
+      INSERT INTO scan_cache (image_hash, result)
+      VALUES (${hash}, ${JSON.stringify(result)}::jsonb)
+      ON CONFLICT (image_hash) DO UPDATE SET result = EXCLUDED.result, created_at = NOW()
+    `.catch((err: unknown) => {
+      try {
+        fastify.log.warn(err, 'Falha ao gravar scan_cache (best-effort)')
+      } catch {
+        // nada mais a fazer sem derrubar a request
+      }
+    })
+  } catch (err) {
+    try {
+      fastify.log.warn(err, 'Falha ao gravar scan_cache (best-effort)')
+    } catch {
+      // nada mais a fazer sem derrubar a request
+    }
+  }
+}
+
 /**
  * Analisa a foto de um prato via OpenAI Vision e retorna a estimativa nutricional.
  * Recebe a imagem como data URL base64 (data:image/...;base64,...).
@@ -27,6 +70,17 @@ export async function analyzePhoto(
   imageDataUrl: string,
   userId: string,
 ): Promise<ScanResponse> {
+  await checkDailyQuota(fastify, userId)
+
+  // OP3: a mesma foto reenviada não paga uma chamada nova.
+  const hash = createHash('sha256').update(imageDataUrl).digest('hex')
+  const cached = await readCache(fastify, hash)
+  if (cached) {
+    if (cached.notFood)
+      throw new AppError(422, 'NOT_FOOD', 'Não identificamos comida nesta imagem.')
+    return { items: [{ id: randomUUID(), ...cached.item }] }
+  }
+
   let analysis: import('./scanner.schemas.js').VisionAnalysis
   try {
     const completion = await fastify.openai.beta.chat.completions.parse({
@@ -56,6 +110,7 @@ export async function analyzePhoto(
       model: env.OPENAI_VISION_MODEL,
       userId,
       usage: completion.usage,
+      finishReason: completion.choices[0]?.finish_reason ?? null,
     })
     const parsed = completion.choices[0].message.parsed
     if (!parsed) throw new Error('OpenAI retornou análise vazia')
@@ -66,20 +121,11 @@ export async function analyzePhoto(
   }
 
   if (!analysis.is_food) {
+    writeCache(fastify, hash, { notFood: true })
     throw new AppError(422, 'NOT_FOOD', 'Não identificamos comida nesta imagem.')
   }
 
-  return {
-    items: [
-      {
-        id: randomUUID(),
-        name: analysis.name,
-        calories: Math.max(0, Math.round(analysis.calories)),
-        protein: Math.max(0, Math.round(analysis.protein)),
-        carbs: Math.max(0, Math.round(analysis.carbs)),
-        fat: Math.max(0, Math.round(analysis.fat)),
-        confidence: Math.min(1, Math.max(0, analysis.confidence)),
-      },
-    ],
-  }
+  const item: CachedItem = { name: analysis.name, ...sanitizeVisionResult(analysis) }
+  writeCache(fastify, hash, { notFood: false, item })
+  return { items: [{ id: randomUUID(), ...item }] }
 }
