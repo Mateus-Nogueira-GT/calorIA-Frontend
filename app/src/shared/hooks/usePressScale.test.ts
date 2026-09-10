@@ -2,7 +2,9 @@ import { describe, it, expect, afterEach, jest } from '@jest/globals';
 import { renderHook, act } from '@testing-library/react-native';
 import { usePressScale } from './usePressScale';
 
-afterEach(() => jest.useRealTimers());
+afterEach(() => {
+  jest.useRealTimers();
+});
 
 describe('usePressScale', () => {
   it('expõe scale e handlers e anima sem warning', () => {

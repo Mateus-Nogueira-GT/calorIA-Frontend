@@ -9,6 +9,18 @@ export interface BackendProfile {
   avatar_emoji: string | null;
   /** Streak canônico (tabela streaks) — o app não recalcula localmente. */
   current_streak: number | null;
+  // R6: o backend sempre devolveu estes três (profileSchema em
+  // users.schemas.ts); o tipo do app é que declarava só um subconjunto. São
+  // eles que dizem se o onboarding foi concluído — sem altura/peso o backend
+  // não calcula o gasto basal (jobs.service.ts) e nenhuma dieta é gerada.
+  height_cm: number | null;
+  weight_kg: number | null;
+  goal: string | null;
+}
+
+/** Onboarding concluído? Sem estes três não existe dieta possível. */
+export function isProfileComplete(profile: BackendProfile): boolean {
+  return Boolean(profile.height_cm && profile.weight_kg && profile.goal);
 }
 
 export interface UpdateProfileInput {
@@ -25,7 +37,14 @@ export const profileService = {
 
   /** Envia a foto (data URL base64) e retorna o perfil com a nova avatar_url. */
   uploadAvatar: (image: string) =>
-    api.post<BackendProfile>('/users/me/avatar', { image }).then((r) => r.data),
+    // R2: mesmo payload do scanner (pickImage: base64, 1024px, q0.8) e MAIS
+    // trabalho de servidor por request — Storage + getPublicUrl + UPDATE do
+    // perfil. Os 10s do API_TIMEOUT estouravam no aparelho e o usuário via
+    // "Não foi possível enviar a foto". O scanner já tinha subido para 75s
+    // pelo mesmo motivo; o avatar tinha ficado para trás.
+    api
+      .post<BackendProfile>('/users/me/avatar', { image }, { timeout: 75000 })
+      .then((r) => r.data),
 
   /**
    * Exclui a conta permanentemente. Irreversível: o backend remove o usuário e,

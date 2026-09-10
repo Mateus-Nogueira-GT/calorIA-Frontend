@@ -9,7 +9,7 @@ import { WeightLineChart } from '../components/WeightLineChart';
 import { WeeklyCalorieChart } from '@features/profile/components/WeeklyCalorieChart';
 import { StreakBadge } from '@features/profile/components/StreakBadge';
 import { useProfile } from '@features/profile/hooks/useProfile';
-import { ErrorState } from '@shared/components';
+import { ErrorState, screenShellStyle } from '@shared/components';
 
 export function EvolutionScreen(): React.JSX.Element {
   const { entries, isSaving, addEntry, currentWeight, delta, hasError, reload } = useEvolution();
@@ -48,7 +48,7 @@ export function EvolutionScreen(): React.JSX.Element {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.brandBackground },
-  content: { padding: spacing.lg, gap: 10 },
+  content: { ...screenShellStyle, padding: spacing.lg, gap: 10 },
   title: { fontSize: typography.fontSize.xl, color: colors.brandAnchor, fontFamily: typography.fontFamily.bold, marginBottom: spacing.xs },
   section: { fontSize: typography.fontSize.md, color: colors.brandAnchor, fontFamily: typography.fontFamily.semiBold, marginTop: spacing.lg },
   summary: { fontSize: typography.fontSize.sm, color: colors.brandTextMuted },

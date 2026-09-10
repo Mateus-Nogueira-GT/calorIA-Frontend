@@ -125,7 +125,7 @@ describe('useFeedStore', () => {
     const { result } = renderHook(() => useFeedStore());
 
     await act(async () => {
-      await result.current.createPost('meu post', null).catch(() => {});
+      await result.current.createPost('meu post', undefined).catch(() => {});
     });
 
     expect(showAlert).toHaveBeenCalled();

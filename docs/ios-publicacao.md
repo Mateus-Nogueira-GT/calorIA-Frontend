@@ -218,3 +218,77 @@ done
 
 **Ícone iOS não pode ter canal alfa** nem cantos arredondados — o sistema aplica a máscara
 sozinho. Confira com `sips -g hasAlpha` antes de subir.
+
+---
+
+## App Review Information — a conta de demonstração (obrigatória)
+
+A primeira submissão foi **rejeitada** por isto:
+
+> *An automated analysis of the submission indicates the app may include a login but was
+> submitted without a demo account.*
+
+A análise automatizada estava certa. O CalorIA é **100% fechado atrás de login**: o
+`RootNavigator` (`app/src/navigation/RootNavigator.tsx:111-142`) só tem dois caminhos —
+autenticado ou stack de auth. O bypass `?preview=app` morre duas vezes no binário de release
+(exige `__DEV__` **e** `Platform.OS === 'web'`), então não existe modo convidado. Sem credencial
+no App Store Connect, o revisor não entra.
+
+**Não é bug de código — é metadado da submissão.**
+
+### Antes de CADA submissão
+
+1. **Reidratar a conta demo.** Parte do conteúdo expira por data (o diário é de *hoje*, o streak
+   e o check-in são relativos a hoje). Uma conta com o dashboard vazio não demonstra o app.
+
+   ```bash
+   cd backend
+   DEMO_ACCOUNT_PASSWORD='<a senha do gestor de segredos>' npm run seed:demo
+   ```
+
+   O script é idempotente por e-mail: rodar duas vezes não duplica nada.
+
+2. **Gerar a dieta uma vez.** O seed **não** cria o plano — ele é gerado por IA pelo Coach. Entre
+   no app com a conta demo e gere. Sem plano, o dashboard mostra estado vazio em vez de metas
+   (comportamento correto desde o R5: o app não inventa mais números), e o revisor veria um painel
+   sem conteúdo.
+
+3. **Conferir o dashboard da conta demo:** anel de calorias com dado real, macros, dieta do dia,
+   diário com refeições, evolução de peso.
+
+4. **Preencher App Store Connect → App Review Information:**
+   - marcar **Sign-In Required**
+   - **User Name:** `appreview@caloriaoficial.com.br` (ou o `DEMO_ACCOUNT_EMAIL` usado)
+   - **Password:** a mesma de `DEMO_ACCOUNT_PASSWORD`
+   - **Notes:** sugestão de texto —
+
+     > O CalorIA é um diário alimentar pessoal: todo o conteúdo é do usuário, por isso o app
+     > exige login. A conta acima já vem com dieta, diário e histórico de peso preenchidos.
+     > O cadastro não pede confirmação de e-mail, caso prefiram criar uma conta nova.
+
+**A senha NUNCA entra no repositório.** Ela vive no gestor de segredos do projeto; o script a lê
+de `DEMO_ACCOUNT_PASSWORD` e falha se não existir.
+
+### A conta demo é protegida contra exclusão
+
+O app oferece "Excluir conta" no perfil (exigência da guideline 5.1.1(v), e o revisor **testa esse
+fluxo**). O endpoint faz *hard delete*. Sem trava, o primeiro revisor que tocasse ali destruiria a
+credencial entregue à Apple e a submissão seguinte voltaria com *"demo account does not work"*.
+
+A migração `016_demo_account.sql` acrescenta `profiles.is_demo`, e `DELETE /users/me` responde
+**403 `DEMO_ACCOUNT_PROTECTED`** para essas contas. A trava é de **servidor** de propósito:
+bloquear só no cliente deixaria o endpoint aberto, e a Apple pode instalar builds antigos, que não
+teriam guarda de cliente nenhuma.
+
+> **Rodar a migração 016 antes do primeiro seed**, senão o `INSERT` do script falha na coluna
+> `is_demo`.
+
+### Aviso — Guideline 4.8 (Sign in with Apple)
+
+Hoje **não se aplica**: `@react-native-google-signin/google-signin` e
+`@invertase/react-native-apple-authentication` não estão instalados, `isGoogleSignInAvailable` e
+`isAppleSignInAvailable` são `false`, e os botões sociais ficam ocultos. O binário só tem login
+por e-mail e senha, então não há login de terceiro que obrigue o Sign in with Apple.
+
+**No dia em que o Google Sign-In entrar, o Sign in with Apple passa a ser obrigatório no mesmo
+release.** Não dá para adiar para a versão seguinte.

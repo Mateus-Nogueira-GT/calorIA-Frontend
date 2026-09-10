@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, ScrollView, StyleSheet, Alert, Linking } from 'react-native';
+import { screenShellStyle } from '@shared/components';
 import { colors, radius, spacing } from '@theme';
 import type { TabScreenProps } from '@navigation/types';
 import { useProfile } from '../hooks/useProfile';
@@ -43,7 +44,19 @@ export function ProfileScreen({ navigation }: TabScreenProps<'Profile'>): React.
   async function deleteAccount() {
     try {
       await handleDeleteAccount();
-    } catch {
+    } catch (error) {
+      // AP1: a conta de demonstração da App Review é protegida no servidor
+      // (403 DEMO_ACCOUNT_PROTECTED). Sem tratar aqui, o revisor veria
+      // "tente novamente em instantes" e tentaria de novo, para sempre.
+      const e = error as { response?: { status?: number; data?: { error?: string; message?: string } } };
+      if (e?.response?.status === 403 && e.response.data?.error === 'DEMO_ACCOUNT_PROTECTED') {
+        Alert.alert(
+          'Conta de demonstração',
+          e.response.data.message ??
+            'Esta é uma conta de demonstração e não pode ser excluída.',
+        );
+        return;
+      }
       Alert.alert(
         'Não foi possível excluir',
         'Sua conta continua ativa. Tente novamente em instantes.',
@@ -135,7 +148,7 @@ export function ProfileScreen({ navigation }: TabScreenProps<'Profile'>): React.
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background, paddingTop: 56 },
-  content: { padding: spacing.lg },
+  content: { ...screenShellStyle, padding: spacing.lg },
   section: { marginTop: spacing.xl, marginBottom: spacing.sm },
   menuCard: { marginTop: spacing.lg, backgroundColor: colors.white, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, overflow: 'hidden' },
 });

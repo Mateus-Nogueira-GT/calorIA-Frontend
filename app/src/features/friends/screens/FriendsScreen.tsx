@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Alert, FlatList, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
+import { screenShellStyle } from '@shared/components';
 import { Avatar, EmptyState, ErrorState, Text } from '@shared/components';
 import { colors, radius, spacing, typography } from '@theme';
 import type { Friend, FriendRequest, UserSearchResult } from '@shared/services/friends.service';
@@ -262,6 +263,7 @@ export function FriendsScreen({ route }: CommunityStackScreenProps<'Friends'>): 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.brandBackground, paddingTop: spacing.md },
   tabs: {
+    ...screenShellStyle,
     flexDirection: 'row',
     marginHorizontal: spacing.lg,
     marginBottom: spacing.md,
@@ -297,7 +299,7 @@ const styles = StyleSheet.create({
     color: colors.brandAnchor,
     backgroundColor: colors.brandSurface,
   },
-  listContent: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl },
+  listContent: { ...screenShellStyle, paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl },
   row: {
     flexDirection: 'row',
     alignItems: 'center',

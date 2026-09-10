@@ -15,7 +15,9 @@
     "eas-build-pre-install": "node scripts/eas-write-env.js"
   },
   "dependencies": {
+    "@invertase/react-native-apple-authentication": "^2.5.1",
     "@react-native-async-storage/async-storage": "^2.2.0",
+    "@react-native-google-signin/google-signin": "^16.1.5",
     "@react-navigation/bottom-tabs": "^6.6.1",
     "@react-navigation/native": "^6.1.18",
     "@react-navigation/native-stack": "^6.11.0",
@@ -106,6 +108,7 @@
     "moduleNameMapper": {
       "\\.(png|jpg|jpeg|gif|svg|webp)$": "<rootDir>/__mocks__/fileMock.js",
       "^@react-native-google-signin/google-signin$": "<rootDir>/__mocks__/@react-native-google-signin/google-signin.js",
+      "^@invertase/react-native-apple-authentication$": "<rootDir>/__mocks__/@invertase/react-native-apple-authentication.js",
       "AndroidHorizontalScrollContentViewNativeComponent": "<rootDir>/__mocks__/nativeComponentMock.js",
       "^@env$": "<rootDir>/__mocks__/@env.js",
       "^@react-native-async-storage/async-storage$": "<rootDir>/__mocks__/@react-native-async-storage/async-storage.js"

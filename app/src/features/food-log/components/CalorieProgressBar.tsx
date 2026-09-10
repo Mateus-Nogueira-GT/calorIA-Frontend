@@ -4,21 +4,29 @@ import { colors, typography, spacing, radius } from '@theme';
 
 interface Props {
   consumed: number;
-  goal: number;
+  /** null = ainda não há dieta gerada, logo não há meta (R5). */
+  goal: number | null;
 }
 
 export function CalorieProgressBar({ consumed, goal }: Props): React.JSX.Element {
-  const ratio = goal > 0 ? consumed / goal : 0;
+  const hasGoal = goal !== null && goal > 0;
+  const ratio = hasGoal ? consumed / goal : 0;
   const pct = Math.min(Math.max(ratio, 0), 1);
-  const reached = consumed >= goal && goal > 0;
-  const remaining = Math.max(goal - consumed, 0);
+  const reached = hasGoal && consumed >= goal;
+  const remaining = hasGoal ? Math.max(goal - consumed, 0) : 0;
 
   return (
     <View style={styles.container}>
       <View style={styles.headerRow}>
-        <Text style={styles.value}>{consumed} / {goal} kcal</Text>
+        <Text style={styles.value}>
+          {hasGoal ? `${consumed} / ${goal} kcal` : `${consumed} kcal`}
+        </Text>
         <Text style={[styles.status, reached && styles.statusReached]}>
-          {reached ? '🎉 meta atingida' : `faltam ${remaining} kcal`}
+          {!hasGoal
+            ? 'gere sua dieta para ter uma meta'
+            : reached
+              ? '🎉 meta atingida'
+              : `faltam ${remaining} kcal`}
         </Text>
       </View>
       <View style={styles.track}>

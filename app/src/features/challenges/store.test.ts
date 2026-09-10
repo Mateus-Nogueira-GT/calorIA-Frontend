@@ -14,6 +14,7 @@ const challenge = (id: string, over: Partial<Challenge> = {}): Challenge => ({
   metric: 'streak',
   joinedByMe: false,
   inviteCode: 'ABC123',
+  finished: false,
   ...over,
 });
 

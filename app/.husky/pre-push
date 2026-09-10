@@ -1,0 +1,3 @@
+# Feedback local antes do CI. Só type-check: a suíte inteira leva ~3s mas o
+# push fica travado por bem mais que isso em máquina fria, e o CI já cobre.
+cd app && npm run type-check

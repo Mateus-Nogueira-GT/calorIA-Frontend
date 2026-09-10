@@ -1,5 +1,5 @@
 import React from 'react';
-import { Platform, StyleSheet, View } from 'react-native';
+import { DimensionValue, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, typography, spacing, radius } from '@theme';
 import { Button, Text } from '@shared/components';
@@ -62,7 +62,10 @@ const interfaceSemiBoldFont = Platform.select({
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    minHeight: Platform.select({ web: '100dvh', default: '100%' }),
+    // '100dvh' é uma unidade CSS que o react-native-web repassa ao browser (resolve a
+    // barra de endereço no mobile web). DimensionValue do RN não modela unidades CSS,
+    // por isso o cast — o valor é legítimo na única plataforma onde é usado.
+    minHeight: Platform.select<DimensionValue>({ web: '100dvh' as DimensionValue, default: '100%' }),
     backgroundColor: colors.brandBackground,
     paddingHorizontal: 22,
   },

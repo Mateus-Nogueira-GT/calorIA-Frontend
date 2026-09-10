@@ -2,7 +2,7 @@ import React from 'react';
 import { Text as RNText, StyleSheet, TextProps } from 'react-native';
 import { colors, typography } from '@theme';
 
-type Variant = 'heading1' | 'heading2' | 'body' | 'caption' | 'label';
+type Variant = 'heading1' | 'heading2' | 'heading3' | 'body' | 'caption' | 'label';
 
 interface Props extends TextProps {
   variant?: Variant;
@@ -18,6 +18,9 @@ export function Text({ variant = 'body', color, style, ...rest }: Props): React.
   );
 }
 
+// O acesso é dinâmico (`styles[variant]`), coisa que a regra no-unused-styles
+// não consegue enxergar: ela acusa TODAS as variantes como não usadas.
+// eslint-disable-next-line react-native/no-unused-styles
 const styles = StyleSheet.create({
   heading1: {
     fontFamily: typography.fontFamily.bold,
@@ -30,6 +33,15 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.xl,
     color: colors.textPrimary,
     lineHeight: typography.fontSize.xl * typography.lineHeight.tight,
+  },
+  // Degrau entre heading2 (xl) e body (base). ProfileGoalsScreen e
+  // ProfileCoachPersonalityScreen já pediam `heading3`; sem ele no StyleSheet,
+  // `styles[variant]` era undefined e o título saía na fonte do sistema.
+  heading3: {
+    fontFamily: typography.fontFamily.bold,
+    fontSize: typography.fontSize.lg,
+    color: colors.textPrimary,
+    lineHeight: typography.fontSize.lg * typography.lineHeight.tight,
   },
   body: {
     fontFamily: typography.fontFamily.regular,

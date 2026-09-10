@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { authService, ProfileSetupPayload } from '@shared/services/auth.service';
 import { useAuthStore } from '@features/auth/store';
-import { Text } from '@shared/components';
+import { Text, screenShellStyle } from '@shared/components';
 import { OnboardingChatBubble } from '../components/OnboardingChatBubble';
 import { OnboardingOptionCard } from '../components/OnboardingOptionCard';
 import { OnboardingProgressBar } from '../components/OnboardingProgressBar';
@@ -60,6 +60,102 @@ const OPTIONS: Partial<Record<Step, OptionDef[]>> = {
   ],
 };
 
+/**
+ * R1: o onboarding usa UM TextInput genérico para todos os passos de texto
+ * livre, sem máscara. `Number("1,80")` é NaN, e `JSON.stringify` manda NaN como
+ * `null` — que o backend rejeita (`z.number().optional()` aceita `undefined`,
+ * não `null`). O usuário tomava "Não foi possível salvar seu perfil", repetia a
+ * mesma resposta e ficava preso no onboarding para sempre.
+ *
+ * Aceitar a vírgula é deliberado: "1,80" é como se escreve em português.
+ * Recusar seria culpar o usuário por acertar.
+ */
+function parseNumber(raw: string): number | null {
+  const cleaned = raw.replace(',', '.').replace(/[^\d.]/g, '');
+  if (!cleaned) return null;
+  const n = Number(cleaned);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+const MIN_HEIGHT_CM = 100;
+const MAX_HEIGHT_CM = 250;
+const MIN_WEIGHT_KG = 30;
+const MAX_WEIGHT_KG = 300;
+
+type StepCheck = { ok: true; value: string } | { ok: false; reason: string };
+
+export function validateStep(step: Step, raw: string): StepCheck {
+  const value = raw.trim();
+
+  if (step === 'name') {
+    if (value.length < 2) {
+      return { ok: false, reason: 'Preciso de pelo menos duas letras. Como posso te chamar?' };
+    }
+    return { ok: true, value: value.slice(0, 100) };
+  }
+
+  if (step === 'height') {
+    const n = parseNumber(value);
+    if (n === null) {
+      return {
+        ok: false,
+        reason: 'Não entendi a altura. Me manda só o número, em centímetros — por exemplo: 180.',
+      };
+    }
+    // Aceita metros (1,80) e centímetros (180) no mesmo campo.
+    const cm = Math.round(n < 3 ? n * 100 : n);
+    if (cm < MIN_HEIGHT_CM || cm > MAX_HEIGHT_CM) {
+      return {
+        ok: false,
+        reason: `Essa altura não parece certa. Me manda entre ${MIN_HEIGHT_CM} e ${MAX_HEIGHT_CM} cm — por exemplo: 180.`,
+      };
+    }
+    return { ok: true, value: String(cm) };
+  }
+
+  if (step === 'weight') {
+    const n = parseNumber(value);
+    if (n === null) {
+      return {
+        ok: false,
+        reason: 'Não entendi o peso. Me manda só o número, em quilos — por exemplo: 80,5.',
+      };
+    }
+    const kg = Math.round(n * 10) / 10;
+    if (kg < MIN_WEIGHT_KG || kg > MAX_WEIGHT_KG) {
+      return {
+        ok: false,
+        reason: `Esse peso não parece certo. Me manda entre ${MIN_WEIGHT_KG} e ${MAX_WEIGHT_KG} kg — por exemplo: 80,5.`,
+      };
+    }
+    return { ok: true, value: String(kg) };
+  }
+
+  return { ok: true, value };
+}
+
+/** Extrai a causa que o backend explicou; sem ela, distingue rede de resto. */
+function describeSubmitError(error: unknown): string {
+  const e = error as {
+    response?: { data?: { message?: string } };
+    code?: string;
+    message?: string;
+  };
+
+  const fromServer = e?.response?.data?.message;
+  if (typeof fromServer === 'string' && fromServer.trim()) return fromServer;
+
+  const isNetwork =
+    e?.code === 'ECONNABORTED' ||
+    e?.code === 'ERR_NETWORK' ||
+    (typeof e?.message === 'string' && /timeout|network/i.test(e.message));
+  if (isNetwork) {
+    return 'Sem conexão com o servidor. Verifique a internet e tente de novo.';
+  }
+
+  return 'Não foi possível salvar seu perfil. Tente novamente.';
+}
+
 interface ChatMessage {
   id: string;
   role: 'coach' | 'user';
@@ -69,6 +165,7 @@ interface ChatMessage {
 export function ProfileSetupScreen({ navigation }: AuthStackScreenProps<'ProfileSetup'>): React.JSX.Element {
   const setToken = useAuthStore((s) => s.setToken);
   const setProfilePreferences = useAuthStore((s) => s.setProfilePreferences);
+  const setProfileComplete = useAuthStore((s) => s.setProfileComplete);
   const pendingAuth = useAuthStore((s) => s.pendingAuth);
   const user = useAuthStore((s) => s.user);
 
@@ -79,6 +176,8 @@ export function ProfileSetupScreen({ navigation }: AuthStackScreenProps<'Profile
   const [inputText, setInputText] = useState('');
   const [answers, setAnswers] = useState<Partial<Record<Step, string>>>({});
   const [submitting, setSubmitting] = useState(false);
+  // Ids do FlatList precisam ser únicos: cada repergunta gera uma nova dupla.
+  const [retryCount, setRetryCount] = useState(0);
   const listRef = useRef<FlatList>(null);
 
   const currentStep = STEPS[currentStepIndex];
@@ -86,12 +185,28 @@ export function ProfileSetupScreen({ navigation }: AuthStackScreenProps<'Profile
 
   function advanceWithAnswer(value: string) {
     const step = STEPS[currentStepIndex];
-    const newAnswers = { ...answers, [step]: value };
+
+    // Valida ANTES de consumir o passo: inválido, o Coach repergunta e o
+    // usuário continua onde estava. Validar só no envio faria ele refazer os 7.
+    const check = validateStep(step, value);
+    if (!check.ok) {
+      setMessages([
+        ...messages,
+        { id: `user-${step}-${retryCount}`, role: 'user', text: value },
+        { id: `coach-retry-${step}-${retryCount}`, role: 'coach', text: check.reason },
+      ]);
+      setRetryCount((n) => n + 1);
+      setInputText('');
+      setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100);
+      return;
+    }
+
+    const newAnswers = { ...answers, [step]: check.value };
     setAnswers(newAnswers);
 
     const nextMessages: ChatMessage[] = [
       ...messages,
-      { id: `user-${step}`, role: 'user', text: value },
+      { id: `user-${step}`, role: 'user', text: check.value },
     ];
 
     if (currentStepIndex < STEPS.length - 1) {
@@ -108,6 +223,9 @@ export function ProfileSetupScreen({ navigation }: AuthStackScreenProps<'Profile
   }
 
   async function submitProfile(finalAnswers: Partial<Record<Step, string>>) {
+    // As opções somem via `!submitting`, mas isso depende do re-render — um
+    // toque duplo real dispara duas chamadas.
+    if (submitting) return;
     setSubmitting(true);
     try {
       const payload: ProfileSetupPayload = {
@@ -133,9 +251,17 @@ export function ProfileSetupScreen({ navigation }: AuthStackScreenProps<'Profile
       if (pendingAuth) {
         setToken(pendingAuth.token, pendingAuth.user, pendingAuth.refreshToken);
       }
-    } catch {
+
+      // R6: esta tela também recebe quem JÁ tem sessão e só não terminou o
+      // perfil (voltou pelo gate do RootNavigator). Nesse caso não há
+      // pendingAuth e o setToken acima não roda — é esta linha que destrava a
+      // troca de árvore.
+      setProfileComplete(true);
+    } catch (error) {
       // Segue no onboarding: tocar de novo na última opção reenvia.
-      Alert.alert('Erro', 'Não foi possível salvar seu perfil. Tente novamente.');
+      // A mensagem do backend era descartada — o usuário via "tente novamente"
+      // sem saber o que corrigir, e repetia o mesmo erro.
+      Alert.alert('Erro', describeSubmitError(error));
     } finally {
       setSubmitting(false);
     }
@@ -149,7 +275,12 @@ export function ProfileSetupScreen({ navigation }: AuthStackScreenProps<'Profile
   return (
     <KeyboardAvoidingView
       style={styles.flex}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      // N3: no Android o manifest já usa windowSoftInputMode=adjustResize, que
+      // encolhe a janela quando o teclado sobe. Com behavior='height' o
+      // KeyboardAvoidingView encolhia DE NOVO por cima disso, e em tela pequena
+      // o conteúdo saltava e o botão de avançar podia sumir. As outras quatro
+      // telas do app já usavam `undefined` — esta era o ponto fora da curva.
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <OnboardingProgressBar current={currentStepIndex + 1} total={STEPS.length} />
 
@@ -189,6 +320,9 @@ export function ProfileSetupScreen({ navigation }: AuthStackScreenProps<'Profile
           onSubmitEditing={handleSend}
           returnKeyType="send"
           editable={!submitting}
+          // Reduz a entrada ruim na origem. NÃO substitui validateStep: o
+          // teclado numérico do Android tem vírgula.
+          keyboardType={currentStep === 'height' || currentStep === 'weight' ? 'numeric' : 'default'}
         />
         <TouchableOpacity
           style={[styles.sendBtn, (!inputText.trim() || submitting) && styles.sendBtnDisabled]}
@@ -205,7 +339,7 @@ export function ProfileSetupScreen({ navigation }: AuthStackScreenProps<'Profile
 
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: colors.background },
-  chatContent: { padding: spacing.lg },
+  chatContent: { ...screenShellStyle, padding: spacing.lg },
   options: { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm },
   inputRow: {
     flexDirection: 'row',

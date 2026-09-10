@@ -6,7 +6,7 @@ import { useChallengesStore } from '../store';
 import { ChallengeCard } from '../components/ChallengeCard';
 import { EmptyChallengesState } from '../components/EmptyChallengesState';
 import { MealCardSkeleton } from '@features/diet/components/MealCardSkeleton';
-import { ErrorState } from '@shared/components';
+import { ErrorState, screenShellStyle } from '@shared/components';
 import type { CommunityStackScreenProps } from '@navigation/types';
 
 type Props = CommunityStackScreenProps<'Challenges'>;
@@ -88,7 +88,7 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.brandBackground },
   header: { paddingHorizontal: spacing.xl, paddingVertical: spacing.md },
   title: { fontSize: typography.fontSize.xl, color: colors.brandAnchor, fontFamily: typography.fontFamily.bold },
-  listContent: { paddingHorizontal: spacing.lg, paddingBottom: 96, flexGrow: 1 },
+  listContent: { ...screenShellStyle, paddingHorizontal: spacing.lg, paddingBottom: 96, flexGrow: 1 },
   sectionLabel: {
     fontSize: typography.fontSize.sm,
     color: colors.brandTextMuted,

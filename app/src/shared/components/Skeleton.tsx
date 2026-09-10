@@ -1,9 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, Animated, StyleSheet, ViewStyle } from 'react-native';
+import { AccessibilityInfo, Animated, DimensionValue, StyleSheet, ViewStyle } from 'react-native';
 import { colors, radius as radiusTokens } from '@theme';
 
 interface Props {
-  width?: number | string;
+  width?: DimensionValue;
   height?: number;
   radius?: number;
   style?: ViewStyle;

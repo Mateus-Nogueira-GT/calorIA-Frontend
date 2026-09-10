@@ -66,11 +66,28 @@ const KNOWN_DATA_INSTRUCTION =
   'chame collect_diet_data com esses valores. Pergunte individualmente apenas os campos ' +
   'ausentes ou que o usuário disser que mudaram.'
 
+/**
+ * Quando já existe dieta ativa, esta instrução SOBRESCREVE a parte do
+ * KNOWN_DATA_INSTRUCTION que manda chamar a tool assim que o usuário confirma
+ * os dados. Sem isso, depois da primeira dieta qualquer "ok"/"obrigado" era
+ * confirmação e a IA gerava um plano novo a cada mensagem.
+ */
+const EXISTING_DIET_INSTRUCTION =
+  'INSTRUÇÃO IMPORTANTE: o usuário JÁ TEM uma dieta ativa. NÃO chame ' +
+  'collect_diet_data para confirmar dados, nem em resposta a agradecimentos, ' +
+  '"ok", "sim" ou perguntas sobre a dieta atual. Chame a tool APENAS se o ' +
+  'usuário pedir EXPLICITAMENTE um plano novo ou uma alteração no plano ' +
+  '(ex.: "gera outra dieta", "quero trocar meu cardápio", "refaz com menos ' +
+  'carboidrato"). Cada chamada gera um plano NOVO que substitui o atual e ' +
+  'zera as refeições já marcadas como concluídas — por isso, na dúvida, ' +
+  'pergunte antes em vez de chamar a tool.'
+
 /** Junta prompt base + contexto/known-data + instruções (só quando há bloco). */
 export function assembleSystemPrompt(
   base: string,
   contextBlock: string,
   knownData: string,
+  hasActiveDiet = false,
 ): string {
   const parts = [base]
   if (contextBlock) {
@@ -78,6 +95,10 @@ export function assembleSystemPrompt(
   }
   if (knownData) {
     parts.push(knownData, KNOWN_DATA_INSTRUCTION)
+  }
+  // Por último: em conflito com a instrução acima, esta é a que vale.
+  if (hasActiveDiet) {
+    parts.push(EXISTING_DIET_INSTRUCTION)
   }
   return parts.join('\n\n')
 }
@@ -197,6 +218,7 @@ export async function sendChatMessage(
     buildSystemPrompt(profile?.coach_personality),
     formatUserContext(context),
     formatKnownData(context),
+    context.diet !== null,
   )
 
   // ── Chamada à OpenAI com suporte a function calling ──────────────────────

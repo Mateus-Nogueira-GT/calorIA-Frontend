@@ -5,7 +5,7 @@ import { colors, typography, spacing } from '@theme';
 import { useChallengesStore } from '../store';
 import { LeaderboardRow } from '../components/LeaderboardRow';
 import { InviteButton } from '../components/InviteButton';
-import { ErrorState } from '@shared/components';
+import { ErrorState, screenShellStyle } from '@shared/components';
 import type { Challenge } from '@shared/services/challenges.service';
 import type { CommunityStackScreenProps } from '@navigation/types';
 
@@ -104,7 +104,7 @@ export function ChallengeLeaderboardScreen({ route }: Props): React.JSX.Element 
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.brandBackground },
-  list: { padding: spacing.lg, flexGrow: 1 },
+  list: { ...screenShellStyle, padding: spacing.lg, flexGrow: 1 },
   header: { marginBottom: spacing.md, gap: spacing.xs },
   title: { fontSize: 22, color: colors.brandAnchor, fontFamily: typography.fontFamily.bold },
   subtitle: { fontSize: typography.fontSize.sm, color: colors.brandTextMuted },

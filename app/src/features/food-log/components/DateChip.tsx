@@ -1,6 +1,7 @@
 import React from 'react';
 import { Platform, Pressable, StyleSheet, ViewStyle } from 'react-native';
 import { Text } from '@shared/components';
+import type { PressableState } from '@shared/components/Button';
 import { colors, typography, spacing, radius } from '@theme';
 
 interface Props {
@@ -13,7 +14,7 @@ export function DateChip({ label, selected, onPress }: Props): React.JSX.Element
   return (
     <Pressable
       onPress={onPress}
-      style={({ pressed, focused }) => [
+      style={({ pressed, focused }: PressableState) => [
         styles.chip,
         selected && styles.chipSelected,
         pressed && styles.chipPressed,

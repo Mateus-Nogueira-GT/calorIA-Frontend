@@ -7,3 +7,4 @@ export { Skeleton } from './Skeleton';
 export { EmptyState } from './EmptyState';
 export { ErrorState } from './ErrorState';
 export { AppErrorBoundary } from './AppErrorBoundary';
+export { ScreenShell, screenShellStyle, MAX_CONTENT_WIDTH } from './ScreenShell';

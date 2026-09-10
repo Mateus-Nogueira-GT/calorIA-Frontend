@@ -3,8 +3,8 @@ import { act, renderHook, waitFor } from '@testing-library/react-native';
 import { useFoodLog } from './useFoodLog';
 import { useFoodLogStore } from '../store';
 
-const mockMeal = { id: 'm1', name: 'Frango', calories: 450, protein: 38, carbs: 52, fat: 8, loggedAt: new Date().toISOString() };
-const mockNewMeal = { id: 'm2', name: 'Novo', calories: 300, protein: 20, carbs: 30, fat: 5, loggedAt: new Date().toISOString() };
+const mockMeal = { id: 'm1', name: 'Frango', calories: 450, protein: 38, carbs: 52, fat: 8, loggedAt: new Date().toISOString(), mealType: 'other' as const };
+const mockNewMeal = { id: 'm2', name: 'Novo', calories: 300, protein: 20, carbs: 30, fat: 5, loggedAt: new Date().toISOString(), mealType: 'other' as const };
 
 jest.mock('@shared/utils/show-alert', () => ({ showAlert: jest.fn() }));
 // eslint-disable-next-line @typescript-eslint/no-require-imports

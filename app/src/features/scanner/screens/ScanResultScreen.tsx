@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, typography, spacing } from '@theme';
-import { Button, ErrorState } from '@shared/components';
+import { Button, ErrorState, screenShellStyle } from '@shared/components';
 import { ScanResultList } from '../components/ScanResultList';
 import { useScannerStore } from '../store';
 import type { ScannerStackScreenProps } from '@navigation/types';
@@ -66,7 +66,7 @@ export function ScanResultScreen({ navigation }: Props): React.JSX.Element {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.brandBackground },
-  content: { padding: spacing.lg },
+  content: { ...screenShellStyle, padding: spacing.lg },
   empty: {
     fontSize: typography.fontSize.base,
     color: colors.brandTextMuted,

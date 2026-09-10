@@ -43,6 +43,15 @@ interface AuthState {
   preferencesByUser: Record<string, ProfilePreferences>;
   /** true depois que o persist terminou de reidratar do storage (boot). */
   hasHydrated: boolean;
+  /**
+   * R6: onboarding concluído? `null` = ainda não checamos com o servidor.
+   * O RootNavigator só olhava `isAuthenticated`, então quem travava no
+   * ProfileSetup, fechava o app e depois fazia LOGIN entrava direto no
+   * dashboard — autenticado e sem altura, peso ou objetivo. Sem esses campos
+   * nenhuma dieta é gerada, e o painel ficava eternamente sem metas.
+   */
+  profileComplete: boolean | null;
+  setProfileComplete: (value: boolean | null) => void;
   setHasHydrated: (value: boolean) => void;
   setToken: (token: string, user: User, refreshToken?: string) => void;
   setPendingAuth: (token: string, user: User, refreshToken: string) => void;
@@ -145,6 +154,8 @@ export const useAuthStore = create<AuthState>()(
       },
       preferencesByUser: {},
       hasHydrated: false,
+      profileComplete: null,
+      setProfileComplete: (value) => set({ profileComplete: value }),
       setHasHydrated: (value) => set({ hasHydrated: value }),
       setToken: (token, user, refreshToken) =>
         set((state) => {
@@ -159,6 +170,9 @@ export const useAuthStore = create<AuthState>()(
             user,
             isAuthenticated: true,
             pendingAuth: null,
+            // Quem chega aqui vindo do ProfileSetup acabou de salvar o perfil.
+            // Quem chega pelo login ainda será verificado pelo RootNavigator.
+            profileComplete: state.pendingAuth ? true : state.profileComplete,
             profilePreferences,
             preferencesByUser: { ...state.preferencesByUser, [user.id]: profilePreferences },
           };
@@ -215,6 +229,7 @@ export const useAuthStore = create<AuthState>()(
           user: null,
           isAuthenticated: false,
           pendingAuth: null,
+          profileComplete: null,
           profilePreferences: {
             goal: null,
             coachPersonality: null,
@@ -232,6 +247,7 @@ export const useAuthStore = create<AuthState>()(
         user: state.user,
         isAuthenticated: state.isAuthenticated,
         preferencesByUser: state.preferencesByUser,
+        profileComplete: state.profileComplete,
       }),
       onRehydrateStorage: () => (state) => {
         if (state) {

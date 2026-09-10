@@ -17,6 +17,7 @@ import { ScannerNavigator } from './ScannerNavigator';
 import { useAuthStore } from '@features/auth/store';
 import { useCoachStore } from '@features/coach/store';
 import { dietService } from '@shared/services/diet.service';
+import { isProfileComplete, profileService } from '@shared/services/profile.service';
 import type { LinkingOptions } from '@react-navigation/native';
 import type { AuthStackParamList, RootStackParamList } from './types';
 
@@ -27,7 +28,20 @@ const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 // Nota: o linking do AuthNavigator é resolvido via getStateFromPath default
 // (rota registrada no próprio AuthStack quando deslogado).
 const linking: LinkingOptions<RootStackParamList> = {
-  prefixes: ['caloria://', 'https://caloria.app'],
+  /**
+   * Só o esquema próprio. 'https://caloria.app' estava declarado aqui mas
+   * nunca funcionou em NENHUMA das duas plataformas, porque link https exige
+   * verificação de domínio que não existe:
+   *
+   *   - iOS: entitlement com.apple.developer.associated-domains + o arquivo
+   *     apple-app-site-association servido no domínio;
+   *   - Android: intent-filter com android:scheme="https" e autoVerify, mais
+   *     o assetlinks.json no domínio. O AndroidManifest só declara o
+   *     intent-filter do esquema "caloria".
+   *
+   * Para religar, fazer os dois lados acima e devolver o prefixo aqui.
+   */
+  prefixes: ['caloria://'],
   config: {
     screens: {
       App: {
@@ -63,10 +77,18 @@ function isAppPreviewEnabled(): boolean {
   return new URLSearchParams(window.location.search).get('preview') === 'app';
 }
 
-function AuthNavigator(): React.JSX.Element {
+function AuthNavigator({ startAtProfileSetup = false }: { startAtProfileSetup?: boolean }): React.JSX.Element {
+  // R6: quem já tem sessão e só não terminou o perfil não pode cair no Welcome
+  // — seria pedir login a quem acabou de logar. Vai direto ao passo que falta.
+  const initialRouteName = startAtProfileSetup
+    ? 'ProfileSetup'
+    : isResetPasswordPath()
+      ? 'ResetPassword'
+      : 'Welcome';
+
   return (
     <AuthStack.Navigator
-      initialRouteName={isResetPasswordPath() ? 'ResetPassword' : 'Welcome'}
+      initialRouteName={initialRouteName}
       screenOptions={{ headerShown: false, animation: 'slide_from_right' }}
     >
       <AuthStack.Screen name="Welcome" component={WelcomeScreen} />
@@ -82,7 +104,37 @@ function AuthNavigator(): React.JSX.Element {
 export function RootNavigator(): React.JSX.Element {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const hasHydrated = useAuthStore((state) => state.hasHydrated);
-  const showAuthenticatedApp = isAuthenticated || isAppPreviewEnabled();
+  const profileComplete = useAuthStore((state) => state.profileComplete);
+  const setProfileComplete = useAuthStore((state) => state.setProfileComplete);
+
+  // R6: estar autenticado não basta. Quem abandonou o ProfileSetup no meio e
+  // depois fez login caía no dashboard sem altura, peso nem objetivo — e sem
+  // eles o backend não gera dieta nenhuma, então o painel ficava para sempre
+  // sem metas (e o R5 preenchia o buraco com números inventados).
+  const showAuthenticatedApp =
+    (isAuthenticated && profileComplete === true) || isAppPreviewEnabled();
+
+  // `profileComplete` é persistido: quem já foi verificado não paga splash de
+  // novo. Só fica indeterminado na primeira abertura depois desta versão.
+  const checkingProfile = isAuthenticated && profileComplete === null;
+
+  useEffect(() => {
+    if (!hasHydrated || !isAuthenticated || profileComplete !== null) return;
+    let active = true;
+    void profileService
+      .getMe()
+      .then((profile) => {
+        if (active) setProfileComplete(isProfileComplete(profile));
+      })
+      .catch(() => {
+        // Offline ou servidor fora NÃO é motivo para mandar alguém refazer o
+        // onboarding — nem para deixar o app preso num splash eterno.
+        if (active) setProfileComplete(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, [hasHydrated, isAuthenticated, profileComplete, setProfileComplete]);
 
   // Retomada pós-boot: se uma geração de dieta ficou no meio (app fechado),
   // religa o polling — sem isso a dieta ficava parcial para sempre.
@@ -98,7 +150,7 @@ export function RootNavigator(): React.JSX.Element {
 
   // Espera o persist reidratar a sessão antes de decidir a navegação —
   // senão o usuário logado vê a tela de login piscar a cada abertura.
-  if (!hasHydrated && !isAppPreviewEnabled()) {
+  if ((!hasHydrated || checkingProfile) && !isAppPreviewEnabled()) {
     return (
       <View style={splashStyles.container}>
         <ActivityIndicator size="large" />
@@ -138,7 +190,7 @@ export function RootNavigator(): React.JSX.Element {
           />
         </RootStack.Navigator>
       ) : (
-        <AuthNavigator />
+        <AuthNavigator startAtProfileSetup={isAuthenticated && profileComplete === false} />
       )}
     </NavigationContainer>
   );

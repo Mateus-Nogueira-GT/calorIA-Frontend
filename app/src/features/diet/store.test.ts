@@ -14,6 +14,8 @@ const meal = (id: string, completedAt: string | null = null): PlannedMeal => ({
   carbs: 50,
   fat: 10,
   completedAt,
+  // completedToday é o campo que a UI lê (B1); na fixture segue o completedAt.
+  completedToday: completedAt !== null,
 });
 
 const plan: DietPlan = {

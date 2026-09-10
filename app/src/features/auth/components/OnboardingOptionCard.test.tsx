@@ -1,4 +1,5 @@
 import React from 'react';
+import { StyleSheet } from 'react-native';
 import { render, fireEvent } from '@testing-library/react-native';
 import { OnboardingOptionCard } from './OnboardingOptionCard';
 
@@ -44,8 +45,8 @@ describe('OnboardingOptionCard', () => {
       />,
     );
     const el = getByTestId('card');
-    expect(el.props.style).toEqual(
-      expect.arrayContaining([expect.objectContaining({ borderColor: '#3DDC84' })]),
-    );
+    // O RN 0.85 entrega o style já achatado quando vem de callback do Pressable;
+    // asserção por arrayContaining passava a depender do formato interno.
+    expect(StyleSheet.flatten(el.props.style)).toMatchObject({ borderColor: '#3DDC84' });
   });
 });
