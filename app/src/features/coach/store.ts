@@ -183,17 +183,20 @@ export const useCoachStore = create<CoachState>()(
         let networkMisses = 0;
         // 7 passos + folga pras janelas de recuperação.
         for (let i = 0; i < 30; i++) {
+          const before = get().dietJob?.daysCompleted ?? 0;
           try {
             const s = await dietService.stepJob(jobId);
             networkMisses = 0;
             apply(s);
             if (s.status === 'completed') return finish('completed');
             if (s.status === 'failed') return;
+            // OP1: 200 sem avanço = outro step em voo no servidor. Espera antes
+            // de pedir de novo, em vez de bater no rate limit.
+            if (s.daysCompleted === before) await sleep(5000);
           } catch {
             // O step falhou NO CLIENTE (timeout/rede), mas o servidor pode ainda
             // estar gerando (timeout lá: 120s). Poll de status até o dia avançar
             // ou ~160s (chamada antiga certamente encerrada) antes de novo step.
-            const before = get().dietJob?.daysCompleted ?? 0;
             for (let poll = 0; poll < 8; poll++) {
               await sleep(20000);
               try {

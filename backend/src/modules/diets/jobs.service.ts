@@ -344,6 +344,16 @@ export async function getActiveJob(fastify: FastifyInstance, userId: string): Pr
 /** O4: uma regeneração com feedback; na segunda falha o job vai para failed. */
 const MAX_DAY_ATTEMPTS = 2
 
+// OP1: expira quando a function não pode mais existir — mesmo teto do
+// maxDuration (300s) do endpoint. Com MAX_DAY_ATTEMPTS=2 e timeout de 120s por
+// chamada de IA, o guardrail loop pode legitimamente levar ~240s num único
+// processJobStep sem nada de errado (só modelo lento + 1 dia rejeitado). Um
+// valor abaixo do maxDuration expiraria o lock com o step ainda vivo, e um
+// segundo chamador pagaria por uma segunda geração do mesmo dia — o dobro que
+// esta tarefa existe para evitar. Acima do maxDuration, um step morto só é
+// liberado quando é certo que a function não pode mais existir.
+const STEP_LOCK_EXPIRY_SECONDS = 300
+
 async function generateDay(
   fastify: FastifyInstance,
   userId: string,
@@ -391,16 +401,25 @@ async function generateDay(
 /**
  * Marca job e draft como failed. A dieta ATIVA anterior permanece intocada, e
  * o /retry consegue devolver a draft e continuar de onde parou.
+ *
+ * `lockToken` fenceia o UPDATE ao `step_token` que ESTA chamada gravou ao
+ * adquirir o lock (OP1): sem isso, um chamador que demorou além dos 300s
+ * podia marcar failed e liberar o lock de um chamador mais novo que já
+ * reassumiu o job. 0 linhas afetadas é o caso correto e silencioso — outra
+ * chamada já é dona do job agora. (Revisão: fencear por timestamp não
+ * funciona com este driver — ver comentário na aquisição do lock.)
  */
 async function failJob(
   fastify: FastifyInstance,
   jobId: string,
   dietId: string,
   error: string,
+  lockToken: string,
 ): Promise<void> {
   await fastify.db`
-    UPDATE diet_jobs SET status = 'failed', error = ${error.slice(0, 300)}, updated_at = NOW()
-    WHERE id = ${jobId}
+    UPDATE diet_jobs
+    SET status = 'failed', error = ${error.slice(0, 300)}, step_started_at = NULL, step_token = NULL, updated_at = NOW()
+    WHERE id = ${jobId} AND step_token = ${lockToken}
   `
   await fastify.db`
     UPDATE diets SET status = 'failed', updated_at = NOW()
@@ -451,6 +470,32 @@ export async function processJobStep(
   `
   const previousDays = summarizePreviousDays(prevRows)
 
+  // OP1: lock em voo. Sem ele, dois aparelhos (ou o app reaberto) pagavam duas
+  // gerações do mesmo dia — o lock otimista lá embaixo só evitava persistir em
+  // dobro. STEP_LOCK_EXPIRY_SECONDS explica o valor da expiração.
+  //
+  // step_token identifica O DONO do lock, não só se está livre: fencear a
+  // liberação por step_started_at (revisão anterior) não funciona com este
+  // driver — postgres.js arredonda TIMESTAMPTZ para milissegundos (JS Date)
+  // tanto ao ler quanto ao escrever, enquanto NOW() do Postgres grava em
+  // microssegundos, então o valor de RETURNING nunca bate de volta na
+  // comparação — nem para o dono legítimo. Um UUID opaco não sofre disso.
+  const acquired = await fastify.db<{ step_token: string }[]>`
+    UPDATE diet_jobs SET step_started_at = NOW(), step_token = gen_random_uuid()
+    WHERE id = ${jobId} AND status IN ('pending', 'running')
+      AND (step_started_at IS NULL
+           OR step_started_at < NOW() - make_interval(secs => ${STEP_LOCK_EXPIRY_SECONDS}))
+    RETURNING step_token
+  `
+  if (acquired.count === 0) {
+    fastify.log.info({ jobId, dayNumber }, 'Step já em andamento — sem nova chamada de IA')
+    return toStatus(job)
+  }
+  // Fenceia as liberações abaixo ao token que ESTA chamada gravou — evita que
+  // um chamador atrasado (lock já expirado e reassumido por outro) apague o
+  // lock vivo de quem é dono agora (finding 3 da revisão da task 16).
+  const lockToken = acquired[0].step_token
+
   // 1) Gera o dia (chamada longa — SEM segurar transação/lock) e passa pelos
   //    guardrails (O4): alérgeno, kcal, reconcile, estrutura. Uma regeneração
   //    com o feedback das violações; se ainda falhar, o job vai para failed.
@@ -479,7 +524,7 @@ export async function processJobStep(
     }
     if (!result || !result.ok) {
       const code = result?.code ?? 'DAY_VALIDATION_FAILED'
-      await failJob(fastify, jobId, job.diet_id, code)
+      await failJob(fastify, jobId, job.diet_id, code, lockToken)
       throw new AppError(
         502,
         code,
@@ -491,7 +536,7 @@ export async function processJobStep(
   } catch (err) {
     if (err instanceof AppError) throw err
     fastify.log.error({ err, jobId, dayNumber }, 'Falha ao gerar dia da dieta')
-    await failJob(fastify, jobId, job.diet_id, String(err))
+    await failJob(fastify, jobId, job.diet_id, String(err), lockToken)
     throw new AppError(502, 'DIET_STEP_FAILED', 'Falha ao gerar um dia da dieta. Tente novamente.')
   }
 
@@ -528,17 +573,28 @@ export async function processJobStep(
         }
       }
       const res = await sql`
-        UPDATE diet_jobs SET days_completed = ${dayNumber}, status = 'running', updated_at = NOW()
+        UPDATE diet_jobs
+        SET days_completed = ${dayNumber}, status = 'running', step_started_at = NULL, step_token = NULL, updated_at = NOW()
         WHERE id = ${jobId} AND days_completed = ${dayNumber - 1}
       `
       if (res.count === 0) throw new Error('CONCURRENT_STEP')
     })
   } catch (err) {
     if (err instanceof Error && err.message === 'CONCURRENT_STEP') {
-      // Outra chamada avançou este dia; retorna o estado atual.
+      // Outra chamada avançou este dia; libera o lock (fenceado ao token desta
+      // chamada — finding 3) e retorna o estado atual.
+      await fastify.db`
+        UPDATE diet_jobs SET step_started_at = NULL, step_token = NULL
+        WHERE id = ${jobId} AND step_token = ${lockToken}
+      `
       return toStatus(await loadJob(fastify, userId, jobId))
     }
-    throw err
+    // OP1 (finding 1 da revisão): qualquer outra falha na persistência —
+    // conexão caiu, constraint, o que for — não pode deixar o lock preso nem
+    // pular o failJob. Mesmo tratamento do bloco de geração acima.
+    fastify.log.error({ err, jobId, dayNumber }, 'Falha ao persistir o dia da dieta')
+    await failJob(fastify, jobId, job.diet_id, String(err), lockToken)
+    throw new AppError(502, 'DIET_STEP_FAILED', 'Falha ao gerar um dia da dieta. Tente novamente.')
   }
 
   // 3) Finaliza se foi o último dia — SÓ AGORA a dieta nova substitui a antiga
