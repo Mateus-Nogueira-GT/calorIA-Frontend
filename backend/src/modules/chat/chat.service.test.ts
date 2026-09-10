@@ -43,8 +43,16 @@ describe('CHAT_SYSTEM_PROMPT — segurança e escopo (S6)', () => {
   })
 
   it('tem regra de escopo e de não insistir após recusa', () => {
-    expect(prompt).toMatch(/fora de nutrição/i)
+    expect(prompt).toMatch(/assunto\s+fora disso/i)
     expect(prompt).toMatch(/recusa por segurança/i)
+  })
+
+  // O app faz parte do escopo: "como marco uma refeição?" é pergunta legítima,
+  // não assunto fora de nutrição a ser redirecionado.
+  it('inclui o próprio app no escopo, junto com dieta e alimentação', () => {
+    expect(prompt).toMatch(/próprio app/i)
+    expect(prompt).toMatch(/registrar refeição/i)
+    expect(prompt).toMatch(/dieta/i)
   })
 })
 
