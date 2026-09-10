@@ -69,6 +69,11 @@ export function ScanItemRow({ item, onChange, onRemove }: Props): React.JSX.Elem
         })}
       </View>
       <ConfidenceBadge confidence={item.confidence} />
+      {item.uncertain ? (
+        <Text style={styles.uncertain} accessibilityRole='text'>
+          Estimativa incerta — confira os valores
+        </Text>
+      ) : null}
     </View>
   );
 }
@@ -103,4 +108,5 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.base,
     color: colors.brandText,
   },
+  uncertain: { fontSize: typography.fontSize.xs, color: colors.warning },
 });

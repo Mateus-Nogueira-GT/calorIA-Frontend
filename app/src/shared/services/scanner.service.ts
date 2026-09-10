@@ -8,6 +8,7 @@ export interface ScanItem {
   carbs: number;
   fat: number;
   confidence: number;
+  uncertain?: boolean;
 }
 
 export interface ScanResponse {

@@ -21,6 +21,8 @@ export const scanItemSchema = z.object({
   fat: z.number(),
   /** Confiança da IA na estimativa, entre 0 e 1. */
   confidence: z.number().min(0).max(1),
+  /** OP3: confiança < 0.5 — o app pede para conferir os valores. */
+  uncertain: z.boolean(),
 })
 
 // A IA hoje retorna 1 item por foto, mas o contrato já é uma lista para abrir

@@ -11,6 +11,7 @@ import {
 export * from './collected-data.js'
 export * from './allergens.js'
 export * from './day.js'
+export * from './vision.js'
 
 export type DayGuardrailCode = 'ALLERGEN_IN_OUTPUT' | 'RECONCILE_FAILED' | 'DAY_VALIDATION_FAILED'
 
