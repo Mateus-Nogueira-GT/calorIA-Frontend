@@ -110,6 +110,7 @@ export async function analyzePhoto(
       model: env.OPENAI_VISION_MODEL,
       userId,
       usage: completion.usage,
+      finishReason: completion.choices[0]?.finish_reason ?? null,
     })
     const parsed = completion.choices[0].message.parsed
     if (!parsed) throw new Error('OpenAI retornou análise vazia')

@@ -19,6 +19,11 @@ interface AiUsageParams {
     completion_tokens?: number
     total_tokens?: number
   } | null
+  // OP4: contexto para consultas de alerta (loop de tool, truncamentos).
+  conversationId?: string | null
+  jobId?: string | null
+  finishReason?: string | null
+  toolCalled?: boolean | null
 }
 
 /**
@@ -41,18 +46,25 @@ export function logAiUsage(fastify: FastifyInstance, params: AiUsageParams): voi
           promptTokens: params.usage?.prompt_tokens ?? null,
           completionTokens: params.usage?.completion_tokens ?? null,
           totalTokens: params.usage?.total_tokens ?? null,
+          conversationId: params.conversationId ?? null,
+          jobId: params.jobId ?? null,
+          finishReason: params.finishReason ?? null,
+          toolCalled: params.toolCalled ?? null,
         },
       },
       'ai_usage',
     )
 
     void fastify.db`
-      INSERT INTO ai_usage (user_id, feature, model, prompt_tokens, completion_tokens, total_tokens)
+      INSERT INTO ai_usage (user_id, feature, model, prompt_tokens, completion_tokens, total_tokens,
+                            conversation_id, job_id, finish_reason, tool_called)
       VALUES (
         ${params.userId}, ${params.feature}, ${params.model},
         ${params.usage?.prompt_tokens ?? null},
         ${params.usage?.completion_tokens ?? null},
-        ${params.usage?.total_tokens ?? null}
+        ${params.usage?.total_tokens ?? null},
+        ${params.conversationId ?? null}, ${params.jobId ?? null},
+        ${params.finishReason ?? null}, ${params.toolCalled ?? null}
       )
     `.catch((err: unknown) => {
       // Envolvemos log.warn em try/catch porque um erro ao serializar `err` ou

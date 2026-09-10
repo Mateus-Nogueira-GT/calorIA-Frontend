@@ -128,6 +128,27 @@ describe('logAiUsage — persistência (M3)', () => {
   })
 })
 
+describe('logAiUsage — contexto (OP4)', () => {
+  it('grava conversation_id, finish_reason e tool_called quando informados', async () => {
+    const { fastify, calls } = fakeFastify()
+    logAiUsage(fastify, {
+      feature: 'chat',
+      model: 'm',
+      userId: 'u',
+      usage: { total_tokens: 10 },
+      conversationId: 'conv-1',
+      finishReason: 'tool_calls',
+      toolCalled: true,
+    })
+    await new Promise((r) => setTimeout(r, 0))
+    const ins = calls.find((c) => c.sql.includes('INSERT INTO ai_usage'))
+    expect(ins?.sql).toContain('conversation_id')
+    expect(ins?.params).toContain('conv-1')
+    expect(ins?.params).toContain('tool_calls')
+    expect(ins?.params).toContain(true)
+  })
+})
+
 describe('checkDailyQuota (OP2)', () => {
   const USER = '11111111-1111-1111-1111-111111111111'
 

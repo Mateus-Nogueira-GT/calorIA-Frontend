@@ -313,7 +313,15 @@ export async function sendChatMessage(
   }
 
   let completion = await callChat(baseParams)
-  logAiUsage(fastify, { feature: 'chat', model: env.OPENAI_MODEL, userId, usage: completion.usage })
+  logAiUsage(fastify, {
+    feature: 'chat',
+    model: env.OPENAI_MODEL,
+    userId,
+    usage: completion.usage,
+    conversationId,
+    finishReason: completion.choices[0]?.finish_reason ?? null,
+    toolCalled: completion.choices[0]?.finish_reason === 'tool_calls',
+  })
 
   // C3: reasoning tokens consumiram o orçamento → conteúdo vazio/cortado. Antes,
   // o fallback "Desculpe, não consegui…" era mostrado E persistido no histórico,
@@ -333,6 +341,9 @@ export async function sendChatMessage(
       model: env.OPENAI_MODEL,
       userId,
       usage: completion.usage,
+      conversationId,
+      finishReason: completion.choices[0]?.finish_reason ?? null,
+      toolCalled: completion.choices[0]?.finish_reason === 'tool_calls',
     })
     if (completion.choices[0]?.finish_reason === 'length') {
       throw new AppError(

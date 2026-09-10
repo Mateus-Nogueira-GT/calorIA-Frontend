@@ -357,6 +357,7 @@ const STEP_LOCK_EXPIRY_SECONDS = 300
 async function generateDay(
   fastify: FastifyInstance,
   userId: string,
+  jobId: string,
   dayNumber: number,
   userData: CollectedUserData,
   targets: DietTargets,
@@ -392,6 +393,8 @@ async function generateDay(
     model: env.OPENAI_DIET_MODEL,
     userId,
     usage: completion.usage,
+    jobId,
+    finishReason: completion.choices[0]?.finish_reason ?? null,
   })
   const parsed = completion.choices[0]?.message?.parsed
   if (!parsed) throw new Error('IA retornou dia vazio')
@@ -513,6 +516,7 @@ export async function processJobStep(
       const generated = await generateDay(
         fastify,
         userId,
+        jobId,
         dayNumber,
         userData,
         targets,
