@@ -56,19 +56,49 @@ export const aiSingleDaySchema = z.object({
   meals: z.array(aiDietMealSchema),
 })
 
+/**
+ * Limites de plausibilidade (S1 da spec de guardrails). Fora deles o servidor
+ * NÃO calcula metas: pede confirmação ao usuário (altura em metros, peso em
+ * libras e idade impossível chegavam ao BMR sem ninguém conferir).
+ *
+ * age começa em 10, não 18, de propósito (D7): queremos que o modelo REPORTE
+ * 15 anos para o servidor recusar com a mensagem certa, em vez de o modelo
+ * "arredondar" para 18 só para passar no schema.
+ */
+export const COLLECTED_BOUNDS = {
+  weightKg: [30, 300],
+  heightCm: [120, 250],
+  age: [10, 100],
+  mealsPerDay: [3, 6],
+  listMaxItems: 10,
+  listItemMaxChars: 40,
+  preferencesMaxChars: 300,
+} as const
+
+const shortList = z
+  .array(z.string().max(COLLECTED_BOUNDS.listItemMaxChars))
+  .max(COLLECTED_BOUNDS.listMaxItems)
+
 /** Dados coletados pelo chat antes de gerar a dieta */
 export const collectedUserDataSchema = z.object({
-  weight_kg: z.number(),
-  height_cm: z.number(),
-  age: z.number().int(),
+  weight_kg: z.number().min(COLLECTED_BOUNDS.weightKg[0]).max(COLLECTED_BOUNDS.weightKg[1]),
+  height_cm: z.number().min(COLLECTED_BOUNDS.heightCm[0]).max(COLLECTED_BOUNDS.heightCm[1]),
+  age: z.number().int().min(COLLECTED_BOUNDS.age[0]).max(COLLECTED_BOUNDS.age[1]),
   gender: z.enum(['male', 'female', 'other']),
   goal: z.enum(['lose_weight', 'maintain', 'gain_muscle', 'gain_weight']),
   activity_level: z.enum(['sedentary', 'light', 'moderate', 'active', 'very_active']),
-  meals_per_day: z.number().int().min(3).max(6),
-  dietary_restrictions: z.array(z.string()),
-  allergies: z.array(z.string()),
-  food_preferences: z.string().nullable(),
+  meals_per_day: z
+    .number()
+    .int()
+    .min(COLLECTED_BOUNDS.mealsPerDay[0])
+    .max(COLLECTED_BOUNDS.mealsPerDay[1]),
+  dietary_restrictions: shortList,
+  allergies: shortList,
+  food_preferences: z.string().max(COLLECTED_BOUNDS.preferencesMaxChars).nullable(),
   message_to_user: z.string(),
+  // Gestação, diagnóstico, transtorno alimentar… (D2). Default [] para jobs
+  // gravados antes desta versão continuarem parseáveis em processJobStep.
+  health_conditions: shortList.default([]),
 })
 
 export type AiDietPlan = z.infer<typeof aiDietPlanSchema>

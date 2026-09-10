@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   assembleSystemPrompt,
   buildSystemPrompt,
+  formatDietStartedMarker,
   mapOpenAIError,
   normalizeHistory,
   windowedHistory,
@@ -24,6 +25,26 @@ describe('buildSystemPrompt (personality)', () => {
     for (const p of ['motivational', 'direct', 'empathetic', 'scientific']) {
       expect(buildSystemPrompt(p)).toContain('collect_diet_data')
     }
+  })
+})
+
+describe('CHAT_SYSTEM_PROMPT — segurança e escopo (S6)', () => {
+  const prompt = buildSystemPrompt('direct')
+
+  it('pergunta sobre gestação/condições de saúde antes da tool', () => {
+    expect(prompt).toMatch(/gestante|gestação/i)
+    expect(prompt).toContain('health_conditions')
+  })
+
+  it('não ensina mais a fórmula de cálculo (o servidor calcula)', () => {
+    expect(prompt).not.toContain('Mifflin')
+    expect(prompt).not.toContain('TDEE − 500')
+    expect(prompt).toMatch(/não calcule nem prometa/i)
+  })
+
+  it('tem regra de escopo e de não insistir após recusa', () => {
+    expect(prompt).toMatch(/fora de nutrição/i)
+    expect(prompt).toMatch(/recusa por segurança/i)
   })
 })
 
@@ -111,5 +132,19 @@ describe('assembleSystemPrompt — dieta já existente', () => {
 
     expect(prompt).not.toContain('JÁ TEM uma dieta ativa')
     expect(prompt).toBe(assembleSystemPrompt(base, contexto, conhecidos))
+  })
+})
+
+describe('formatDietStartedMarker (C2)', () => {
+  it('usa o fuso do app (local = UTC + offset)', () => {
+    expect(formatDietStartedMarker(new Date('2026-09-09T17:32:00Z'), -180)).toBe(
+      '[Dieta de 7 dias iniciada em 09/09 às 14:32]',
+    )
+  })
+
+  it('sem offset, UTC', () => {
+    expect(formatDietStartedMarker(new Date('2026-01-05T03:07:00Z'))).toBe(
+      '[Dieta de 7 dias iniciada em 05/01 às 03:07]',
+    )
   })
 })

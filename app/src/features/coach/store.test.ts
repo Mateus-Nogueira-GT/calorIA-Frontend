@@ -74,6 +74,21 @@ describe('useCoachStore', () => {
     expect(result.current.lastFailedAction).toBe('send');
   });
 
+  it('429 AI_QUOTA_EXCEEDED mostra a mensagem de limite diário, não a genérica', async () => {
+    const { coachService } = jest.requireMock('@shared/services/coach.service');
+    const quota = Object.assign(new Error('429'), {
+      isAxiosError: true,
+      response: { status: 429, data: { error: 'AI_QUOTA_EXCEEDED' } },
+    });
+    coachService.sendMessage.mockRejectedValueOnce(quota);
+
+    const { result } = renderHook(() => useCoachStore());
+    await act(() => result.current.sendMessage('oi'));
+
+    expect(result.current.error).toBe('Você atingiu o limite diário do coach. Volte amanhã.');
+    expect(result.current.lastFailedAction).toBe('send');
+  });
+
   it('preserva dietGenerated em mensagens do histórico', async () => {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { coachService } = require('@shared/services/coach.service');

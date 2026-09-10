@@ -41,4 +41,13 @@ describe('ScanItemRow', () => {
     expect(onChange).toHaveBeenCalledWith('1', { calories: 0 });
     expect(getByTestId('scan-item-calories').props.value).toBe('');
   });
+
+  it('mostra o aviso de estimativa incerta quando uncertain=true', () => {
+    const { getByText, queryByText, rerender } = render(
+      <ScanItemRow item={{ ...item, uncertain: true }} onChange={() => {}} onRemove={() => {}} />,
+    );
+    expect(getByText('Estimativa incerta — confira os valores')).toBeTruthy();
+    rerender(<ScanItemRow item={item} onChange={() => {}} onRemove={() => {}} />);
+    expect(queryByText('Estimativa incerta — confira os valores')).toBeNull();
+  });
 });

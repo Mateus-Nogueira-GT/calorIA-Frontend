@@ -292,6 +292,13 @@ const dietsRoutes: FastifyPluginAsyncZod = async (fastify) => {
   fastify.post(
     '/jobs/:id/step',
     {
+      // OP1: chave é por usuário, não por aparelho — os 2 aparelhos do cenário
+      // desta task dividem o mesmo orçamento. Cada aparelho espera 5s quando o
+      // step não avança (sob concorrência), então 2 aparelhos batendo geram
+      // ~24 chamadas/min; 30 dá folga pros 7 passos + retries + 2 aparelhos em
+      // polling, mantendo o teto contra um cliente descontrolado (que agora
+      // também tem o lock, e em breve uma cota de tokens, na frente dele).
+      config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
       schema: {
         tags: ['Diets'],
         summary: 'Gerar próximo dia da dieta',
@@ -304,7 +311,10 @@ const dietsRoutes: FastifyPluginAsyncZod = async (fastify) => {
           401: errorSchema,
           404: errorSchema,
           422: errorSchema,
-          502: errorSchema,
+          429: errorSchema.describe('TOO_MANY_REQUESTS (30/min) | AI_QUOTA_EXCEEDED (teto diário)'),
+          502: errorSchema.describe(
+            'DIET_STEP_FAILED (IA indisponível) | ALLERGEN_IN_OUTPUT | DAY_VALIDATION_FAILED | RECONCILE_FAILED (dia gerado reprovado nos guardrails; o job vai para failed e /retry continua do mesmo dia)',
+          ),
         },
       },
     },

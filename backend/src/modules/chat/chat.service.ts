@@ -1,11 +1,12 @@
 import { randomUUID } from 'node:crypto'
 import type { FastifyInstance } from 'fastify'
 import type OpenAI from 'openai'
-import { buildModelsField, logAiUsage } from '../../shared/ai-usage.js'
+import { buildModelsField, checkDailyQuota, logAiUsage } from '../../shared/ai-usage.js'
 import { type CollectedUserData, collectedUserDataSchema } from '../../shared/diet-ai-schema.js'
 import { env } from '../../shared/env.js'
 import { AppError } from '../../shared/errors.js'
-import { createDietJob } from '../diets/jobs.service.js'
+import { assessSafety, describeInvalidFields } from '../../shared/guardrails/index.js'
+import { createDietJob, getPendingJob } from '../diets/jobs.service.js'
 import { fetchUserContext, formatKnownData, formatUserContext } from './chat-context.js'
 import type { ChatMessageBody, ChatResponse } from './chat.schemas.js'
 
@@ -16,12 +17,15 @@ Seu objetivo é coletar informações do usuário em forma de conversa natural e
 
 ## DADOS QUE VOCÊ DEVE COLETAR (obrigatórios):
 1. Peso atual em kg
-2. Altura em cm
+2. Altura em cm (sempre em centímetros: 175, nunca 1,75)
 3. Idade (ou data de nascimento)
 4. Sexo (masculino / feminino / outro)
 5. Objetivo: perder peso / manter peso / ganhar massa / ganhar peso
 6. Nível de atividade física: sedentário / levemente ativo / moderadamente ativo / ativo / muito ativo
 7. Quantas refeições por dia prefere (3 a 6)
+8. Saúde: pergunte UMA vez, antes de gerar, se a pessoa está gestante ou amamentando, tem alguma
+doença diagnosticada (diabetes, renal, cardíaca, tireoide…), transtorno alimentar ou usa medicação
+contínua. Registre a resposta em health_conditions (vazio se disser que não tem nenhuma).
 
 ## DADOS OPCIONAIS (pergunte se não mencionados):
 - Restrições alimentares (vegetariano, vegano, sem glúten, sem lactose, etc.)
@@ -32,13 +36,17 @@ Seu objetivo é coletar informações do usuário em forma de conversa natural e
 - Faça UMA pergunta por vez — nunca uma lista de perguntas
 - Seja breve e amigável (máx 2 parágrafos por resposta)
 - Responda sempre em português brasileiro
-- Quando tiver TODOS os dados obrigatórios, chame a função collect_diet_data
+- Quando tiver TODOS os dados obrigatórios (incluindo a pergunta de saúde), chame a função
+collect_diet_data
 - Não mencione que vai "chamar uma função" — apenas diga que vai gerar a dieta
+- NÃO calcule nem prometa metas em calorias ou macros: quem calcula é o sistema, e o número que
+você disser pode não bater com o plano
 - Você NÃO é médico: oriente o usuário a consultar profissionais para questões de saúde
-
-## CÁLCULO (para referência interna):
-Use Mifflin-St Jeor para BMR, multiplique pelo fator de atividade (TDEE) e ajuste pelo objetivo:
-- Perder peso: TDEE − 500 kcal | Manter: TDEE | Ganhar massa: TDEE + 300 | Ganhar peso: TDEE + 500`
+- Escopo: assunto fora de nutrição, alimentação e hábitos (ex.: política, programação, outras
+áreas) → responda em uma frase que só ajuda com alimentação e volte ao assunto
+- Se a sua última resposta foi uma recusa por segurança (menor de idade, condição de saúde, IMC
+baixo), NÃO chame collect_diet_data de novo até o usuário alterar o dado. Exceção: se recusou por
+IMC baixo e o usuário aceitar um plano de manutenção, chame a função com goal = maintain`
 
 // Trecho de tom adicionado ao prompt conforme a personalidade escolhida no onboarding.
 const PERSONALITY_TONES: Record<string, string> = {
@@ -107,6 +115,17 @@ export function assembleSystemPrompt(
 // pra falhar com erro tratável antes de o gateway cortar em 502.
 const OPENAI_TIMEOUT_MS = 50_000
 
+const CHAT_MAX_TOKENS = 2000
+const CHAT_RETRY_MAX_TOKENS = 4000
+
+/**
+ * C3: no retry por `length`, reasoning mínimo — sobra orçamento para o texto.
+ * O tipo ReasoningEffort do SDK 4.104 é 'low'|'medium'|'high'|null e ainda não
+ * conhece 'minimal'; a API aceita. Spread de Record não dispara o excess-property
+ * check (mesmo truque de buildModelsField para `models`).
+ */
+const MINIMAL_REASONING = { reasoning_effort: 'minimal' } as Record<string, unknown>
+
 /**
  * G6 da spec: só as últimas N mensagens vão para o modelo — sem janela, o
  * custo/latência cresciam linearmente com a conversa. O histórico COMPLETO
@@ -130,14 +149,28 @@ export function mapOpenAIError(err: unknown): AppError {
   return new AppError(502, 'AI_ERROR', 'Serviço de IA temporariamente indisponível')
 }
 
+/**
+ * C2: o histórico guarda só {role, content}; a chamada da tool e o job nunca
+ * entravam nele. Para o modelo, a conversa era "dados → vou gerar → ok" — nada
+ * dizia que algo rodou. Este marcador é o que ele passa a ver.
+ */
+export function formatDietStartedMarker(now: Date, tzOffsetMinutes?: number): string {
+  const local = new Date(now.getTime() + (tzOffsetMinutes ?? 0) * 60_000)
+  const dd = String(local.getUTCDate()).padStart(2, '0')
+  const mm = String(local.getUTCMonth() + 1).padStart(2, '0')
+  const hh = String(local.getUTCHours()).padStart(2, '0')
+  const mi = String(local.getUTCMinutes()).padStart(2, '0')
+  return `[Dieta de 7 dias iniciada em ${dd}/${mm} às ${hh}:${mi}]`
+}
+
 // ─── Tool definition para coleta de dados ─────────────────────────────────
 
-const COLLECT_DIET_DATA_TOOL: OpenAI.Chat.ChatCompletionTool = {
+export const COLLECT_DIET_DATA_TOOL: OpenAI.Chat.ChatCompletionTool = {
   type: 'function',
   function: {
     name: 'collect_diet_data',
     description:
-      'Chame esta função APENAS quando tiver coletado TODOS os dados obrigatórios do usuário (peso, altura, idade, sexo, objetivo, nível de atividade e número de refeições por dia). Não chame antes de ter todas essas informações.',
+      'Chame esta função APENAS quando tiver coletado TODOS os dados obrigatórios do usuário (peso, altura, idade, sexo, objetivo, nível de atividade e número de refeições por dia). Não chame antes de ter todas essas informações. Pergunte antes sobre gestação e condições de saúde e preencha health_conditions.',
     parameters: {
       type: 'object',
       required: [
@@ -152,11 +185,17 @@ const COLLECT_DIET_DATA_TOOL: OpenAI.Chat.ChatCompletionTool = {
         'dietary_restrictions',
         'allergies',
         'food_preferences',
+        'health_conditions',
       ],
       properties: {
-        weight_kg: { type: 'number', description: 'Peso em kg' },
-        height_cm: { type: 'number', description: 'Altura em cm' },
-        age: { type: 'integer', description: 'Idade em anos' },
+        weight_kg: { type: 'number', minimum: 30, maximum: 300, description: 'Peso em kg' },
+        height_cm: {
+          type: 'number',
+          minimum: 120,
+          maximum: 250,
+          description: 'Altura em centímetros (175, nunca 1.75)',
+        },
+        age: { type: 'integer', minimum: 10, maximum: 100, description: 'Idade em anos' },
         gender: { type: 'string', enum: ['male', 'female', 'other'] },
         goal: { type: 'string', enum: ['lose_weight', 'maintain', 'gain_muscle', 'gain_weight'] },
         activity_level: {
@@ -164,10 +203,23 @@ const COLLECT_DIET_DATA_TOOL: OpenAI.Chat.ChatCompletionTool = {
           enum: ['sedentary', 'light', 'moderate', 'active', 'very_active'],
         },
         meals_per_day: { type: 'integer', minimum: 3, maximum: 6 },
-        dietary_restrictions: { type: 'array', items: { type: 'string' } },
-        allergies: { type: 'array', items: { type: 'string' } },
+        dietary_restrictions: {
+          type: 'array',
+          maxItems: 10,
+          items: { type: 'string', maxLength: 40 },
+        },
+        allergies: { type: 'array', maxItems: 10, items: { type: 'string', maxLength: 40 } },
+        health_conditions: {
+          type: 'array',
+          maxItems: 10,
+          items: { type: 'string', maxLength: 40 },
+          description:
+            'Gestação/amamentação, doenças diagnosticadas (diabetes, renal, cardíaca…), ' +
+            'transtorno alimentar, medicação contínua. Vazio se o usuário disse não ter nenhuma.',
+        },
         food_preferences: {
           type: ['string', 'null'],
+          maxLength: 300,
           description: 'Preferências e aversões alimentares',
         },
         message_to_user: {
@@ -198,6 +250,10 @@ export async function sendChatMessage(
   userId: string,
   data: ChatMessageBody,
 ): Promise<ChatResponse> {
+  // OP2: teto diário de tokens antes de qualquer chamada de IA — usuário acima
+  // da cota não paga nem a primeira chamada do turno.
+  await checkDailyQuota(fastify, userId)
+
   const conversationId = data.conversation_id ?? randomUUID()
   const history = await loadHistory(fastify, userId, conversationId)
 
@@ -214,54 +270,124 @@ export async function sendChatMessage(
     date: data.date,
     tzOffsetMinutes: data.tzOffsetMinutes,
   })
+
+  // C1: com geração em voo, o modelo NÃO recebe a tool — não chama o que não
+  // existe. Fecha o buraco da primeira geração (dieta ainda 'draft', logo
+  // hasActiveDiet era false e a instrução de "já tem dieta" não entrava).
+  const pendingJob = await getPendingJob(fastify, userId)
+  const hasActiveDiet = context.diet !== null || pendingJob !== null
   const systemPrompt = assembleSystemPrompt(
     buildSystemPrompt(profile?.coach_personality),
     formatUserContext(context),
     formatKnownData(context),
-    context.diet !== null,
+    hasActiveDiet,
   )
+  const toolParams = pendingJob
+    ? {}
+    : { tools: [COLLECT_DIET_DATA_TOOL], tool_choice: 'auto' as const, parallel_tool_calls: false }
 
   // ── Chamada à OpenAI com suporte a function calling ──────────────────────
-  let completion: Awaited<ReturnType<typeof fastify.openai.chat.completions.create>>
-  try {
-    completion = await fastify.openai.chat.completions.create(
-      {
-        model: env.OPENAI_MODEL,
-        // I5.2: fallbacks do OpenRouter (spread não dispara excess-property check).
-        ...buildModelsField(env.OPENAI_MODEL, env.OPENAI_FALLBACK_MODELS),
-        messages: [{ role: 'system', content: systemPrompt }, ...windowedHistory(history)],
-        tools: [COLLECT_DIET_DATA_TOOL],
-        tool_choice: 'auto',
-        // GPT-5 é reasoning model: não aceita temperature custom (só o default) e
-        // gasta "reasoning tokens" do orçamento — por isso um limite mais folgado.
-        max_tokens: 2000,
-        // Reasoning baixo: coletar dados / decidir a tool não precisa de raciocínio
-        // profundo, e o reasoning alto estourava os 60s da função (timeout).
-        reasoning_effort: 'low',
-      },
-      { timeout: OPENAI_TIMEOUT_MS },
-    )
-  } catch (err) {
-    fastify.log.error({ err }, 'Erro ao chamar OpenAI chat')
-    throw mapOpenAIError(err)
+  const baseParams = {
+    model: env.OPENAI_MODEL,
+    // I5.2: fallbacks do OpenRouter (spread não dispara excess-property check).
+    ...buildModelsField(env.OPENAI_MODEL, env.OPENAI_FALLBACK_MODELS),
+    messages: [{ role: 'system' as const, content: systemPrompt }, ...windowedHistory(history)],
+    ...toolParams,
+    // GPT-5 é reasoning model: não aceita temperature custom (só o default) e
+    // gasta "reasoning tokens" do orçamento — por isso um limite mais folgado.
+    max_tokens: CHAT_MAX_TOKENS,
+    // Reasoning baixo: coletar dados / decidir a tool não precisa de raciocínio
+    // profundo, e o reasoning alto estourava os 60s da função (timeout).
+    reasoning_effort: 'low' as const,
   }
 
-  logAiUsage(fastify, { feature: 'chat', model: env.OPENAI_MODEL, userId, usage: completion.usage })
+  const callChat = async (
+    params: typeof baseParams | (typeof baseParams & Record<string, unknown>),
+  ) => {
+    try {
+      return await fastify.openai.chat.completions.create(params, { timeout: OPENAI_TIMEOUT_MS })
+    } catch (err) {
+      fastify.log.error({ err }, 'Erro ao chamar OpenAI chat')
+      throw mapOpenAIError(err)
+    }
+  }
+
+  let completion = await callChat(baseParams)
+  logAiUsage(fastify, {
+    feature: 'chat',
+    model: env.OPENAI_MODEL,
+    userId,
+    usage: completion.usage,
+    conversationId,
+    finishReason: completion.choices[0]?.finish_reason ?? null,
+    toolCalled: completion.choices[0]?.finish_reason === 'tool_calls',
+  })
+
+  // C3: reasoning tokens consumiram o orçamento → conteúdo vazio/cortado. Antes,
+  // o fallback "Desculpe, não consegui…" era mostrado E persistido no histórico,
+  // contaminando as rodadas seguintes. Uma repetição curta; depois, erro limpo.
+  if (completion.choices[0]?.finish_reason === 'length') {
+    fastify.log.warn(
+      { userId, conversationId },
+      'Chat truncado (length) — repetindo com reasoning mínimo',
+    )
+    completion = await callChat({
+      ...baseParams,
+      max_tokens: CHAT_RETRY_MAX_TOKENS,
+      ...MINIMAL_REASONING,
+    })
+    logAiUsage(fastify, {
+      feature: 'chat',
+      model: env.OPENAI_MODEL,
+      userId,
+      usage: completion.usage,
+      conversationId,
+      finishReason: completion.choices[0]?.finish_reason ?? null,
+      toolCalled: completion.choices[0]?.finish_reason === 'tool_calls',
+    })
+    if (completion.choices[0]?.finish_reason === 'length') {
+      throw new AppError(
+        502,
+        'AI_TRUNCATED',
+        'A IA não conseguiu concluir a resposta. Tente uma mensagem mais curta.',
+      )
+    }
+  }
+  if (completion.choices[0]?.finish_reason === 'content_filter') {
+    throw new AppError(
+      422,
+      'AI_CONTENT_FILTERED',
+      'Não consigo responder a essa mensagem. Vamos falar de alimentação?',
+    )
+  }
 
   const choice = completion.choices[0]
 
   // ── Detecta chamada de função: IA coletou todos os dados ─────────────────
   if (choice.finish_reason === 'tool_calls' && choice.message.tool_calls?.length) {
     const toolCall = choice.message.tool_calls[0]
-
     if (toolCall.function.name === 'collect_diet_data') {
-      return handleDietGeneration(fastify, userId, conversationId, history, toolCall)
+      return handleDietGeneration(
+        fastify,
+        userId,
+        conversationId,
+        history,
+        toolCall,
+        data.tzOffsetMinutes,
+      )
     }
+    fastify.log.warn(
+      { userId, tool: toolCall.function.name },
+      'Tool desconhecida chamada pelo modelo',
+    )
   }
 
   // ── Resposta de conversa normal ──────────────────────────────────────────
-  const assistantMessage =
-    choice.message.content ?? 'Desculpe, não consegui processar sua mensagem.'
+  const assistantMessage = choice.message.content?.trim() ?? ''
+  if (!assistantMessage) {
+    // Sem texto e sem tool válida: não há o que mostrar nem o que persistir.
+    throw new AppError(502, 'AI_TRUNCATED', 'A IA devolveu uma resposta vazia. Tente novamente.')
+  }
   history.push({ role: 'assistant', content: assistantMessage })
   await persistHistory(fastify, userId, conversationId, history, 'collecting')
 
@@ -282,6 +408,7 @@ async function handleDietGeneration(
   conversationId: string,
   history: ChatHistoryMessage[],
   toolCall: OpenAI.Chat.ChatCompletionMessageToolCall,
+  tzOffsetMinutes: number | undefined,
 ): Promise<ChatResponse> {
   // Valida os dados coletados pela IA
   const rawArgs = JSON.parse(toolCall.function.arguments) as unknown
@@ -292,8 +419,8 @@ async function handleDietGeneration(
       { errors: parseResult.error.flatten() },
       'Dados coletados pela IA são inválidos',
     )
-    const fallbackMsg =
-      'Preciso de mais algumas informações antes de gerar sua dieta. Poderia confirmar seu peso e altura?'
+    // S4: pergunta específica por campo (altura em metros, peso implausível…).
+    const fallbackMsg = describeInvalidFields(parseResult.error.issues, rawArgs)
     history.push({ role: 'assistant', content: fallbackMsg })
     await persistHistory(fastify, userId, conversationId, history, 'collecting')
     return {
@@ -306,7 +433,31 @@ async function handleDietGeneration(
   }
 
   const userData = parseResult.data
-  const userMessage = userData.message_to_user
+
+  // S2/S3: menor de idade, condição de saúde ou IMC baixo com déficit → o coach
+  // recusa em TEXTO (status collecting), sem job e sem gravar perfil. A recusa
+  // fica no histórico: nas rodadas seguintes o modelo a vê e não insiste (S6).
+  const safety = assessSafety(userData)
+  if (!safety.ok) {
+    fastify.log.info({ userId, reason: safety.reason }, 'Geração de dieta recusada por segurança')
+    history.push({ role: 'assistant', content: safety.userMessage })
+    await persistHistory(fastify, userId, conversationId, history, 'collecting')
+    return {
+      conversation_id: conversationId,
+      message: {
+        role: 'assistant',
+        content: safety.userMessage,
+        created_at: new Date().toISOString(),
+      },
+      diet_generated: false,
+      diet_id: null,
+      diet_job_id: null,
+    }
+  }
+
+  const userMessage = safety.warningMessage
+    ? `${userData.message_to_user}\n\n${safety.warningMessage}`
+    : userData.message_to_user
 
   // ── Enfileira o job de geração (gera 1 dia por chamada, via polling) ──────
   // Não gera os 7 dias aqui: estouraria o limite de tempo da função serverless.
@@ -349,6 +500,9 @@ async function handleDietGeneration(
 
   // Sinaliza que está gerando; o front faz polling em /diets/jobs/:id/step.
   history.push({ role: 'assistant', content: userMessage })
+  // C2: marcador só no histórico — a resposta ao app continua sendo só a
+  // mensagem do coach, mas nas próximas rodadas o modelo vê que já gerou.
+  history.push({ role: 'assistant', content: formatDietStartedMarker(new Date(), tzOffsetMinutes) })
   await persistHistory(fastify, userId, conversationId, history, 'generating')
 
   fastify.log.info({ userId, jobId: job.jobId }, 'Job de dieta enfileirado')
@@ -421,8 +575,8 @@ async function persistHistory(
   messages: ChatHistoryMessage[],
   status: string,
 ): Promise<void> {
+  const messagesStr = JSON.stringify(messages)
   try {
-    const messagesStr = JSON.stringify(messages)
     await fastify.db`
       INSERT INTO chat_history (id, user_id, messages, status)
       VALUES (${conversationId}, ${userId}, ${messagesStr}::jsonb, ${status})
@@ -432,6 +586,14 @@ async function persistHistory(
             updated_at = NOW()
     `
   } catch (err) {
-    fastify.log.warn({ err }, 'Falha ao persistir histórico de chat')
+    // C5: o histórico é a fonte de verdade da conversa. Engolir a falha
+    // devolvia conversation_id ao app e a próxima mensagem vinha sem o turno
+    // anterior. O app já trata falha de envio com "Tentar novamente".
+    fastify.log.error({ err, conversationId }, 'Falha ao persistir histórico de chat')
+    throw new AppError(
+      500,
+      'HISTORY_WRITE_FAILED',
+      'Não consegui salvar a conversa. Envie a mensagem de novo.',
+    )
   }
 }

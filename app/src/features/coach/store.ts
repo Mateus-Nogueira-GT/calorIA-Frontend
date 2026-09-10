@@ -1,9 +1,24 @@
+import axios from 'axios';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import { coachService, CoachMessage } from '@shared/services/coach.service';
 import { dietService } from '@shared/services/diet.service';
 import { kvStorage } from '@shared/services/storage';
 import { useDietStore } from '@features/diet/store';
+
+// OP2: teto diário de tokens do backend (429 AI_QUOTA_EXCEEDED). Sem isso, o
+// usuário via a mensagem genérica de erro de envio e não sabia que era um
+// limite diário — parecia um bug para tentar de novo mais tarde no mesmo dia.
+const QUOTA_MESSAGE = 'Você atingiu o limite diário do coach. Volte amanhã.';
+const SEND_ERROR_MESSAGE = 'Nao foi possivel enviar sua mensagem. Tente novamente.';
+
+function isQuotaExceeded(e: unknown): boolean {
+  return (
+    axios.isAxiosError(e) &&
+    e.response?.status === 429 &&
+    (e.response.data as { error?: string } | undefined)?.error === 'AI_QUOTA_EXCEEDED'
+  );
+}
 
 interface StoreMessage {
   id: string;
@@ -111,10 +126,10 @@ export const useCoachStore = create<CoachState>()(
           // Dieta é gerada de forma assíncrona (1 dia por chamada) — inicia o polling.
           if (message.dietJobId) void get().runDietGeneration(message.dietJobId);
           return true;
-        } catch {
+        } catch (e) {
           set({
             isLoading: false,
-            error: 'Nao foi possivel enviar sua mensagem. Tente novamente.',
+            error: isQuotaExceeded(e) ? QUOTA_MESSAGE : SEND_ERROR_MESSAGE,
             lastFailedAction: 'send',
           });
           return false;
@@ -149,10 +164,10 @@ export const useCoachStore = create<CoachState>()(
               lastFailedAction: null,
             }));
             if (message.dietJobId) void get().runDietGeneration(message.dietJobId);
-          } catch {
+          } catch (e) {
             set({
               isLoading: false,
-              error: 'Nao foi possivel enviar sua mensagem. Tente novamente.',
+              error: isQuotaExceeded(e) ? QUOTA_MESSAGE : SEND_ERROR_MESSAGE,
               lastFailedAction: 'send',
             });
           }
@@ -183,17 +198,20 @@ export const useCoachStore = create<CoachState>()(
         let networkMisses = 0;
         // 7 passos + folga pras janelas de recuperação.
         for (let i = 0; i < 30; i++) {
+          const before = get().dietJob?.daysCompleted ?? 0;
           try {
             const s = await dietService.stepJob(jobId);
             networkMisses = 0;
             apply(s);
             if (s.status === 'completed') return finish('completed');
             if (s.status === 'failed') return;
+            // OP1: 200 sem avanço = outro step em voo no servidor. Espera antes
+            // de pedir de novo, em vez de bater no rate limit.
+            if (s.daysCompleted === before) await sleep(5000);
           } catch {
             // O step falhou NO CLIENTE (timeout/rede), mas o servidor pode ainda
             // estar gerando (timeout lá: 120s). Poll de status até o dia avançar
             // ou ~160s (chamada antiga certamente encerrada) antes de novo step.
-            const before = get().dietJob?.daysCompleted ?? 0;
             for (let poll = 0; poll < 8; poll++) {
               await sleep(20000);
               try {
