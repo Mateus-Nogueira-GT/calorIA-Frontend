@@ -17,6 +17,13 @@ end
 target 'calorIA' do
   config = use_native_modules!
 
+  # GoogleSignIn 9.x puxa AppCheckCore (Swift), que importa GoogleUtilities e
+  # RecaptchaInterop — pods Obj-C sem module map. Com linkagem estática, o padrão
+  # deste projeto, Swift não consegue importá-los. O próprio CocoaPods sugere isto
+  # no erro "Swift pods cannot yet be integrated as static libraries".
+  pod 'GoogleUtilities', :modular_headers => true
+  pod 'RecaptchaInterop', :modular_headers => true
+
   use_react_native!(
     :path => config[:reactNativePath],
     # An absolute path to your application root.
