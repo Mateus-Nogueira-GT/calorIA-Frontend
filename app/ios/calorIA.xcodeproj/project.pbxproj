@@ -526,6 +526,8 @@
 					"$(inherited)",
 					"-ObjC",
 					"-lc++",
+					"-framework",
+					"AuthenticationServices",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "br.com.caloriaoficial.app";
 				PRODUCT_NAME = calorIA;
@@ -557,6 +559,8 @@
 					"$(inherited)",
 					"-ObjC",
 					"-lc++",
+					"-framework",
+					"AuthenticationServices",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "br.com.caloriaoficial.app";
 				PRODUCT_NAME = calorIA;
