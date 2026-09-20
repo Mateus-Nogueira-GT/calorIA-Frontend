@@ -179,11 +179,21 @@ export async function appleLogin(
   fastify: FastifyInstance,
   identityToken: string,
   fullName?: string,
+  nonce?: string,
 ): Promise<AuthResponse> {
   const { data, error } = await fastify.supabaseAuth.auth.signInWithIdToken({
     provider: 'apple',
     token: identityToken,
+    // O nonce é obrigatório quando o token tem a claim `nonce` — e tem, porque
+    // a lib do app gera um por padrão. Omiti-lo fazia o Supabase recusar TODO
+    // login com Apple, que foi um dos motivos da rejeição na App Store.
+    ...(nonce ? { nonce } : {}),
   })
+  if (error) {
+    // Sem log, a causa real (nonce, audience, provider desabilitado) ficava
+    // invisível: o cliente só via "Login com Apple falhou".
+    fastify.log.error({ err: error }, 'Supabase recusou o identity token da Apple')
+  }
   if (error || !data.session || !data.user) {
     throw new AppError(401, 'APPLE_AUTH_FAILED', 'Não foi possível autenticar com a Apple')
   }

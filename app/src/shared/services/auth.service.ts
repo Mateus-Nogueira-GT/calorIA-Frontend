@@ -72,9 +72,9 @@ export const authService = {
   loginWithGoogle: (idToken: string) =>
     api.post<BackendAuthResponse>('/auth/google', { idToken }).then((r) => toAuthResponse(r.data)),
 
-  loginWithApple: (identityToken: string, fullName?: string) =>
+  loginWithApple: (identityToken: string, fullName?: string, nonce?: string) =>
     api
-      .post<BackendAuthResponse>('/auth/apple', { identityToken, fullName })
+      .post<BackendAuthResponse>('/auth/apple', { identityToken, fullName, nonce })
       .then((r) => toAuthResponse(r.data)),
 
   profileSetup: (data: ProfileSetupPayload) =>

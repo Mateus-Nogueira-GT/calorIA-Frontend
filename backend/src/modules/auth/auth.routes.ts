@@ -137,8 +137,8 @@ const authRoutes: FastifyPluginAsyncZod = async (fastify) => {
       },
     },
     async (request, reply) => {
-      const { identityToken, fullName } = request.body
-      return reply.send(await appleLogin(fastify, identityToken, fullName))
+      const { identityToken, fullName, nonce } = request.body
+      return reply.send(await appleLogin(fastify, identityToken, fullName, nonce))
     },
   )
 

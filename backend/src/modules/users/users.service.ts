@@ -5,8 +5,33 @@ import type { Profile, UpdateProfileBody } from './users.schemas.js'
 /**
  * Retorna o perfil completo do usuário autenticado.
  */
+/**
+ * `weight_kg` é DECIMAL(5,2) e o postgres.js devolve DECIMAL como STRING — para
+ * não perder precisão. O profileSchema declara z.number(), e o Fastify valida a
+ * RESPOSTA: com a string, a serialização falhava e a rota devolvia 500.
+ *
+ * O efeito era pior do que parece. O UPDATE gravava normalmente e só a resposta
+ * quebrava, então bastava o usuário informar o peso uma vez no onboarding para
+ * TODO `GET /users/me` daquela conta passar a dar 500 — para sempre. Foi o que
+ * a Apple viu ao revisar ("Ocorreu um erro inesperado" é a mensagem do handler
+ * 500 do backend, não do app).
+ *
+ * Os outros módulos que leem decimais (weight, food-log, diets) já convertiam
+ * com Number(); users era o único que devolvia a linha crua.
+ */
+interface DbProfileRow extends Omit<Profile, 'weight_kg'> {
+  weight_kg: string | number | null
+}
+
+export function toProfile(row: DbProfileRow): Profile {
+  return {
+    ...row,
+    weight_kg: row.weight_kg === null || row.weight_kg === undefined ? null : Number(row.weight_kg),
+  }
+}
+
 export async function getUserProfile(fastify: FastifyInstance, userId: string): Promise<Profile> {
-  const [profile] = await fastify.db<Profile[]>`
+  const [profile] = await fastify.db<DbProfileRow[]>`
     SELECT
       p.id,
       p.username,
@@ -36,7 +61,7 @@ export async function getUserProfile(fastify: FastifyInstance, userId: string): 
     throw new AppError(404, 'PROFILE_NOT_FOUND', 'Perfil não encontrado')
   }
 
-  return profile
+  return toProfile(profile)
 }
 
 /**

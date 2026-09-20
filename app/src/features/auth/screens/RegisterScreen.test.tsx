@@ -21,6 +21,9 @@ const mockLoginWithApple = jest.fn().mockResolvedValue({
 const mockGetAppleSignInPayload = jest.fn().mockResolvedValue({
   identityToken: 'apple-token',
   fullName: 'João Teste',
+  // A lib liga o nonce por padrão; o Supabase EXIGE o valor bruto para validar
+  // o token. Esquecer de repassá-lo fazia todo login com Apple falhar.
+  nonce: 'nonce-bruto',
 });
 
 jest.mock('@react-navigation/native', () => ({
@@ -116,7 +119,7 @@ describe('RegisterScreen', () => {
 
     await waitFor(() => expect(mockGetAppleSignInPayload).toHaveBeenCalled());
     await waitFor(() =>
-      expect(mockLoginWithApple).toHaveBeenCalledWith('apple-token', 'João Teste'),
+      expect(mockLoginWithApple).toHaveBeenCalledWith('apple-token', 'João Teste', 'nonce-bruto'),
     );
     await waitFor(() =>
       expect(mockSetPendingAuth).toHaveBeenCalledWith('tok', expect.any(Object), 'refresh-tok'),

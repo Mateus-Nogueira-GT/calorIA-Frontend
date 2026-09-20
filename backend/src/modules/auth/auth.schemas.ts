@@ -30,6 +30,14 @@ export const googleBodySchema = z.object({
 export const appleBodySchema = z.object({
   identityToken: z.string().min(1, 'identityToken é obrigatório'),
   fullName: z.string().optional(),
+  /**
+   * Nonce BRUTO gerado pela lib de Apple Sign-In. Ela liga o nonce por padrão
+   * (nonceEnabled = true), manda o hash para a Apple, e a Apple embute esse
+   * hash no identity token. O Supabase então EXIGE o nonce bruto para validar:
+   * "If the token contains a nonce claim you must supply the nonce used to
+   * obtain the ID token". Sem ele, todo login com Apple era recusado.
+   */
+  nonce: z.string().optional(),
 })
 
 export const logoutResponseSchema = z.object({

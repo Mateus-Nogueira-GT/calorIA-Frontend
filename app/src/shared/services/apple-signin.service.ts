@@ -13,6 +13,7 @@ type AppleAuthModule = {
     }) => Promise<{
       identityToken?: string | null;
       fullName?: AppleFullName | null;
+      nonce?: string | null;
     }>;
     Operation: {
       LOGIN: string;
@@ -27,6 +28,12 @@ type AppleAuthModule = {
 export type AppleSignInPayload = {
   identityToken: string;
   fullName?: string;
+  /**
+   * Nonce BRUTO. A lib liga o nonce por padrão (nonceEnabled = true): manda o
+   * hash para a Apple, que o embute no identity token. O Supabase exige o valor
+   * bruto para validar — sem ele, recusa o token e o login SEMPRE falha.
+   */
+  nonce?: string;
 };
 
 function loadAppleSignInModule(): AppleAuthModule | null {
@@ -73,5 +80,6 @@ export async function getAppleSignInPayload(): Promise<AppleSignInPayload> {
   return {
     identityToken: credential.identityToken,
     fullName: formatFullName(credential.fullName),
+    nonce: credential.nonce ?? undefined,
   };
 }
