@@ -183,7 +183,14 @@ export function ProfileSetupScreen({ navigation }: AuthStackScreenProps<'Profile
   const currentStep = STEPS[currentStepIndex];
   const hasOptions = !!OPTIONS[currentStep];
 
-  function advanceWithAnswer(value: string) {
+  /**
+   * `displayText` é o que aparece na bolha do usuário. Para as opções, é o
+   * rótulo do card ("Mesomorfo", "Perder peso") — antes a bolha exibia o
+   * código interno (`mesomorph`, `lose_weight`), e foi assim que a Apple viu
+   * o onboarding nos prints da rejeição. O `value` continua sendo o que é
+   * salvo e enviado ao backend.
+   */
+  function advanceWithAnswer(value: string, displayText: string = value) {
     const step = STEPS[currentStepIndex];
 
     // Valida ANTES de consumir o passo: inválido, o Coach repergunta e o
@@ -192,7 +199,7 @@ export function ProfileSetupScreen({ navigation }: AuthStackScreenProps<'Profile
     if (!check.ok) {
       setMessages([
         ...messages,
-        { id: `user-${step}-${retryCount}`, role: 'user', text: value },
+        { id: `user-${step}-${retryCount}`, role: 'user', text: displayText },
         { id: `coach-retry-${step}-${retryCount}`, role: 'coach', text: check.reason },
       ]);
       setRetryCount((n) => n + 1);
@@ -206,7 +213,7 @@ export function ProfileSetupScreen({ navigation }: AuthStackScreenProps<'Profile
 
     const nextMessages: ChatMessage[] = [
       ...messages,
-      { id: `user-${step}`, role: 'user', text: check.value },
+      { id: `user-${step}`, role: 'user', text: displayText === value ? check.value : displayText },
     ];
 
     if (currentStepIndex < STEPS.length - 1) {
@@ -304,7 +311,7 @@ export function ProfileSetupScreen({ navigation }: AuthStackScreenProps<'Profile
               title={opt.title}
               description={opt.description}
               selected={answers[currentStep] === opt.value}
-              onPress={() => advanceWithAnswer(opt.value)}
+              onPress={() => advanceWithAnswer(opt.value, opt.title)}
             />
           ))}
         </View>

@@ -183,7 +183,7 @@ export function DashboardScreen(): React.JSX.Element {
         <DietPlanSection />
 
         <View style={[styles.sectionHeader, styles.freeDiaryHeader]}>
-          <Text style={styles.sectionTitle}>Diario alimentar</Text>
+          <Text style={styles.sectionTitle}>Diário alimentar</Text>
           <Text style={styles.sectionSubtitle}>Registros adicionados fora do plano do dia.</Text>
         </View>
 

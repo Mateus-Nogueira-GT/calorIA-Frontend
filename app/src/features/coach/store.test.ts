@@ -70,7 +70,7 @@ describe('useCoachStore', () => {
     coachService.sendMessage.mockRejectedValueOnce(new Error('boom'));
     const { result } = renderHook(() => useCoachStore());
     await act(() => result.current.sendMessage('Teste'));
-    expect(result.current.error).toBe('Nao foi possivel enviar sua mensagem. Tente novamente.');
+    expect(result.current.error).toBe('Não foi possível enviar sua mensagem. Tente novamente.');
     expect(result.current.lastFailedAction).toBe('send');
   });
 

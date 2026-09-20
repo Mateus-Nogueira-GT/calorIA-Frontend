@@ -10,7 +10,7 @@ import { useDietStore } from '@features/diet/store';
 // usuário via a mensagem genérica de erro de envio e não sabia que era um
 // limite diário — parecia um bug para tentar de novo mais tarde no mesmo dia.
 const QUOTA_MESSAGE = 'Você atingiu o limite diário do coach. Volte amanhã.';
-const SEND_ERROR_MESSAGE = 'Nao foi possivel enviar sua mensagem. Tente novamente.';
+const SEND_ERROR_MESSAGE = 'Não foi possível enviar sua mensagem. Tente novamente.';
 
 function isQuotaExceeded(e: unknown): boolean {
   return (
@@ -93,7 +93,7 @@ export const useCoachStore = create<CoachState>()(
           });
         } catch {
           set({
-            error: 'Nao foi possivel carregar sua conversa agora.',
+            error: 'Não foi possível carregar sua conversa agora.',
             hasLoadedHistory: true,
             lastFailedAction: 'history',
           });
