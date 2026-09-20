@@ -110,8 +110,8 @@ export function RegisterScreen({ navigation }: AuthStackScreenProps<'Register'>)
   async function handleApple() {
     setLoading(true);
     try {
-      const { identityToken, fullName } = await getAppleSignInPayload();
-      const res = await authService.loginWithApple(identityToken, fullName);
+      const { identityToken, fullName, nonce } = await getAppleSignInPayload();
+      const res = await authService.loginWithApple(identityToken, fullName, nonce);
       setPendingAuth(res.token, res.user, res.refreshToken);
       navigation.navigate('ProfileSetup');
     } catch {

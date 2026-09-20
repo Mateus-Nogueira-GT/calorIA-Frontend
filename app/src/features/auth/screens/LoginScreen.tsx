@@ -98,8 +98,8 @@ export function LoginScreen({ navigation }: AuthStackScreenProps<'Login'>): Reac
   async function handleApple() {
     setLoading(true);
     try {
-      const { identityToken, fullName } = await getAppleSignInPayload();
-      const res = await authService.loginWithApple(identityToken, fullName);
+      const { identityToken, fullName, nonce } = await getAppleSignInPayload();
+      const res = await authService.loginWithApple(identityToken, fullName, nonce);
       setToken(res.token, res.user, res.refreshToken);
     } catch {
       Alert.alert('Erro', 'Login com Apple falhou.');
