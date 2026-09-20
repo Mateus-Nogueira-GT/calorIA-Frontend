@@ -88,7 +88,7 @@ export function AddMealModal({ visible, onClose, onSubmit }: Props): React.JSX.E
       setMealType('lunch');
       onClose();
     } catch {
-      showAlert('Nao foi possivel salvar a refeicao', 'Tente novamente em instantes.');
+      showAlert('Não foi possível salvar a refeição', 'Tente novamente em instantes.');
     } finally {
       setLoading(false);
     }

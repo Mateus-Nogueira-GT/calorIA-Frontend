@@ -61,6 +61,6 @@ describe('DashboardScreen', () => {
 
   it('exibe a secao de diario alimentar', () => {
     const { getByText } = renderDashboard();
-    expect(getByText('Diario alimentar')).toBeTruthy();
+    expect(getByText('Diário alimentar')).toBeTruthy();
   });
 });

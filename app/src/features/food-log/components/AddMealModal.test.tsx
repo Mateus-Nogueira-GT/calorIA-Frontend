@@ -20,7 +20,7 @@ describe('AddMealModal', () => {
     await waitFor(() => expect(onSubmit).toHaveBeenCalled());
     await waitFor(() =>
       expect(alertSpy).toHaveBeenCalledWith(
-        'Nao foi possivel salvar a refeicao',
+        'Não foi possível salvar a refeição',
         'Tente novamente em instantes.',
       ),
     );

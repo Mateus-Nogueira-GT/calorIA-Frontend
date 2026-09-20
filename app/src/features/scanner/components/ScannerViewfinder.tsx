@@ -47,7 +47,7 @@ export function ScannerViewfinder({ onPickImage, isAnalyzing }: Props): React.JS
     if (Platform.OS !== 'web') {
       showAlert(
         'Scanner indisponivel',
-        'O envio de foto ainda nao esta disponivel no app nativo.',
+        'O envio de foto ainda não está disponível no app nativo.',
       );
       return;
     }

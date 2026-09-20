@@ -117,7 +117,7 @@ export function ProfileScreen({ navigation }: TabScreenProps<'Profile'>): React.
         />
         <ProfileMenuItem
           label="🤖 Personalidade do Coach"
-          description={profilePreferences.coachPersonality ? coachPersonalityLabels[profilePreferences.coachPersonality] : 'Escolha como seu coach deve falar com voce'}
+          description={profilePreferences.coachPersonality ? coachPersonalityLabels[profilePreferences.coachPersonality] : 'Escolha como seu coach deve falar com você'}
           onPress={() => navigation.navigate('ProfileCoachPersonality')}
           testID="profile-coach-personality-btn"
         />

@@ -31,7 +31,7 @@ export function ChatBubble({ message, role, timestamp }: Props): React.JSX.Eleme
   return (
     <View style={styles.userRow}>
       <View style={styles.userWrap}>
-        <Text style={[styles.senderLabel, styles.senderLabelUser]}>Voce</Text>
+        <Text style={[styles.senderLabel, styles.senderLabelUser]}>Você</Text>
         <View style={styles.userBubble}>
           <Text style={styles.userMessage}>{message}</Text>
         </View>
