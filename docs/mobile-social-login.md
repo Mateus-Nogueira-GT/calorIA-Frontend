@@ -55,8 +55,15 @@ cd app/ios && bundle install && bundle exec pod install
    suportá-lo.
 2. Xcode → target `calorIA` → Signing & Capabilities: a capability já vem do
    entitlements versionado; basta conferir que aparece marcada.
-3. Supabase → Authentication → Providers → Apple: habilitar com Service ID,
-   Team ID, Key ID e a chave `.p8`.
+3. Supabase → Authentication → Providers → Apple: **habilitar** e, no campo
+   **Client IDs**, incluir o **bundle ID do app: `br.com.caloriaoficial.app`**.
+   ⚠️ Não é o Service ID. No login nativo (iOS) o identity token sai com
+   `aud` = bundle ID; se ele não estiver na lista, o Supabase recusa com
+   "Unacceptable audience in id_token" e o app mostra só "Login com Apple
+   falhou" — foi o que reprovou o app na App Store em set/2026. Service ID,
+   Team ID, Key ID e `.p8` só são necessários para login Apple na **web**;
+   se um dia houver, os dois vão no mesmo campo, separados por vírgula.
+   Mudança só de painel: vale na hora, sem nova build.
 
 > ⚠️ **App Store guideline 4.8:** se o app oferece login com Google (ou
 > qualquer login social de terceiros), o **Sign in with Apple é obrigatório**
