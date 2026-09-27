@@ -77,12 +77,36 @@ Depende de ter um domínio próprio apontado para o deploy (o
 - **applicationId:** `br.com.caloriaoficial.app` — **imutável após a 1ª publicação**.
   O `namespace` do Gradle segue `com.caloria` (pacote das classes Java/R); são
   campos diferentes e podem divergir sem problema.
-- **Keystore de upload:** `app/android/app/caloria-upload.keystore`
-  (alias `caloria-upload`, válido até 2053). **Não está no git** (`.gitignore`).
-  As credenciais ficam em `~/.gradle/gradle.properties` (chmod 600).
-  ⚠️ Faça backup do arquivo + senha num gerenciador: sem eles não há como
-  publicar atualizações (com Play App Signing dá para resetar a upload key).
-- **`versionCode` precisa ser incrementado a cada upload** (atual: 6 — próximo upload usa 7).
+- **Chave de upload: mora no EAS, não nesta máquina** (desde 2026-09-04).
+  O build Android passou a ser feito pelo EAS Build, que **gerou sozinho** um
+  keystore e o guardou nos servidores dele — conta `mateusnogueiras-team`,
+  projeto `caloria`. Ninguém baixou nem copiou esse arquivo: ele nunca esteve
+  aqui. Foi essa divergência silenciosa que causou a recusa de 2026-09-20
+  (a Play esperava a chave local, o `.aab` vinha assinado com a do EAS).
+  - **Onde ver / baixar:** painel em
+    `expo.dev/accounts/mateusnogueiras-team/projects/caloria/credentials`,
+    ou `npx eas-cli credentials --platform android` (só interativo — não há
+    subcomando de download no eas-cli 24.x).
+  - **Senha:** gerada pelo EAS (32 hexadecimais). **Nunca versionar.** Arquivo
+    e senha vão para o gerenciador de senhas — o risco hoje não é perder um
+    arquivo local, é perder o acesso à conta Expo.
+  - **Impressões digitais registradas na Play** (reset aceito em 2026-09-20,
+    chave nova válida a partir de **2026-09-22 16:39 UTC**):
+    `SHA1 25:F1:8F:A8:32:33:B4:C5:B4:61:82:D0:81:A3:60:3B:BC:6A:02:4B`
+    `MD5  7B:79:62:15:93:3C:7B:99:68:BF:20:C2:09:60:0E:91`
+  - **Como obter o certificado sem ter o keystore** (foi o que destravou o
+    reset — o `.aab` carrega o certificado de quem o assinou):
+    ```bash
+    unzip -p app.aab "META-INF/*.RSA" \
+      | openssl pkcs7 -inform DER -print_certs -out upload_certificate.pem
+    ```
+    Esse `.pem` é exatamente o que o formulário de redefinição da Play pede,
+    e dispensa keystore e senha.
+- **Keystores locais aposentados:** `caloria-upload.keystore` (ago/2026) e
+  `caloria-upload-novo.keystore` (set/2026) não assinam mais nada. A senha do
+  de setembro nunca foi encontrada. Guardar até a primeira publicação bem
+  sucedida com a chave do EAS; depois podem sair.
+- **`versionCode` precisa ser incrementado a cada upload** (atual: 23).
 - **Toolchain local:** JDK 17 (`/opt/homebrew/opt/openjdk@17`), Android SDK em
   `~/Library/Android/sdk` (platform 35, build-tools 35.0.0, NDK 26.1.10909125).
 - **`@react-native-community/cli` é obrigatório** como devDependency: o Gradle
