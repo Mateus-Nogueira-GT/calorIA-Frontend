@@ -33,5 +33,16 @@
             <data android:scheme="caloria" />
         </intent-filter>
       </activity>
+
+      <!-- Atualização OTA (EAS Update). Gerado por `eas update:configure`;
+           manter em sincronia com app.json. O runtime version vem do arquivo
+           `fingerprint` que o build grava a partir do código nativo: um OTA só
+           chega a builds com o MESMO nativo (ver docs/ota-updates.md). -->
+      <meta-data android:name="expo.modules.updates.ENABLED" android:value="true" />
+      <meta-data android:name="expo.modules.updates.EXPO_UPDATES_CHECK_ON_LAUNCH" android:value="ALWAYS" />
+      <meta-data android:name="expo.modules.updates.EXPO_UPDATES_LAUNCH_WAIT_MS" android:value="0" />
+      <meta-data android:name="expo.modules.updates.EXPO_UPDATE_URL" android:value="https://u.expo.dev/1d3b8a79-cfe3-47f3-bfe0-f16214fec824" />
+      <meta-data android:name="expo.modules.updates.ENABLE_BSDIFF_PATCH_SUPPORT" android:value="true" />
+      <meta-data android:name="expo.modules.updates.EXPO_RUNTIME_VERSION" android:value="@string/expo_runtime_version" />
     </application>
 </manifest>
