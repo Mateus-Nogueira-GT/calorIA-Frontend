@@ -13,22 +13,22 @@ const PERSONALITY_OPTIONS: Array<{
   {
     value: 'motivational',
     title: 'Motivador',
-    description: 'Traz mais energia, incentivo e reforco positivo nas interacoes.',
+    description: 'Traz mais energia, incentivo e reforço positivo nas interações.',
   },
   {
     value: 'direct',
     title: 'Direto',
-    description: 'Vai ao ponto com orientacoes objetivas e sem rodeios.',
+    description: 'Vai ao ponto com orientações objetivas e sem rodeios.',
   },
   {
     value: 'empathetic',
-    title: 'Empatico',
+    title: 'Empático',
     description: 'Fala com mais acolhimento, contexto e apoio emocional.',
   },
   {
     value: 'scientific',
-    title: 'Cientifico',
-    description: 'Explica decisoes com mais base tecnica e racional.',
+    title: 'Científico',
+    description: 'Explica decisões com mais base técnica e racional.',
   },
 ];
 
@@ -48,7 +48,7 @@ export function ProfileCoachPersonalityScreen(
       <View style={styles.header}>
         <Text variant="heading2" style={styles.title}>Personalidade do Coach</Text>
         <Text variant="body" style={styles.subtitle}>
-          Defina o tom que combina melhor com a forma como voce gosta de receber orientacao.
+          Defina o tom que combina melhor com a forma como você gosta de receber orientação.
         </Text>
       </View>
 

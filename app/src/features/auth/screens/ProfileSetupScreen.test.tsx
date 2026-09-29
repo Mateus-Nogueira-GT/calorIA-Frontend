@@ -1,5 +1,5 @@
 import React from 'react';
-import { Alert } from 'react-native';
+import { Alert, FlatList } from 'react-native';
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import { ProfileSetupScreen } from './ProfileSetupScreen';
 
@@ -221,6 +221,28 @@ describe('ProfileSetupScreen', () => {
 
     await waitFor(() => expect(mockProfileSetup).toHaveBeenCalled());
     expect(mockSetProfileComplete).not.toHaveBeenCalled();
+  });
+
+  it('reenviar depois de uma falha não duplica a resposta na conversa', async () => {
+    const spy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    mockProfileSetup.mockRejectedValueOnce(new Error('offline'));
+    const utils = render(<ProfileSetupScreen navigation={{} as never} route={{} as never} />);
+
+    await completeOnboarding(utils);
+    await waitFor(() => expect(spy).toHaveBeenCalled());
+
+    // Toca de novo na última opção: é assim que o usuário reenvia.
+    fireEvent.press(utils.getAllByText('Neutro').at(-1)!);
+    await waitFor(() => expect(mockSetProfileComplete).toHaveBeenCalledWith(true));
+
+    // Lê os dados do FlatList (ele só renderiza as primeiras bolhas no teste).
+    // Antes a resposta entrava de novo com o mesmo id: bolha em dobro e chave
+    // duplicada no keyExtractor.
+    const data = utils.UNSAFE_getByType(FlatList).props.data as { id: string }[];
+    const ids = data.map((m) => m.id);
+    expect(ids.filter((id) => id === 'user-gender')).toHaveLength(1);
+    expect(new Set(ids).size).toBe(ids.length);
+    spy.mockRestore();
   });
 
   it('não autentica quando salvar o perfil falha', async () => {

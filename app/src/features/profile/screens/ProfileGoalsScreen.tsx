@@ -13,12 +13,12 @@ const GOAL_OPTIONS: Array<{
   {
     value: 'lose_weight',
     title: 'Perder peso',
-    description: 'Prioriza um plano com foco em deficit calorico e consistencia.',
+    description: 'Prioriza um plano com foco em déficit calórico e consistência.',
   },
   {
     value: 'gain_muscle',
     title: 'Ganhar massa',
-    description: 'Ajusta a rotina para favorecer superavit e recuperacao.',
+    description: 'Ajusta a rotina para favorecer superávit e recuperação.',
   },
   {
     value: 'maintain',
@@ -27,8 +27,8 @@ const GOAL_OPTIONS: Array<{
   },
   {
     value: 'health',
-    title: 'Melhorar saude',
-    description: 'Dá mais peso a habitos sustentaveis e qualidade alimentar.',
+    title: 'Melhorar saúde',
+    description: 'Dá mais peso a hábitos sustentáveis e qualidade alimentar.',
   },
 ];
 
