@@ -1,5 +1,5 @@
 module.exports = {
-  presets: ['module:@react-native/babel-preset'],
+  presets: ['babel-preset-expo'],
   plugins: [
     // O webpack (web) declara este plugin no próprio config; o Metro (iOS/Android)
     // usa ESTE arquivo — sem ele, `import ... from '@env'` não resolve e o bundle

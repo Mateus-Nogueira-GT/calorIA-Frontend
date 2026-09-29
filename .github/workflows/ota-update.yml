@@ -1,0 +1,74 @@
+# Publica uma atualização OTA (EAS Update) no canal `production` depois que o
+# CI da main passa. Só JS/TS e assets viajam por OTA — mudança nativa (lib com
+# código nativo, permissão, ícone, android/ ou ios/) muda o fingerprint do
+# runtime, e o OTA publicado só chega a builds com o MESMO fingerprint. Os
+# usuários com o build antigo simplesmente não recebem; nada quebra. Nesse caso
+# é preciso um build de loja novo. Detalhes: docs/ota-updates.md.
+name: OTA update
+
+on:
+  # Encadeado no CI: um merge com teste ou tipo quebrado nunca vira OTA.
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  # Botão "Run workflow" na aba Actions: republica a main na mão (ex.: depois
+  # de um rollback, ou se o disparo automático falhou).
+  workflow_dispatch:
+    inputs:
+      message:
+        description: 'Mensagem da atualização (aparece no painel do EAS)'
+        required: false
+
+# Dois merges seguidos: publica só o mais recente, na ordem.
+concurrency:
+  group: ota-production
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: eas update (production)
+    # No disparo automático, só se o CI passou E foi push (não PR) na main.
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # O commit exato que o CI aprovou — não o que estiver na main agora.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - run: npm ci
+
+      # O `.env` é gitignored, mas o babel-plugin react-native-dotenv o lê para
+      # resolver `@env`. Sem ele o bundle sai sem API_BASE_URL e o app fecha ao
+      # abrir (resolveBaseUrl lança em release). Mesmas variáveis do build.
+      - name: .env de produção (EAS)
+        run: eas env:pull --environment production --path .env --non-interactive
+
+      - name: Confere o .env
+        run: grep -q '^API_BASE_URL=https://' .env || { echo "::error::API_BASE_URL ausente ou sem https no .env"; exit 1; }
+
+      - name: Publica
+        env:
+          MESSAGE: ${{ github.event.inputs.message || github.event.workflow_run.head_commit.message || github.sha }}
+        run: >
+          eas update --channel production --environment production
+          --message "$(printf '%s' "$MESSAGE" | head -n 1 | cut -c1-200)"
+          --non-interactive
