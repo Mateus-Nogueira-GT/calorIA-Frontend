@@ -1,0 +1,15 @@
+# Arquivos que o `pod install` CRIA ou ALTERA durante o build no EAS.
+#
+# O EAS calcula o fingerprint do runtime DEPOIS do `pod install`; a máquina de
+# dev (sem CocoaPods) e o workflow de OTA no GitHub (Ubuntu) calculam SEM ele.
+# Sem estas linhas os dois hashes nunca batem: o EAS recusa o build do iOS
+# ("Runtime version mismatch") e, se aceitasse, nenhum OTA chegaria ao iPhone.
+#
+# Trade-off: uma mudança feita SÓ no project.pbxproj (build setting, arquivo
+# novo no target) não troca o runtime version sozinha. Mudanças nativas reais
+# quase sempre tocam outro arquivo que continua no hash (Podfile, AppDelegate,
+# Info.plist, libs em node_modules). Se mexer só no pbxproj, gere um build de
+# loja antes de publicar OTA. Ver docs/ota-updates.md.
+ios/Podfile.lock
+ios/*.xcworkspace/**/*
+ios/*.xcodeproj/project.pbxproj
