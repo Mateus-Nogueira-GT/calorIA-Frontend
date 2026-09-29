@@ -20,14 +20,14 @@ const goalLabels = {
   lose_weight: 'Perder peso',
   gain_muscle: 'Ganhar massa',
   maintain: 'Manter peso',
-  health: 'Melhorar saude',
+  health: 'Melhorar saúde',
 } as const;
 
 const coachPersonalityLabels = {
   motivational: 'Motivador',
   direct: 'Direto',
-  empathetic: 'Empatico',
-  scientific: 'Cientifico',
+  empathetic: 'Empático',
+  scientific: 'Científico',
 } as const;
 
 export function ProfileScreen({ navigation }: TabScreenProps<'Profile'>): React.JSX.Element {

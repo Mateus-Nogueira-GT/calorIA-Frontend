@@ -20,7 +20,7 @@ export function WeeklyCalorieChart({ data }: WeeklyCalorieChartProps): React.JSX
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>Esta semana</Text>
-        <Text style={styles.subtitle}>Media diaria</Text>
+        <Text style={styles.subtitle}>Média diária</Text>
       </View>
       <View style={styles.chart}>
         {data.map((day, index) => {
@@ -44,7 +44,7 @@ export function WeeklyCalorieChart({ data }: WeeklyCalorieChartProps): React.JSX
       <View style={styles.footer}>
         <Text style={styles.avg}>{avg} kcal</Text>
         <Text style={styles.avgCaption}>
-          {hasAnyCalories ? 'Media dos ultimos 7 dias' : 'Sem registros nesta semana'}
+          {hasAnyCalories ? 'Média dos últimos 7 dias' : 'Sem registros nesta semana'}
         </Text>
       </View>
     </View>
