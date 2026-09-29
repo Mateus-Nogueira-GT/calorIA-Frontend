@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify'
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { toggleMealCompleted } from './diets.service.js'
 
 interface Call {
@@ -24,6 +24,17 @@ const USER = '11111111-1111-1111-1111-111111111111'
 const MEAL = '22222222-2222-2222-2222-222222222222'
 
 describe('toggleMealCompleted — estado derivado da data (B1)', () => {
+  // Relógio congelado no dia usado nos casos: o serviço recusa datas fora da
+  // janela de 30 dias (isWithinDateWindow), e com o relógio real os testes
+  // começaram a falhar sozinhos um mês depois de escritos.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-08-28T15:00:00Z'))
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it('decide pelo dia local do cliente, não por NOT is_completed', async () => {
     // Refeição já concluída HOJE → o toggle desmarca (1 única query, sem streak).
     const { fastify, calls } = fakeFastify([[{ is_completed: false }]])

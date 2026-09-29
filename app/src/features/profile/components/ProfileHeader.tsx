@@ -29,7 +29,7 @@ export function ProfileHeader({ name, email, avatarUri }: ProfileHeaderProps): R
             style={styles.avatarImage}
           />
         ) : (
-          <View style={styles.avatar} accessibilityLabel={name ? `Avatar de ${name}` : 'Avatar do usuario'}>
+          <View style={styles.avatar} accessibilityLabel={name ? `Avatar de ${name}` : 'Avatar do usuário'}>
             <Text style={styles.avatarInitials}>{initials}</Text>
           </View>
         )}

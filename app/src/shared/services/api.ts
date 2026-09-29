@@ -55,6 +55,30 @@ type RefreshResult = { token: string } | { token: null; reason: 'auth' | 'networ
 
 let refreshPromise: Promise<RefreshResult> | null = null;
 
+type SessionUser = NonNullable<ReturnType<typeof useAuthStore.getState>['user']>;
+
+/**
+ * Grava a sessão renovada no MESMO lugar de onde ela veio.
+ *
+ * No onboarding a sessão vive em `pendingAuth` (ainda não há `token`). Chamar
+ * `setToken` ali autenticava o usuário e — como `pendingAuth` existia — marcava
+ * `profileComplete: true` sem o perfil ter sido salvo: bastava o access token
+ * expirar (1 h) com o app parado no ProfileSetup para o próximo request jogar a
+ * pessoa no Dashboard sem altura, peso nem objetivo (a mesma falha do R6).
+ */
+export function applyRefreshedSession(
+  accessToken: string,
+  refreshToken: string,
+  user: SessionUser,
+): void {
+  const state = useAuthStore.getState();
+  if (!state.token && state.pendingAuth) {
+    state.setPendingAuth(accessToken, user, refreshToken);
+    return;
+  }
+  state.setToken(accessToken, user, refreshToken);
+}
+
 async function refreshAccessToken(): Promise<RefreshResult> {
   const { refreshToken, user, pendingAuth } = useAuthStore.getState();
   const currentRefreshToken = refreshToken ?? pendingAuth?.refreshToken ?? null;
@@ -67,7 +91,7 @@ async function refreshAccessToken(): Promise<RefreshResult> {
       { refresh_token: currentRefreshToken },
       { timeout: Number(API_TIMEOUT) || 10000 },
     );
-    useAuthStore.getState().setToken(data.access_token, currentUser, data.refresh_token);
+    applyRefreshedSession(data.access_token, data.refresh_token, currentUser);
     return { token: data.access_token as string };
   } catch (err) {
     const isAuthRejection =

@@ -211,8 +211,11 @@ export function ProfileSetupScreen({ navigation }: AuthStackScreenProps<'Profile
     const newAnswers = { ...answers, [step]: check.value };
     setAnswers(newAnswers);
 
+    // Reenvio depois de uma falha no último passo: a resposta anterior já está
+    // na conversa com o mesmo id. Substitui em vez de duplicar — id repetido
+    // quebra o keyExtractor do FlatList e a bolha aparecia duas vezes.
     const nextMessages: ChatMessage[] = [
-      ...messages,
+      ...messages.filter((m) => m.id !== `user-${step}`),
       { id: `user-${step}`, role: 'user', text: displayText === value ? check.value : displayText },
     ];
 

@@ -112,7 +112,7 @@ export function DashboardScreen(): React.JSX.Element {
   const carbsGoal = plan?.totalCarbs ?? null;
   const fatGoal = plan?.totalFat ?? null;
   const hasGoals = calorieGoal !== null;
-  const greetingLabel = user?.name ? `Ola, ${user.name}` : 'Seu resumo de hoje';
+  const greetingLabel = user?.name ? `Olá, ${user.name}` : 'Seu resumo de hoje';
   const percentLabel =
     calorieGoal !== null && calorieGoal > 0
       ? `${Math.round((totals.calories / calorieGoal) * 100)}%`
@@ -134,7 +134,7 @@ export function DashboardScreen(): React.JSX.Element {
         <View style={styles.ringCard}>
           <View style={styles.ringSummary}>
             <View style={styles.badge}>
-              <Text style={styles.badgeText}>Resumo calorico</Text>
+              <Text style={styles.badgeText}>Resumo calórico</Text>
             </View>
             <Text style={styles.kcalValue}>{totals.calories}</Text>
             <Text style={styles.kcalGoal}>
@@ -142,7 +142,7 @@ export function DashboardScreen(): React.JSX.Element {
             </Text>
             <View style={styles.progressMeta}>
               <Text style={styles.progressMetaLabel}>
-                {hasGoals ? 'Meta diaria' : 'Sem meta ainda'}
+                {hasGoals ? 'Meta diária' : 'Sem meta ainda'}
               </Text>
               <Text style={styles.progressMetaValue}>{percentLabel}</Text>
             </View>
@@ -154,14 +154,14 @@ export function DashboardScreen(): React.JSX.Element {
           <Text style={styles.sectionTitle}>Macronutrientes</Text>
           <Text style={styles.sectionSubtitle}>
             {hasGoals
-              ? 'Distribuicao consumida em relacao a meta atual.'
+              ? 'Distribuição consumida em relação à meta atual.'
               : 'Suas metas aparecem aqui assim que sua dieta for gerada.'}
           </Text>
         </View>
 
         <View style={styles.macroGrid}>
           <MacroCard
-            label="Proteina"
+            label="Proteína"
             current={totals.protein}
             goal={proteinGoal}
             color={colors.brandPrimary}
@@ -208,7 +208,7 @@ export function DashboardScreen(): React.JSX.Element {
           <View style={styles.feedbackCard}>
             <Text style={styles.feedbackTitle}>Nada registrado por aqui ainda</Text>
             <Text style={styles.feedbackText}>
-              Quando voce adicionar algo no diario livre, ele aparece nesta secao.
+              Quando você adicionar algo no diário livre, ele aparece nesta seção.
             </Text>
           </View>
         )}
