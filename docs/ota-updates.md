@@ -110,6 +110,18 @@ dentro. Feature grande → build de loja com revisão.
   loja:** o *Runtime version* mostrado na página do build no EAS deve ser igual
   ao de `npx expo-updates fingerprint:generate --platform android` (e `ios`)
   rodado na mesma revisão.
-- `AndroidManifest.xml` e `strings.xml` foram reescritos pelo
-  `eas update:configure`; os comentários foram restaurados à mão. Se rodar o
-  comando de novo, confira o diff.
+- **`AndroidManifest.xml` e `strings.xml` ficam no formato do `eas build`.**
+  Antes de cada build o `eas build` reescreve os dois (sincroniza a config do
+  expo-updates) — e apaga comentários. O fingerprint do Android inclui esses
+  arquivos: se o git guardar outra formatação, o build sai com um hash e o
+  workflow de OTA (que lê o git) calcula outro, e os OTAs nunca chegam. Por
+  isso os dois estão commitados exatamente como a ferramenta gera. **Não
+  reformate nem comente esses arquivos à mão.** Se `git status` mostrar os dois
+  modificados depois de um `eas build`, commite o que ele gerou.
+- **`.fingerprintignore` (em `app/`) tira do hash o que o `pod install` gera.**
+  O EAS calcula o fingerprint do iOS depois do `pod install`, que cria
+  `Podfile.lock` e `calorIA.xcworkspace` e reescreve o `project.pbxproj`; a
+  máquina de dev e o GitHub Actions calculam sem ele. O primeiro build de iOS
+  foi recusado pelo próprio EAS por isso ("Runtime version mismatch"). Custo:
+  mudança feita **só** no `project.pbxproj` não troca o runtime version — nesse
+  caso, gere build de loja antes de publicar OTA.
