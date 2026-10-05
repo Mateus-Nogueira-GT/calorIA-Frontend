@@ -36,7 +36,16 @@ async function completeOnboarding(
     sex = 'Masculino',
     age = '30',
     activity = 'Leve',
-  }: { height?: string; weight?: string; sex?: string; age?: string; activity?: string } = {},
+    bodyTypeQuiz,
+  }: {
+    height?: string;
+    weight?: string;
+    sex?: string;
+    age?: string;
+    activity?: string;
+    /** Respostas do "Ajude-me a descobrir"; sem elas, escolhe o biotipo direto. */
+    bodyTypeQuiz?: string[];
+  } = {},
 ) {
   const { getByPlaceholderText, getByTestId, getByText, findByText } = utils;
   // Espera pelo contador e não pela pergunta: no teste o FlatList só
@@ -55,7 +64,15 @@ async function completeOnboarding(
   expect(getByText(/qual é o seu sexo/i)).toBeTruthy();
   await choose(sex, 3);
   await answer(age, 4);
-  await choose('Ectomorfo', 5);
+  if (bodyTypeQuiz) {
+    fireEvent.press(getByText('Ajude-me a descobrir'));
+    for (const option of bodyTypeQuiz) {
+      fireEvent.press(await findByText(option));
+    }
+    await findByText('5 / 10');
+  } else {
+    await choose('Magro / Acelerado (Ectomorfo)', 5);
+  }
   await answer(height, 6);
   await answer(weight, 7);
   await choose(activity, 8);
@@ -84,8 +101,26 @@ async function goToHeight(utils: ReturnType<typeof render>) {
   fireEvent.changeText(getByPlaceholderText('Digite aqui...'), '30');
   fireEvent.press(getByTestId('send-btn'));
   await findByText(/qual é o seu biotipo/i);
-  fireEvent.press(getByText('Ectomorfo'));
+  fireEvent.press(getByText('Magro / Acelerado (Ectomorfo)'));
   await findByText(/qual é a sua altura/i);
+}
+
+/** Leva até a pergunta do biotipo (passo 4 de 10). */
+async function goToBodyType(utils: ReturnType<typeof render>) {
+  const { getByPlaceholderText, getByTestId, getByText, findByText } = utils;
+  fireEvent.changeText(getByPlaceholderText('Digite aqui...'), 'João');
+  fireEvent.press(getByTestId('send-btn'));
+  await findByText(/qual é o seu sexo/i);
+  fireEvent.press(getByText('Masculino'));
+  await findByText(/quantos anos você tem/i);
+  fireEvent.changeText(getByPlaceholderText('Digite aqui...'), '30');
+  fireEvent.press(getByTestId('send-btn'));
+  await findByText(/qual é o seu biotipo/i);
+}
+
+/** Mensagens da conversa, lidas dos dados do FlatList (nem todas renderizam no teste). */
+function chatData(utils: ReturnType<typeof render>) {
+  return utils.UNSAFE_getByType(FlatList).props.data as { id: string; role: string; text: string }[];
 }
 
 describe('ProfileSetupScreen', () => {
@@ -328,6 +363,101 @@ describe('ProfileSetupScreen', () => {
         coachGender: 'neutral',
       });
       await waitFor(() => expect(mockSetProfileComplete).toHaveBeenCalledWith(true));
+    });
+  });
+
+  describe('biotipo em linguagem leiga e "Ajude-me a descobrir"', () => {
+    it('mostra os biotipos em linguagem leiga e a opção de descobrir', async () => {
+      const utils = render(<ProfileSetupScreen navigation={{} as never} route={{} as never} />);
+      await goToBodyType(utils);
+
+      for (const title of [
+        'Magro / Acelerado (Ectomorfo)',
+        'Atlético / Versátil (Mesomorfo)',
+        'Largo (Endomorfo)',
+        'Ajude-me a descobrir',
+      ]) {
+        expect(utils.getByText(title)).toBeTruthy();
+      }
+      expect(utils.queryByText('Não sei')).toBeNull();
+    });
+
+    it('o mentor faz as perguntas, conclui o biotipo e segue para a altura', async () => {
+      const utils = render(<ProfileSetupScreen navigation={{} as never} route={{} as never} />);
+      const { getByText, findByText, queryByText, queryByPlaceholderText } = utils;
+      await goToBodyType(utils);
+
+      fireEvent.press(getByText('Ajude-me a descobrir'));
+      await waitFor(() => expect(lastCoachMessage(utils)).toMatch(/envolva o pulso/i));
+      expect(getByText('Os dedos se sobrepõem')).toBeTruthy();
+      expect(getByText('Os dedos só se encostam')).toBeTruthy();
+      expect(getByText('Os dedos não se encostam')).toBeTruthy();
+      // As cards do biotipo saem de cena e a resposta é só por card.
+      expect(queryByText('Largo (Endomorfo)')).toBeNull();
+      expect(queryByPlaceholderText('Digite aqui...')).toBeNull();
+      // Sub-perguntas não contam no progresso.
+      expect(getByText('4 / 10')).toBeTruthy();
+
+      fireEvent.press(getByText('Os dedos se sobrepõem'));
+      await waitFor(() => expect(lastCoachMessage(utils)).toMatch(/seu peso costuma reagir/i));
+      expect(getByText('4 / 10')).toBeTruthy();
+
+      fireEvent.press(getByText('Quase não muda'));
+      await waitFor(() => expect(lastCoachMessage(utils)).toMatch(/combina mais com o seu corpo/i));
+      expect(getByText('4 / 10')).toBeTruthy();
+
+      fireEvent.press(getByText('Atlético'));
+      await findByText('5 / 10');
+
+      const data = chatData(utils);
+      const coachTexts = data.filter((m) => m.role === 'coach').map((m) => m.text);
+      expect(coachTexts).toContain(
+        'Pelo que você me contou, seu biotipo é Magro / Acelerado (Ectomorfo).',
+      );
+      expect(lastCoachMessage(utils)).toMatch(/qual é a sua altura/i);
+      expect(data.filter((m) => m.role === 'user').map((m) => m.text)).toEqual([
+        'João',
+        'Masculino',
+        '30',
+        'Ajude-me a descobrir',
+        'Os dedos se sobrepõem',
+        'Quase não muda',
+        'Atlético',
+      ]);
+      const ids = data.map((m) => m.id);
+      expect(new Set(ids).size).toBe(ids.length);
+      expect(queryByPlaceholderText('Digite aqui...')).toBeTruthy();
+    });
+
+    it('envia o biotipo descoberto, nunca "discover"', async () => {
+      await completeOnboarding(
+        render(<ProfileSetupScreen navigation={{} as never} route={{} as never} />),
+        { bodyTypeQuiz: ['Os dedos se sobrepõem', 'Quase não muda', 'Atlético'] },
+      );
+
+      await waitFor(() => expect(mockProfileSetup).toHaveBeenCalled());
+      expect(mockProfileSetup.mock.calls[0]![0]).toMatchObject({ bodyType: 'ectomorph' });
+    });
+
+    it('empate nas respostas conclui mesomorfo e o onboarding continua', async () => {
+      await completeOnboarding(
+        render(<ProfileSetupScreen navigation={{} as never} route={{} as never} />),
+        { bodyTypeQuiz: ['Os dedos se sobrepõem', 'Muda um pouco', 'Mais largo e arredondado'] },
+      );
+
+      await waitFor(() => expect(mockProfileSetup).toHaveBeenCalled());
+      expect(mockProfileSetup.mock.calls[0]![0]).toMatchObject({ bodyType: 'mesomorph' });
+    });
+
+    it('escolher o biotipo direto envia o valor e mostra o rótulo leigo', async () => {
+      const utils = render(<ProfileSetupScreen navigation={{} as never} route={{} as never} />);
+      await completeOnboarding(utils);
+
+      await waitFor(() => expect(mockProfileSetup).toHaveBeenCalled());
+      expect(mockProfileSetup.mock.calls[0]![0]).toMatchObject({ bodyType: 'ectomorph' });
+      expect(chatData(utils).find((m) => m.id === 'user-bodyType')?.text).toBe(
+        'Magro / Acelerado (Ectomorfo)',
+      );
     });
   });
 });

@@ -15,6 +15,7 @@ import { Text, screenShellStyle } from '@shared/components';
 import { OnboardingChatBubble } from '../components/OnboardingChatBubble';
 import { OnboardingOptionCard } from '../components/OnboardingOptionCard';
 import { OnboardingProgressBar } from '../components/OnboardingProgressBar';
+import { BODY_TYPE_LABELS, BODY_TYPE_QUIZ, BodyTypeKey, scoreBodyType } from '../bodyTypeQuiz';
 import { colors, typography, spacing } from '@theme';
 import type { AuthStackScreenProps } from '@navigation/types';
 
@@ -64,16 +65,23 @@ const QUESTIONS: Record<Step, string> = {
 
 type OptionDef = { value: string; emoji: string; title: string; description: string };
 
+/**
+ * Valor só da tela: abre o quiz do mentor em vez de virar resposta. Nunca vai
+ * ao backend — o quiz termina gravando ectomorph/mesomorph/endomorph.
+ */
+const DISCOVER_BODY_TYPE = 'discover';
+
 const OPTIONS: Partial<Record<Step, OptionDef[]>> = {
   sex: [
     { value: 'male', emoji: '👨', title: 'Masculino', description: '' },
     { value: 'female', emoji: '👩', title: 'Feminino', description: '' },
   ],
   bodyType: [
-    { value: 'ectomorph', emoji: '🦴', title: 'Ectomorfo', description: 'Metabolismo rápido, difícil ganhar massa' },
-    { value: 'mesomorph', emoji: '💪', title: 'Mesomorfo', description: 'Corpo atlético, ganha e perde peso com facilidade' },
-    { value: 'endomorph', emoji: '🏋️', title: 'Endomorfo', description: 'Tende a acumular gordura, metabolismo mais lento' },
-    { value: 'unknown', emoji: '❓', title: 'Não sei', description: 'Deixe a IA identificar pelo seu perfil' },
+    // Usuário leigo não sabe o que é "Ectomorfo": o rótulo leigo vem primeiro.
+    { value: 'ectomorph', emoji: '🦴', title: BODY_TYPE_LABELS.ectomorph, description: 'Dificuldade para ganhar peso, metabolismo rápido' },
+    { value: 'mesomorph', emoji: '💪', title: BODY_TYPE_LABELS.mesomorph, description: 'Ganha músculo com facilidade, corpo naturalmente definido' },
+    { value: 'endomorph', emoji: '🏋️', title: BODY_TYPE_LABELS.endomorph, description: 'Ganha peso com facilidade, estrutura mais larga' },
+    { value: DISCOVER_BODY_TYPE, emoji: '❓', title: 'Ajude-me a descobrir', description: 'O mentor faz algumas perguntas rápidas' },
   ],
   activity: [
     { value: 'sedentary', emoji: '🛋️', title: 'Sedentário', description: 'Pouco ou nenhum exercício' },
@@ -239,10 +247,17 @@ export function ProfileSetupScreen({ navigation }: AuthStackScreenProps<'Profile
   const [submitting, setSubmitting] = useState(false);
   // Ids do FlatList precisam ser únicos: cada repergunta gera uma nova dupla.
   const [retryCount, setRetryCount] = useState(0);
+  // "Ajude-me a descobrir": sub-perguntas do mentor dentro do passo bodyType.
+  // Não mexem em currentStepIndex, então o progresso fica parado nelas.
+  const [quiz, setQuiz] = useState<{ index: number; answers: BodyTypeKey[] } | null>(null);
   const listRef = useRef<FlatList>(null);
 
   const currentStep = STEPS[currentStepIndex];
-  const hasOptions = !!OPTIONS[currentStep];
+  const currentOptions: OptionDef[] | undefined = quiz ? BODY_TYPE_QUIZ[quiz.index]!.options : OPTIONS[currentStep];
+
+  function scrollToEnd() {
+    setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100);
+  }
 
   /**
    * `displayText` é o que aparece na bolha do usuário. Para as opções, é o
@@ -253,6 +268,11 @@ export function ProfileSetupScreen({ navigation }: AuthStackScreenProps<'Profile
    */
   function advanceWithAnswer(value: string, displayText: string = value) {
     const step = STEPS[currentStepIndex];
+
+    if (step === 'bodyType' && value === DISCOVER_BODY_TYPE) {
+      startBodyTypeQuiz(displayText);
+      return;
+    }
 
     // Valida ANTES de consumir o passo: inválido, o Coach repergunta e o
     // usuário continua onde estava. Validar só no envio faria ele refazer todos.
@@ -265,32 +285,88 @@ export function ProfileSetupScreen({ navigation }: AuthStackScreenProps<'Profile
       ]);
       setRetryCount((n) => n + 1);
       setInputText('');
-      setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100);
+      scrollToEnd();
       return;
     }
-
-    const newAnswers = { ...answers, [step]: check.value };
-    setAnswers(newAnswers);
 
     // Reenvio depois de uma falha no último passo: a resposta anterior já está
     // na conversa com o mesmo id. Substitui em vez de duplicar — id repetido
     // quebra o keyExtractor do FlatList e a bolha aparecia duas vezes.
-    const nextMessages: ChatMessage[] = [
+    commitAnswer(check.value, [
       ...messages.filter((m) => m.id !== `user-${step}`),
       { id: `user-${step}`, role: 'user', text: displayText === value ? check.value : displayText },
-    ];
+    ]);
+  }
+
+  /** Grava a resposta do passo atual e faz a próxima pergunta (ou envia). */
+  function commitAnswer(value: string, nextMessages: ChatMessage[]) {
+    const step = STEPS[currentStepIndex];
+    const newAnswers = { ...answers, [step]: value };
+    setAnswers(newAnswers);
 
     if (currentStepIndex < STEPS.length - 1) {
       const nextStep = STEPS[currentStepIndex + 1];
-      nextMessages.push({ id: `coach-${nextStep}`, role: 'coach', text: QUESTIONS[nextStep] });
-      setMessages(nextMessages);
+      setMessages([
+        ...nextMessages,
+        { id: `coach-${nextStep}`, role: 'coach', text: QUESTIONS[nextStep] },
+      ]);
       setCurrentStepIndex((i) => i + 1);
       setInputText('');
-      setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100);
+      scrollToEnd();
     } else {
       setMessages(nextMessages);
       submitProfile(newAnswers);
     }
+  }
+
+  /**
+   * Quiz local e determinístico, apresentado pelo mentor nas bolhas do chat:
+   * instantâneo, funciona sem rede e sem custo de IA (o onboarding nem tem
+   * token definitivo ainda).
+   */
+  function startBodyTypeQuiz(displayText: string) {
+    setMessages([
+      ...messages,
+      { id: 'user-bodyType-discover', role: 'user', text: displayText },
+      { id: 'coach-quiz-intro', role: 'coach', text: 'Vamos descobrir juntos! 3 perguntas rápidas.' },
+      { id: 'coach-quiz-0', role: 'coach', text: BODY_TYPE_QUIZ[0]!.question },
+    ]);
+    setQuiz({ index: 0, answers: [] });
+    setInputText('');
+    scrollToEnd();
+  }
+
+  function answerBodyTypeQuiz(value: BodyTypeKey, title: string) {
+    if (!quiz) return;
+    const quizAnswers = [...quiz.answers, value];
+    const withAnswer: ChatMessage[] = [
+      ...messages,
+      { id: `user-quiz-${quiz.index}`, role: 'user', text: title },
+    ];
+
+    const nextIndex = quiz.index + 1;
+    if (nextIndex < BODY_TYPE_QUIZ.length) {
+      setMessages([
+        ...withAnswer,
+        { id: `coach-quiz-${nextIndex}`, role: 'coach', text: BODY_TYPE_QUIZ[nextIndex]!.question },
+      ]);
+      setQuiz({ index: nextIndex, answers: quizAnswers });
+      scrollToEnd();
+      return;
+    }
+
+    const result = scoreBodyType(quizAnswers);
+    setQuiz(null);
+    // A resposta do usuário já está nas bolhas do quiz: o mentor anuncia o
+    // resultado e segue direto para a próxima pergunta.
+    commitAnswer(result, [
+      ...withAnswer,
+      {
+        id: 'coach-quiz-result',
+        role: 'coach',
+        text: `Pelo que você me contou, seu biotipo é ${BODY_TYPE_LABELS[result]}.`,
+      },
+    ]);
   }
 
   async function submitProfile(finalAnswers: Partial<Record<Step, string>>) {
@@ -369,48 +445,55 @@ export function ProfileSetupScreen({ navigation }: AuthStackScreenProps<'Profile
         onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
       />
 
-      {hasOptions && !submitting && (
+      {currentOptions && !submitting && (
         <View style={styles.options}>
-          {OPTIONS[currentStep]!.map((opt) => (
+          {currentOptions.map((opt) => (
             <OnboardingOptionCard
               key={opt.value}
               emoji={opt.emoji}
               title={opt.title}
               description={opt.description}
-              selected={answers[currentStep] === opt.value}
-              onPress={() => advanceWithAnswer(opt.value, opt.title)}
+              selected={!quiz && answers[currentStep] === opt.value}
+              onPress={() =>
+                quiz
+                  ? answerBodyTypeQuiz(opt.value as BodyTypeKey, opt.title)
+                  : advanceWithAnswer(opt.value, opt.title)
+              }
             />
           ))}
         </View>
       )}
 
-      <View style={styles.inputRow}>
-        <TextInput
-          style={styles.input}
-          placeholder="Digite aqui..."
-          placeholderTextColor={colors.textDisabled}
-          value={inputText}
-          onChangeText={setInputText}
-          onSubmitEditing={handleSend}
-          returnKeyType="send"
-          editable={!submitting}
-          // Reduz a entrada ruim na origem. NÃO substitui validateStep: o
-          // teclado numérico do Android tem vírgula.
-          keyboardType={
-            currentStep === 'age' || currentStep === 'height' || currentStep === 'weight'
-              ? 'numeric'
-              : 'default'
-          }
-        />
-        <TouchableOpacity
-          style={[styles.sendBtn, (!inputText.trim() || submitting) && styles.sendBtnDisabled]}
-          onPress={handleSend}
-          disabled={!inputText.trim() || submitting}
-          testID="send-btn"
-        >
-          <Text color={colors.white}>↑</Text>
-        </TouchableOpacity>
-      </View>
+      {/* No quiz a resposta é só por card: texto livre não tem como pontuar. */}
+      {!quiz && (
+        <View style={styles.inputRow}>
+          <TextInput
+            style={styles.input}
+            placeholder="Digite aqui..."
+            placeholderTextColor={colors.textDisabled}
+            value={inputText}
+            onChangeText={setInputText}
+            onSubmitEditing={handleSend}
+            returnKeyType="send"
+            editable={!submitting}
+            // Reduz a entrada ruim na origem. NÃO substitui validateStep: o
+            // teclado numérico do Android tem vírgula.
+            keyboardType={
+              currentStep === 'age' || currentStep === 'height' || currentStep === 'weight'
+                ? 'numeric'
+                : 'default'
+            }
+          />
+          <TouchableOpacity
+            style={[styles.sendBtn, (!inputText.trim() || submitting) && styles.sendBtnDisabled]}
+            onPress={handleSend}
+            disabled={!inputText.trim() || submitting}
+            testID="send-btn"
+          >
+            <Text color={colors.white}>↑</Text>
+          </TouchableOpacity>
+        </View>
+      )}
     </KeyboardAvoidingView>
   );
 }
