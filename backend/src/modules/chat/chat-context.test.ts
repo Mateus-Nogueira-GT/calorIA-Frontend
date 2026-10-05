@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
+import { fakeFastify } from '../../shared/testing/fake-fastify.js'
 import type { TodayPlan } from '../diets/diets.schemas.js'
 import {
   type UserContextData,
   ageFromBirthDate,
+  fetchUserContext,
   formatKnownData,
   formatUserContext,
 } from './chat-context.js'
@@ -244,5 +246,60 @@ describe('formatKnownData (I2)', () => {
     expect(out).toContain('objetivo: manter peso')
     expect(out).not.toContain('altura')
     expect(out).not.toContain('idade')
+  })
+})
+
+describe('dados do cadastro (F2)', () => {
+  const baseProfile = {
+    weight_kg: 80,
+    height_cm: 175,
+    birth_date: null,
+    gender: null,
+    goal: null,
+    activity_level: null,
+    dietary_restrictions: null,
+    allergies: null,
+  }
+
+  it('DECIMAL vindo como string do postgres.js → número sem zeros à direita', async () => {
+    const { fastify } = fakeFastify([
+      [
+        'birth_date::TEXT AS birth_date',
+        [{ ...baseProfile, weight_kg: '80.50', height_cm: '175.00', body_type: null }],
+      ],
+    ])
+    const ctx = await fetchUserContext(fastify, 'u1', { date: '2026-07-24' })
+    const out = formatKnownData(ctx)
+    expect(out).toContain('peso: 80.5kg')
+    expect(out).not.toContain('80.50')
+    expect(out).toContain('altura: 175cm')
+    expect(formatUserContext(ctx)).toContain('80.5kg')
+    expect(formatUserContext(ctx)).not.toContain('80.50')
+  })
+
+  it('biotipo conhecido → listado com o rótulo do app', () => {
+    const out = formatKnownData({
+      ...emptyData,
+      profile: { ...baseProfile, body_type: 'mesomorph' },
+    })
+    expect(out).toContain('biotipo: Atlético / Versátil (mesomorfo)')
+    expect(
+      formatKnownData({ ...emptyData, profile: { ...baseProfile, body_type: 'ectomorph' } }),
+    ).toContain('biotipo: Magro / Acelerado (ectomorfo)')
+    expect(
+      formatKnownData({ ...emptyData, profile: { ...baseProfile, body_type: 'endomorph' } }),
+    ).toContain('biotipo: Largo (endomorfo)')
+  })
+
+  it('biotipo unknown/null → não lista biotipo', () => {
+    for (const body_type of ['unknown', null]) {
+      const out = formatKnownData({ ...emptyData, profile: { ...baseProfile, body_type } })
+      expect(out).not.toContain('biotipo')
+    }
+  })
+
+  it('goal health → orienta usar goal=maintain', () => {
+    const out = formatKnownData({ ...emptyData, profile: { ...baseProfile, goal: 'health' } })
+    expect(out).toContain('objetivo: manter peso / melhorar saúde (use goal=maintain)')
   })
 })

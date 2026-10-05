@@ -37,6 +37,19 @@ const GENDER_LABELS: Record<string, string> = {
   other: 'outro',
 }
 
+// Rótulos do onboarding (biotipo é informativo — não é dado obrigatório).
+const BODY_TYPE_LABELS: Record<string, string> = {
+  ectomorph: 'Magro / Acelerado (ectomorfo)',
+  mesomorph: 'Atlético / Versátil (mesomorfo)',
+  endomorph: 'Largo (endomorfo)',
+}
+
+// Na coleta, 'health' não existe no enum da tool: orienta o modelo a usar maintain.
+const KNOWN_GOAL_LABELS: Record<string, string> = {
+  ...GOAL_LABELS,
+  health: 'manter peso / melhorar saúde (use goal=maintain)',
+}
+
 const CONTEXT_MAX_CHARS = 1400
 const LIST_MAX_ITEMS = 6
 
@@ -49,6 +62,7 @@ interface ContextProfile {
   activity_level: string | null
   dietary_restrictions: string[] | null
   allergies: string[] | null
+  body_type?: string | null
 }
 
 export interface UserContextData {
@@ -78,6 +92,12 @@ export function ageFromBirthDate(birthDate: string | null, now: Date = new Date(
   return age >= 0 && age < 130 ? age : null
 }
 
+function toNumberOrNull(v: unknown): number | null {
+  if (v == null || v === '') return null
+  const n = Number(v)
+  return Number.isFinite(n) ? n : null
+}
+
 /** Dia da semana (1=Seg…7=Dom) de uma data local 'YYYY-MM-DD'. */
 function dayNumberFromDate(date: string): number {
   return ((new Date(`${date}T00:00:00Z`).getUTCDay() + 6) % 7) + 1
@@ -100,10 +120,17 @@ export async function fetchUserContext(
   try {
     const [row] = await fastify.db<ContextProfile[]>`
       SELECT weight_kg, height_cm, birth_date::TEXT AS birth_date, gender, goal,
-             activity_level, dietary_restrictions, allergies
+             activity_level, dietary_restrictions, allergies, body_type
       FROM profiles WHERE id = ${userId}
     `
-    profile = row ?? null
+    // DECIMAL chega como string ('80.50') do postgres.js → número (80.5).
+    profile = row
+      ? {
+          ...row,
+          weight_kg: toNumberOrNull(row.weight_kg),
+          height_cm: toNumberOrNull(row.height_cm),
+        }
+      : null
   } catch {
     profile = null
   }
@@ -276,9 +303,11 @@ export function formatKnownData(data: UserContextData): string {
   const age = ageFromBirthDate(p.birth_date)
   if (age != null) bits.push(`idade: ${age} anos`)
   if (p.gender) bits.push(`sexo: ${GENDER_LABELS[p.gender] ?? p.gender}`)
-  if (p.goal) bits.push(`objetivo: ${GOAL_LABELS[p.goal] ?? p.goal}`)
+  if (p.goal) bits.push(`objetivo: ${KNOWN_GOAL_LABELS[p.goal] ?? p.goal}`)
   if (p.activity_level)
     bits.push(`atividade: ${ACTIVITY_LABELS[p.activity_level] ?? p.activity_level}`)
+  const bodyType = p.body_type ? BODY_TYPE_LABELS[p.body_type] : undefined
+  if (bodyType) bits.push(`biotipo: ${bodyType}`)
   if (data.mealsPerDay) bits.push(`refeições/dia: ${data.mealsPerDay}`)
   if (p.dietary_restrictions?.length)
     bits.push(`restrições: ${p.dietary_restrictions.slice(0, LIST_MAX_ITEMS).join(', ')}`)

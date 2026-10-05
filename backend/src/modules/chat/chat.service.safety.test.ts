@@ -101,3 +101,17 @@ describe('handleDietGeneration — guardrails de coleta (S3/S4)', () => {
     expect(r.message.content).toBe('Vou montar sua dieta!')
   })
 })
+
+describe('handleDietGeneration — goal health do cadastro (F2)', () => {
+  it('goal maintain vindo da tool não sobrescreve um goal health do perfil', async () => {
+    const { fastify, calls } = fakeFastify([], {
+      chatCreate: async () => toolCompletion({ ...dados, goal: 'maintain' }),
+    })
+
+    await sendChatMessage(fastify, USER, { message: 'sim', conversation_id: CONV })
+
+    const update = calls.find((c) => c.sql.includes('UPDATE profiles'))
+    expect(update?.sql).toMatch(/goal\s*=\s*CASE WHEN goal = 'health'/)
+    expect(update?.params).toContain('maintain')
+  })
+})

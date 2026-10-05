@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { CollectedUserData } from '../../shared/diet-ai-schema.js'
 import { buildDayPrompt, computeTargets } from '../diets/jobs.service.js'
 import { type UserContextData, formatKnownData, formatUserContext } from './chat-context.js'
@@ -86,6 +86,46 @@ describe('prompts do coach (snapshot)', () => {
       hasActiveDiet,
     )
     expect(prompt).toMatchSnapshot()
+  })
+
+  describe('pós-onboarding', () => {
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    // Cadastro preenchido (peso, altura, idade, sexo, objetivo, atividade,
+    // biotipo), sem refeições/dia. Relógio fixo: a idade vem do birth_date.
+    it('cadastro completo, sem refeições/dia', () => {
+      vi.useFakeTimers({ toFake: ['Date'] })
+      vi.setSystemTime(new Date('2026-09-09T12:00:00Z'))
+      const ctx: UserContextData = {
+        profile: {
+          weight_kg: 80,
+          height_cm: 175,
+          birth_date: '1996-01-15',
+          gender: 'male',
+          goal: 'lose_weight',
+          activity_level: 'moderate',
+          dietary_restrictions: [],
+          allergies: [],
+          body_type: 'mesomorph',
+        },
+        diet: null,
+        today: null,
+        freeMeals: [],
+        streak: null,
+        mealsPerDay: null,
+        date: '2026-09-09',
+      }
+      const prompt = assembleSystemPrompt(
+        buildSystemPrompt('motivational'),
+        formatUserContext(ctx),
+        formatKnownData(ctx),
+        false,
+      )
+      expect(prompt).toContain('idade: 30 anos')
+      expect(prompt).toMatchSnapshot()
+    })
   })
 })
 

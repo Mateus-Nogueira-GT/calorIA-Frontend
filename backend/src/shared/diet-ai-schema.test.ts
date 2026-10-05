@@ -75,3 +75,15 @@ describe('collectedUserDataSchema — bounds de plausibilidade (S1)', () => {
     expect(COLLECTED_BOUNDS.age).toEqual([10, 100])
   })
 })
+
+describe('collectedUserDataSchema — goal health do cadastro (F2)', () => {
+  it("aceita 'health' e mapeia para 'maintain'", () => {
+    const r = collectedUserDataSchema.safeParse({ ...valido, goal: 'health' })
+    expect(r.success).toBe(true)
+    expect(r.success && r.data.goal).toBe('maintain')
+  })
+
+  it('continua rejeitando objetivo desconhecido', () => {
+    expect(collectedUserDataSchema.safeParse({ ...valido, goal: 'voar' }).success).toBe(false)
+  })
+})
