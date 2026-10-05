@@ -393,6 +393,7 @@ export async function toggleMealCompleted(
   // atualizar passa a usar a lógica correta, derivada da data local.
   const hasClientTz = tzOffsetMinutes != null
 
+  // diet_meals não tem updated_at (006_diets.sql): o UPDATE abaixo não pode escrevê-lo.
   // B1: o novo estado vem da DATA de completed_at, não de `NOT is_completed`.
   // O plano é cíclico (day_number), então a mesma linha reaparece na semana
   // seguinte ainda com is_completed=true de uma conclusão antiga, enquanto a UI
@@ -422,8 +423,7 @@ export async function toggleMealCompleted(
     )
     UPDATE diet_meals dm
     SET is_completed = NOT target.completed_on_date,
-        completed_at = CASE WHEN target.completed_on_date THEN NULL ELSE NOW() END,
-        updated_at   = NOW()
+        completed_at = CASE WHEN target.completed_on_date THEN NULL ELSE NOW() END
     FROM target
     WHERE dm.id = target.id
     RETURNING dm.is_completed

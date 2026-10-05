@@ -45,6 +45,20 @@ describe('MealPlanCard', () => {
     expect(onToggle).toHaveBeenCalledWith('m1');
   });
 
+  it('não deixa estourar rejeição não tratada quando o toggle falha', async () => {
+    const onToggle = jest.fn().mockRejectedValue(new Error('x'));
+    const { getByText } = render(
+      <MealPlanCard meal={baseMeal} isToggling={false} onToggleComplete={onToggle} />,
+    );
+    const unhandled = jest.fn();
+    process.on('unhandledRejection', unhandled);
+    fireEvent.press(getByText('Marcar como concluída'));
+    await new Promise((resolve) => setImmediate(resolve));
+    process.off('unhandledRejection', unhandled);
+    expect(onToggle).toHaveBeenCalledWith('m1');
+    expect(unhandled).not.toHaveBeenCalled();
+  });
+
   // completedToday é o campo canônico: completedAt cru pode ser de semanas
   // atrás e não significa "feita hoje" (mesma razão do B1 no backend).
   it('não considera concluída quando completedAt é antigo mas não é de hoje', () => {
