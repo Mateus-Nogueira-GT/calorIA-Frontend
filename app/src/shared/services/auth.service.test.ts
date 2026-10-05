@@ -40,7 +40,7 @@ describe('authService.profileSetup', () => {
     expect(url).toBe('/users/me/profile');
     expect(body).toMatchObject({
       gender: 'female',
-      birth_date: `${new Date().getFullYear() - 30}-07-01`,
+      birth_date: `${new Date().getFullYear() - 30}-01-01`,
       activity_level: 'moderate',
       coach_gender: 'neutral',
     });
