@@ -35,7 +35,13 @@ export function MealPlanCard({ meal, isToggling, onToggleComplete }: Props): Rea
         </View>
       </View>
 
-      <MacroChips kcal={meal.calories} protein={meal.protein} carbs={meal.carbs} fat={meal.fat} />
+      <MacroChips
+        kcal={meal.calories}
+        protein={meal.protein}
+        carbs={meal.carbs}
+        fat={meal.fat}
+        fiber={meal.fiber}
+      />
 
       <View style={styles.items}>
         {meal.items.map((item, idx) => (
