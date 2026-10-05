@@ -203,6 +203,83 @@ export function validateStep(step: Step, raw: string): StepCheck {
   return { ok: true, value };
 }
 
+/** Minúsculas, sem acento e sem espaço nas pontas: "  Atlético " → "atletico". */
+function normalize(raw: string): string {
+  return raw
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+}
+
+/** Como as pessoas escrevem o sexo sem tocar na opção. */
+const SEX_SYNONYMS: Record<string, string> = {
+  m: 'male',
+  homem: 'male',
+  masculino: 'male',
+  f: 'female',
+  mulher: 'female',
+  feminino: 'female',
+};
+
+/** "Ajude-me a descobrir" digitado. O valor interno 'discover' NÃO conta. */
+const DISCOVER_KEYWORDS = ['ajude', 'nao sei', 'descobrir'];
+
+const RETRY_PICK_OPTION = 'Toque em uma das opções acima 🙂';
+
+/**
+ * Texto livre num passo de opções: o backend só aceita os valores dos cards.
+ * Antes o texto ia cru ("banana", "masculino") e o perfil era sempre recusado,
+ * deixando o usuário novo preso no cadastro. Casa o texto com uma opção ou
+ * devolve null (o Coach repergunta).
+ */
+export function matchOption(step: Step, raw: string): OptionDef | null {
+  const options = OPTIONS[step];
+  if (!options) return null;
+  const text = normalize(raw);
+  if (!text) return null;
+
+  const real = options.filter((o) => o.value !== DISCOVER_BODY_TYPE);
+  if (step === 'bodyType' && DISCOVER_KEYWORDS.some((k) => text.includes(k))) {
+    return options.find((o) => o.value === DISCOVER_BODY_TYPE) ?? null;
+  }
+  if (step === 'sex' && SEX_SYNONYMS[text]) {
+    return real.find((o) => o.value === SEX_SYNONYMS[text]) ?? null;
+  }
+
+  const exact = real.find((o) => normalize(o.value) === text || normalize(o.title) === text);
+  if (exact) return exact;
+
+  // Parcial ("magro", "perder", "muito ativo"): só com 3+ letras e só se for
+  // de UMA opção — "peso" serve para duas metas, então repergunta.
+  if (text.length < 3) return null;
+  const partial = real.filter((o) => {
+    const title = normalize(o.title);
+    return title.includes(text) || text.includes(title);
+  });
+  return partial.length === 1 ? partial[0]! : null;
+}
+
+const REQUIRED_STEPS: Step[] = STEPS.filter((s) => s !== 'bodyType');
+
+/**
+ * Rede de segurança antes de enviar: o primeiro passo obrigatório sem resposta
+ * válida, ou null. O biotipo pode faltar (vai como 'unknown').
+ */
+export function findInvalidStep(answers: Partial<Record<Step, string | undefined>>): Step | null {
+  for (const step of REQUIRED_STEPS) {
+    const value = answers[step];
+    if (value === undefined) return step;
+    const options = OPTIONS[step];
+    if (options) {
+      if (!options.some((o) => o.value === value && o.value !== DISCOVER_BODY_TYPE)) return step;
+    } else if (!validateStep(step, value).ok) {
+      return step;
+    }
+  }
+  return null;
+}
+
 /** Extrai a causa que o backend explicou; sem ela, distingue rede de resto. */
 function describeSubmitError(error: unknown): string {
   const e = error as {
@@ -251,6 +328,12 @@ export function ProfileSetupScreen({ navigation }: AuthStackScreenProps<'Profile
   // Não mexem em currentStepIndex, então o progresso fica parado nelas.
   const [quiz, setQuiz] = useState<{ index: number; answers: BodyTypeKey[] } | null>(null);
   const listRef = useRef<FlatList>(null);
+  // Toque duplo: os dois toques chegam antes do re-render e rodam com o mesmo
+  // closure. Sem esta trava o segundo gravava a resposta no passo seguinte e
+  // pulava uma pergunta (ex.: a idade ficava sem resposta). O ref muda na hora;
+  // o state, só no próximo render.
+  const stepIndexRef = useRef(0);
+  const quizIndexRef = useRef<number | null>(null);
 
   const currentStep = STEPS[currentStepIndex];
   const currentOptions: OptionDef[] | undefined = quiz ? BODY_TYPE_QUIZ[quiz.index]!.options : OPTIONS[currentStep];
@@ -267,6 +350,8 @@ export function ProfileSetupScreen({ navigation }: AuthStackScreenProps<'Profile
    * salvo e enviado ao backend.
    */
   function advanceWithAnswer(value: string, displayText: string = value) {
+    // Este closure é de um passo que já foi respondido (toque duplo).
+    if (currentStepIndex !== stepIndexRef.current || quizIndexRef.current !== null) return;
     const step = STEPS[currentStepIndex];
 
     if (step === 'bodyType' && value === DISCOVER_BODY_TYPE) {
@@ -278,14 +363,7 @@ export function ProfileSetupScreen({ navigation }: AuthStackScreenProps<'Profile
     // usuário continua onde estava. Validar só no envio faria ele refazer todos.
     const check = validateStep(step, value);
     if (!check.ok) {
-      setMessages([
-        ...messages,
-        { id: `user-${step}-${retryCount}`, role: 'user', text: displayText },
-        { id: `coach-retry-${step}-${retryCount}`, role: 'coach', text: check.reason },
-      ]);
-      setRetryCount((n) => n + 1);
-      setInputText('');
-      scrollToEnd();
+      retry(step, displayText, check.reason);
       return;
     }
 
@@ -298,25 +376,78 @@ export function ProfileSetupScreen({ navigation }: AuthStackScreenProps<'Profile
     ]);
   }
 
-  /** Grava a resposta do passo atual e faz a próxima pergunta (ou envia). */
+  /** Texto digitado num passo de opções: casa com um card ou repergunta. */
+  function answerTypedOption(raw: string) {
+    if (currentStepIndex !== stepIndexRef.current || quizIndexRef.current !== null) return;
+    const step = STEPS[currentStepIndex];
+    const option = matchOption(step, raw);
+    if (!option) {
+      retry(step, raw, RETRY_PICK_OPTION);
+      return;
+    }
+    advanceWithAnswer(option.value, option.title);
+  }
+
+  /** O Coach repergunta; o usuário continua no mesmo passo. */
+  function retry(step: Step, displayText: string, reason: string) {
+    setMessages([
+      ...messages,
+      { id: `user-${step}-${retryCount}`, role: 'user', text: displayText },
+      { id: `coach-retry-${step}-${retryCount}`, role: 'coach', text: reason },
+    ]);
+    setRetryCount((n) => n + 1);
+    setInputText('');
+    scrollToEnd();
+  }
+
+  /** Vai para o passo `index` (state e trava juntos). */
+  function goToStep(index: number) {
+    stepIndexRef.current = index;
+    setCurrentStepIndex(index);
+    setInputText('');
+    scrollToEnd();
+  }
+
+  /**
+   * Grava a resposta do passo atual e faz a próxima pergunta ainda sem
+   * resposta (ou envia). "Sem resposta" e não "a seguinte": depois que a rede
+   * de segurança repergunta um passo lá atrás, os outros já estão respondidos.
+   */
   function commitAnswer(value: string, nextMessages: ChatMessage[]) {
     const step = STEPS[currentStepIndex];
     const newAnswers = { ...answers, [step]: value };
     setAnswers(newAnswers);
 
-    if (currentStepIndex < STEPS.length - 1) {
-      const nextStep = STEPS[currentStepIndex + 1];
+    const nextIndex = STEPS.findIndex((s, i) => i > currentStepIndex && newAnswers[s] === undefined);
+    if (nextIndex !== -1) {
+      const nextStep = STEPS[nextIndex];
       setMessages([
         ...nextMessages,
         { id: `coach-${nextStep}`, role: 'coach', text: QUESTIONS[nextStep] },
       ]);
-      setCurrentStepIndex((i) => i + 1);
-      setInputText('');
-      scrollToEnd();
-    } else {
-      setMessages(nextMessages);
-      submitProfile(newAnswers);
+      goToStep(nextIndex);
+      return;
     }
+
+    // Rede de segurança: nunca envia o que o backend recusa. Com resposta
+    // faltando ou inválida, repergunta aquele passo em vez de prender o
+    // usuário num "não foi possível salvar" sem saída.
+    const invalid = findInvalidStep(newAnswers);
+    if (invalid) {
+      const kept = { ...newAnswers };
+      delete kept[invalid];
+      setAnswers(kept);
+      setMessages([
+        ...nextMessages,
+        { id: `coach-reask-${invalid}-${retryCount}`, role: 'coach', text: QUESTIONS[invalid] },
+      ]);
+      setRetryCount((n) => n + 1);
+      goToStep(STEPS.indexOf(invalid));
+      return;
+    }
+
+    setMessages(nextMessages);
+    submitProfile(newAnswers);
   }
 
   /**
@@ -331,13 +462,15 @@ export function ProfileSetupScreen({ navigation }: AuthStackScreenProps<'Profile
       { id: 'coach-quiz-intro', role: 'coach', text: 'Vamos descobrir juntos! 3 perguntas rápidas.' },
       { id: 'coach-quiz-0', role: 'coach', text: BODY_TYPE_QUIZ[0]!.question },
     ]);
+    quizIndexRef.current = 0;
     setQuiz({ index: 0, answers: [] });
     setInputText('');
     scrollToEnd();
   }
 
   function answerBodyTypeQuiz(value: BodyTypeKey, title: string) {
-    if (!quiz) return;
+    // Toque duplo: o segundo toque é de uma pergunta que já foi respondida.
+    if (!quiz || quizIndexRef.current !== quiz.index) return;
     const quizAnswers = [...quiz.answers, value];
     const withAnswer: ChatMessage[] = [
       ...messages,
@@ -350,12 +483,14 @@ export function ProfileSetupScreen({ navigation }: AuthStackScreenProps<'Profile
         ...withAnswer,
         { id: `coach-quiz-${nextIndex}`, role: 'coach', text: BODY_TYPE_QUIZ[nextIndex]!.question },
       ]);
+      quizIndexRef.current = nextIndex;
       setQuiz({ index: nextIndex, answers: quizAnswers });
       scrollToEnd();
       return;
     }
 
     const result = scoreBodyType(quizAnswers);
+    quizIndexRef.current = null;
     setQuiz(null);
     // A resposta do usuário já está nas bolhas do quiz: o mentor anuncia o
     // resultado e segue direto para a próxima pergunta.
@@ -377,7 +512,12 @@ export function ProfileSetupScreen({ navigation }: AuthStackScreenProps<'Profile
     try {
       const payload: ProfileSetupPayload = {
         name: finalAnswers.name ?? user?.name ?? '',
-        bodyType: (finalAnswers.bodyType as ProfileSetupPayload['bodyType']) ?? 'unknown',
+        // Biotipo é o único opcional: fora dos valores aceitos, vai 'unknown'.
+        bodyType: OPTIONS.bodyType!.some(
+          (o) => o.value === finalAnswers.bodyType && o.value !== DISCOVER_BODY_TYPE,
+        )
+          ? (finalAnswers.bodyType as ProfileSetupPayload['bodyType'])
+          : 'unknown',
         heightCm: Number(finalAnswers.height ?? 0),
         weightKg: Number(finalAnswers.weight ?? 0),
         goal: finalAnswers.goal ?? '',
@@ -419,7 +559,8 @@ export function ProfileSetupScreen({ navigation }: AuthStackScreenProps<'Profile
 
   function handleSend() {
     if (!inputText.trim()) return;
-    advanceWithAnswer(inputText.trim());
+    if (OPTIONS[currentStep]) answerTypedOption(inputText.trim());
+    else advanceWithAnswer(inputText.trim());
   }
 
   return (

@@ -1,7 +1,8 @@
 import React from 'react';
 import { Alert, FlatList } from 'react-native';
-import { render, fireEvent, waitFor } from '@testing-library/react-native';
-import { ProfileSetupScreen, validateStep } from './ProfileSetupScreen';
+import { render, fireEvent, waitFor, act } from '@testing-library/react-native';
+import { OnboardingOptionCard } from '../components/OnboardingOptionCard';
+import { findInvalidStep, matchOption, ProfileSetupScreen, validateStep } from './ProfileSetupScreen';
 
 const mockProfileSetup = jest.fn().mockResolvedValue({ success: true });
 const mockSetToken = jest.fn();
@@ -37,6 +38,7 @@ async function completeOnboarding(
     age = '30',
     activity = 'Leve',
     bodyTypeQuiz,
+    typedSex,
   }: {
     height?: string;
     weight?: string;
@@ -45,6 +47,8 @@ async function completeOnboarding(
     activity?: string;
     /** Respostas do "Ajude-me a descobrir"; sem elas, escolhe o biotipo direto. */
     bodyTypeQuiz?: string[];
+    /** Digita o sexo no campo de texto em vez de tocar na opção. */
+    typedSex?: string;
   } = {},
 ) {
   const { getByPlaceholderText, getByTestId, getByText, findByText } = utils;
@@ -62,7 +66,8 @@ async function completeOnboarding(
 
   await answer('João', 2);
   expect(getByText(/qual é o seu sexo/i)).toBeTruthy();
-  await choose(sex, 3);
+  if (typedSex) await answer(typedSex, 3);
+  else await choose(sex, 3);
   await answer(age, 4);
   if (bodyTypeQuiz) {
     fireEvent.press(getByText('Ajude-me a descobrir'));
@@ -458,6 +463,202 @@ describe('ProfileSetupScreen', () => {
       expect(chatData(utils).find((m) => m.id === 'user-bodyType')?.text).toBe(
         'Magro / Acelerado (Ectomorfo)',
       );
+    });
+  });
+  /**
+   * Revisão final: passos de opção aceitavam qualquer texto digitado, e um
+   * toque duplo pulava um passo. Os dois montavam um payload que o backend
+   * sempre recusa, e o usuário novo ficava preso no cadastro.
+   */
+  describe('o onboarding nunca envia um payload que o backend recusa', () => {
+    const typeAnswer = (utils: ReturnType<typeof render>, text: string) => {
+      fireEvent.changeText(utils.getByPlaceholderText('Digite aqui...'), text);
+      fireEvent.press(utils.getByTestId('send-btn'));
+    };
+    /**
+     * Toque duplo real: os dois toques chegam antes do re-render, então os dois
+     * rodam com o mesmo closure (o do passo que ainda está na tela). Um
+     * fireEvent.press de cada vez não reproduz: entre um e outro o React já
+     * re-renderizou e o card antigo saiu da árvore.
+     */
+    const doubleTap = (utils: ReturnType<typeof render>, title: string) => {
+      const card = utils
+        .UNSAFE_getAllByType(OnboardingOptionCard)
+        .find((c) => c.props.title === title)!;
+      act(() => {
+        card.props.onPress();
+        card.props.onPress();
+      });
+    };
+    async function goToSex(utils: ReturnType<typeof render>) {
+      typeAnswer(utils, 'João');
+      await utils.findByText('2 / 10');
+    }
+
+    it('digitar "masculino" no passo do sexo avança e envia sex "male"', async () => {
+      await completeOnboarding(
+        render(<ProfileSetupScreen navigation={{} as never} route={{} as never} />),
+        { typedSex: 'masculino' },
+      );
+
+      await waitFor(() => expect(mockProfileSetup).toHaveBeenCalled());
+      expect(mockProfileSetup.mock.calls[0]![0]).toMatchObject({ sex: 'male' });
+    });
+
+    it.each([
+      ['Homem', 'male'],
+      ['  FEMININO ', 'female'],
+      ['mulher', 'female'],
+      ['f', 'female'],
+    ])('digitar "%s" no passo do sexo vira %s', async (typed, expected) => {
+      await completeOnboarding(
+        render(<ProfileSetupScreen navigation={{} as never} route={{} as never} />),
+        { typedSex: typed },
+      );
+
+      await waitFor(() => expect(mockProfileSetup).toHaveBeenCalled());
+      expect(mockProfileSetup.mock.calls[0]![0]).toMatchObject({ sex: expected });
+    });
+
+    it('texto que não é uma opção ("banana") repergunta e não avança', async () => {
+      const utils = render(<ProfileSetupScreen navigation={{} as never} route={{} as never} />);
+      await goToSex(utils);
+
+      typeAnswer(utils, 'banana');
+
+      await waitFor(() => expect(lastCoachMessage(utils)).toBe('Toque em uma das opções acima 🙂'));
+      expect(utils.getByText('2 / 10')).toBeTruthy();
+      // As opções continuam na tela para o usuário tocar.
+      expect(utils.getByText('Masculino')).toBeTruthy();
+    });
+
+    it('toque duplo numa opção do sexo não pula a idade', async () => {
+      const utils = render(<ProfileSetupScreen navigation={{} as never} route={{} as never} />);
+      await goToSex(utils);
+
+      doubleTap(utils, 'Masculino');
+
+      await utils.findByText('3 / 10');
+      expect(lastCoachMessage(utils)).toMatch(/quantos anos você tem/i);
+      expect(utils.queryByText('4 / 10')).toBeNull();
+      expect(chatData(utils).filter((m) => m.id === 'user-sex')).toHaveLength(1);
+    });
+
+    it('toque duplo na última opção do quiz não pula a altura', async () => {
+      const utils = render(<ProfileSetupScreen navigation={{} as never} route={{} as never} />);
+      await goToBodyType(utils);
+
+      fireEvent.press(utils.getByText('Ajude-me a descobrir'));
+      fireEvent.press(await utils.findByText('Os dedos se sobrepõem'));
+      fireEvent.press(await utils.findByText('Quase não muda'));
+      await utils.findByText('Atlético');
+      doubleTap(utils, 'Atlético');
+
+      await utils.findByText('5 / 10');
+      expect(lastCoachMessage(utils)).toMatch(/qual é a sua altura/i);
+      expect(utils.queryByText('6 / 10')).toBeNull();
+      const ids = chatData(utils).map((m) => m.id);
+      expect(new Set(ids).size).toBe(ids.length);
+    });
+
+    it('digitar "discover" no biotipo não abre o quiz — repergunta', async () => {
+      const utils = render(<ProfileSetupScreen navigation={{} as never} route={{} as never} />);
+      await goToBodyType(utils);
+
+      typeAnswer(utils, 'discover');
+
+      await waitFor(() => expect(lastCoachMessage(utils)).toBe('Toque em uma das opções acima 🙂'));
+      expect(utils.getByText('4 / 10')).toBeTruthy();
+      expect(utils.queryByText('Os dedos se sobrepõem')).toBeNull();
+    });
+
+    it('digitar "não sei" no biotipo abre o quiz do mentor', async () => {
+      const utils = render(<ProfileSetupScreen navigation={{} as never} route={{} as never} />);
+      await goToBodyType(utils);
+
+      typeAnswer(utils, 'não sei');
+
+      await waitFor(() => expect(lastCoachMessage(utils)).toMatch(/envolva o pulso/i));
+      expect(utils.getByText('4 / 10')).toBeTruthy();
+    });
+
+    it('digitar "atlético" no biotipo vira mesomorph', async () => {
+      const utils = render(<ProfileSetupScreen navigation={{} as never} route={{} as never} />);
+      await goToBodyType(utils);
+
+      typeAnswer(utils, 'atlético');
+
+      await utils.findByText('5 / 10');
+      expect(lastCoachMessage(utils)).toMatch(/qual é a sua altura/i);
+      // A bolha mostra o rótulo da opção reconhecida, não o texto cru.
+      expect(chatData(utils).find((m) => m.id === 'user-bodyType')?.text).toBe(
+        'Atlético / Versátil (Mesomorfo)',
+      );
+    });
+
+    it.each([
+      ['activity', 'sedentario', 'sedentary'],
+      ['activity', 'Muito ativo', 'very_active'],
+      ['activity', 'ativo', 'active'],
+      ['goal', 'perder', 'lose_weight'],
+      ['goal', 'maintain', 'maintain'],
+      ['bodyType', 'magro', 'ectomorph'],
+      ['bodyType', 'Largo', 'endomorph'],
+      ['bodyType', 'endomorfo', 'endomorph'],
+      ['bodyType', 'quero descobrir', 'discover'],
+      ['personality', 'científico', 'scientific'],
+      ['gender', 'neutro', 'neutral'],
+    ])('matchOption(%s, "%s") → %s', (step, typed, value) => {
+      expect(matchOption(step as never, typed)?.value).toBe(value);
+    });
+
+    it.each([
+      ['goal', 'peso'], // ambíguo: perder ou manter
+      ['bodyType', 'discover'],
+      ['sex', 'x'],
+      ['activity', 'banana'],
+      ['name', 'João'], // passo sem opções
+    ])('matchOption(%s, "%s") não casa', (step, typed) => {
+      expect(matchOption(step as never, typed)).toBeNull();
+    });
+
+    describe('findInvalidStep (rede de segurança antes de enviar)', () => {
+      const valid = {
+        name: 'João',
+        sex: 'male',
+        age: '30',
+        bodyType: 'ectomorph',
+        height: '180',
+        weight: '80',
+        activity: 'light',
+        goal: 'lose_weight',
+        personality: 'motivational',
+        gender: 'neutral',
+      } as const;
+
+      it('respostas completas e válidas passam', () => {
+        expect(findInvalidStep({ ...valid })).toBeNull();
+      });
+
+      it('biotipo ausente não bloqueia (vira "unknown")', () => {
+        expect(findInvalidStep({ ...valid, bodyType: undefined })).toBeNull();
+      });
+
+      it.each([
+        ['sex', { sex: 'banana' }],
+        ['sex', { sex: undefined }],
+        ['age', { age: '200' }],
+        ['age', { age: undefined }],
+        ['name', { name: '' }],
+        ['height', { height: undefined }],
+        ['weight', { weight: 'abc' }],
+        ['activity', { activity: 'Leve' }],
+        ['goal', { goal: undefined }],
+        ['personality', { personality: 'discover' }],
+        ['gender', { gender: 'other' }],
+      ])('aponta o passo %s quando %o', (step, patch) => {
+        expect(findInvalidStep({ ...valid, ...patch })).toBe(step);
+      });
     });
   });
 });
