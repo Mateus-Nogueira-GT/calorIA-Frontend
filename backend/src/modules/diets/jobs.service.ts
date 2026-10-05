@@ -255,7 +255,8 @@ function dayTotals(day: AiSingleDay) {
       p += it.protein_g
       c += it.carbs_g
       f += it.fat_g
-      fib += it.fiber_g
+      // A IA às vezes devolve fibra negativa: nunca persiste abaixo de zero.
+      fib += Math.max(0, it.fiber_g)
     }
   }
   return {
@@ -592,7 +593,7 @@ export async function processJobStep(
             INSERT INTO diet_meals (id, diet_day_id, meal_type, name, time_suggestion,
                                     total_calories, total_protein, total_carbs, total_fat, total_fiber, sort_order)
             VALUES (${mealId}, ${dayId}, ${meal.meal_type}, ${meal.name}, ${meal.time_suggestion},
-                    ${mCal}, ${mP}, ${mC}, ${mF}, ${meal.items.reduce((s, i) => s + i.fiber_g, 0)}, ${mi})
+                    ${mCal}, ${mP}, ${mC}, ${mF}, ${meal.items.reduce((s, i) => s + Math.max(0, i.fiber_g), 0)}, ${mi})
           `
         } else {
           await sql`
@@ -609,7 +610,7 @@ export async function processJobStep(
               INSERT INTO diet_items (id, diet_meal_id, food_name, quantity_g, unit,
                                       calories, protein_g, carbs_g, fat_g, fiber_g, preparation_tip, sort_order)
               VALUES (${randomUUID()}, ${mealId}, ${it.food_name}, ${it.quantity_g}, ${it.unit},
-                      ${it.calories}, ${it.protein_g}, ${it.carbs_g}, ${it.fat_g}, ${it.fiber_g}, ${it.preparation_tip}, ${ii})
+                      ${it.calories}, ${it.protein_g}, ${it.carbs_g}, ${it.fat_g}, ${Math.max(0, it.fiber_g)}, ${it.preparation_tip}, ${ii})
             `
           } else {
             await sql`

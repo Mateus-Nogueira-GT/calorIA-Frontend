@@ -321,6 +321,25 @@ describe('processJobStep — fibra (migration 020)', () => {
     expect(day.params).toContain(12) // 3 refeições × 4 g
   })
 
+  it('fibra negativa da IA é gravada como 0 (item, refeição e dia)', async () => {
+    const day = dayWith('Frango grelhado')
+    for (const meal of day.meals) for (const it of meal.items) it.fiber_g = -2
+    const { fastify, calls } = setup([day], 3)
+    await processJobStep(fastify, USER, JOB)
+
+    const all = [
+      ...sqlOf(calls, 'diet_items'),
+      ...sqlOf(calls, 'diet_meals'),
+      ...sqlOf(calls, 'diet_days'),
+    ]
+    expect(all.length).toBe(7)
+    for (const c of all) {
+      expect(c.params).not.toContain(-2)
+      expect(c.params).not.toContain(-6)
+      expect(c.params).toContain(0)
+    }
+  })
+
   it('sem as colunas (deploy antes da 020): INSERTs exatamente sem fibra', async () => {
     const { fastify, calls } = setup([dayWith('Frango grelhado')], 0)
     const r = await processJobStep(fastify, USER, JOB)
