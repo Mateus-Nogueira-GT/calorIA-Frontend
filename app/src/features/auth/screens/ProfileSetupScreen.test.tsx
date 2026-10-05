@@ -1,7 +1,7 @@
 import React from 'react';
 import { Alert, FlatList } from 'react-native';
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
-import { ProfileSetupScreen } from './ProfileSetupScreen';
+import { ProfileSetupScreen, validateStep } from './ProfileSetupScreen';
 
 const mockProfileSetup = jest.fn().mockResolvedValue({ success: true });
 const mockSetToken = jest.fn();
@@ -27,25 +27,65 @@ jest.mock('@features/auth/store', () => ({
     }),
 }));
 
-/** Percorre os 7 passos do onboarding até disparar o envio do perfil. */
+/** Percorre os 10 passos do onboarding até disparar o envio do perfil. */
 async function completeOnboarding(
   utils: ReturnType<typeof render>,
-  { height = '180', weight = '80' }: { height?: string; weight?: string } = {},
+  {
+    height = '180',
+    weight = '80',
+    sex = 'Masculino',
+    age = '30',
+    activity = 'Leve',
+  }: { height?: string; weight?: string; sex?: string; age?: string; activity?: string } = {},
 ) {
   const { getByPlaceholderText, getByTestId, getByText, findByText } = utils;
-  const answer = async (value: string, nextQuestion: RegExp) => {
+  // Espera pelo contador e não pela pergunta: no teste o FlatList só
+  // renderiza as primeiras bolhas, e com 10 passos as últimas ficam de fora.
+  const answer = async (value: string, nextStep: number) => {
     fireEvent.changeText(getByPlaceholderText('Digite aqui...'), value);
     fireEvent.press(getByTestId('send-btn'));
-    await findByText(nextQuestion);
+    await findByText(`${nextStep} / 10`);
+  };
+  const choose = async (title: string, nextStep: number) => {
+    fireEvent.press(getByText(title));
+    await findByText(`${nextStep} / 10`);
   };
 
-  await answer('João', /qual é o seu biotipo/i);
-  fireEvent.press(getByText('Ectomorfo'));
-  await answer(height, /qual é o seu peso atual/i);
-  await answer(weight, /qual é o seu objetivo principal/i);
-  fireEvent.press(getByText('Perder peso'));
-  fireEvent.press(getByText('Motivador'));
+  await answer('João', 2);
+  expect(getByText(/qual é o seu sexo/i)).toBeTruthy();
+  await choose(sex, 3);
+  await answer(age, 4);
+  await choose('Ectomorfo', 5);
+  await answer(height, 6);
+  await answer(weight, 7);
+  await choose(activity, 8);
+  await choose('Perder peso', 9);
+  await choose('Motivador', 10);
   fireEvent.press(getByText('Neutro'));
+}
+
+/**
+ * Última fala do Coach, lida dos dados do FlatList: no teste ele só renderiza
+ * as primeiras bolhas, e a repergunta da altura já fica além delas.
+ */
+function lastCoachMessage(utils: ReturnType<typeof render>): string {
+  const data = utils.UNSAFE_getByType(FlatList).props.data as { role: string; text: string }[];
+  return data.filter((m) => m.role === 'coach').at(-1)!.text;
+}
+
+/** Leva até a pergunta da altura (passo 5 de 10). */
+async function goToHeight(utils: ReturnType<typeof render>) {
+  const { getByPlaceholderText, getByTestId, getByText, findByText } = utils;
+  fireEvent.changeText(getByPlaceholderText('Digite aqui...'), 'João');
+  fireEvent.press(getByTestId('send-btn'));
+  await findByText(/qual é o seu sexo/i);
+  fireEvent.press(getByText('Masculino'));
+  await findByText(/quantos anos você tem/i);
+  fireEvent.changeText(getByPlaceholderText('Digite aqui...'), '30');
+  fireEvent.press(getByTestId('send-btn'));
+  await findByText(/qual é o seu biotipo/i);
+  fireEvent.press(getByText('Ectomorfo'));
+  await findByText(/qual é a sua altura/i);
 }
 
 describe('ProfileSetupScreen', () => {
@@ -61,11 +101,11 @@ describe('ProfileSetupScreen', () => {
     expect(getByText(/como você gostaria de ser chamado/i)).toBeTruthy();
   });
 
-  it('exibe o progress bar iniciando em 1/7', () => {
+  it('exibe o progress bar iniciando em 1/10', () => {
     const { getByText } = render(
       <ProfileSetupScreen navigation={{} as never} route={{} as never} />,
     );
-    expect(getByText('1 / 7')).toBeTruthy();
+    expect(getByText('1 / 10')).toBeTruthy();
   });
 
   it('avança para a segunda pergunta após responder a primeira via input', async () => {
@@ -75,7 +115,7 @@ describe('ProfileSetupScreen', () => {
     const input = getByPlaceholderText('Digite aqui...');
     fireEvent.changeText(input, 'João');
     fireEvent.press(getByTestId('send-btn'));
-    await waitFor(() => expect(getByText('2 / 7')).toBeTruthy());
+    await waitFor(() => expect(getByText('2 / 10')).toBeTruthy());
   });
 
   it('só autentica DEPOIS de o perfil ser salvo', async () => {
@@ -153,39 +193,29 @@ describe('ProfileSetupScreen', () => {
       const utils = render(
         <ProfileSetupScreen navigation={{} as never} route={{} as never} />,
       );
-      const { getByPlaceholderText, getByTestId, getByText, findByText } = utils;
-
-      fireEvent.changeText(getByPlaceholderText('Digite aqui...'), 'João');
-      fireEvent.press(getByTestId('send-btn'));
-      await findByText(/qual é o seu biotipo/i);
-      fireEvent.press(getByText('Ectomorfo'));
-      await findByText(/qual é a sua altura/i);
+      const { getByPlaceholderText, getByTestId, getByText } = utils;
+      await goToHeight(utils);
 
       fireEvent.changeText(getByPlaceholderText('Digite aqui...'), 'um metro e oitenta');
       fireEvent.press(getByTestId('send-btn'));
 
-      // Continua no passo 3 de 7 e explica o que fazer.
-      await findByText(/não entendi a altura/i);
-      expect(getByText('3 / 7')).toBeTruthy();
+      // Continua no passo 5 de 10 e explica o que fazer.
+      await waitFor(() => expect(lastCoachMessage(utils)).toMatch(/não entendi a altura/i));
+      expect(getByText('5 / 10')).toBeTruthy();
     });
 
     it('altura fora da faixa plausível é recusada', async () => {
       const utils = render(
         <ProfileSetupScreen navigation={{} as never} route={{} as never} />,
       );
-      const { getByPlaceholderText, getByTestId, getByText, findByText } = utils;
-
-      fireEvent.changeText(getByPlaceholderText('Digite aqui...'), 'João');
-      fireEvent.press(getByTestId('send-btn'));
-      await findByText(/qual é o seu biotipo/i);
-      fireEvent.press(getByText('Ectomorfo'));
-      await findByText(/qual é a sua altura/i);
+      const { getByPlaceholderText, getByTestId, getByText } = utils;
+      await goToHeight(utils);
 
       fireEvent.changeText(getByPlaceholderText('Digite aqui...'), '999');
       fireEvent.press(getByTestId('send-btn'));
 
-      await findByText(/altura não parece certa/i);
-      expect(getByText('3 / 7')).toBeTruthy();
+      await waitFor(() => expect(lastCoachMessage(utils)).toMatch(/altura não parece certa/i));
+      expect(getByText('5 / 10')).toBeTruthy();
     });
   });
 
@@ -254,5 +284,50 @@ describe('ProfileSetupScreen', () => {
 
     await waitFor(() => expect(mockProfileSetup).toHaveBeenCalled());
     expect(mockSetToken).not.toHaveBeenCalled();
+  });
+  describe('sexo, idade e nível de atividade (o coach não repergunta)', () => {
+    it('validateStep aceita idade inteira plausível', () => {
+      expect(validateStep('age', '30')).toEqual({ ok: true, value: '30' });
+      expect(validateStep('age', '30 anos')).toEqual({ ok: true, value: '30' });
+    });
+
+    it.each(['12', '101', 'abc'])('validateStep recusa idade "%s" com motivo amigável', (raw) => {
+      const check = validateStep('age', raw);
+      expect(check.ok).toBe(false);
+      if (!check.ok) expect(check.reason).toMatch(/idade|anos/i);
+    });
+
+    it('idade inválida não avança o passo — o Coach repergunta', async () => {
+      const utils = render(<ProfileSetupScreen navigation={{} as never} route={{} as never} />);
+      const { getByPlaceholderText, getByTestId, getByText, findByText } = utils;
+
+      fireEvent.changeText(getByPlaceholderText('Digite aqui...'), 'João');
+      fireEvent.press(getByTestId('send-btn'));
+      await findByText(/qual é o seu sexo/i);
+      fireEvent.press(getByText('Feminino'));
+      await findByText(/quantos anos você tem/i);
+
+      fireEvent.changeText(getByPlaceholderText('Digite aqui...'), 'abc');
+      fireEvent.press(getByTestId('send-btn'));
+
+      await findByText(/não entendi a idade/i);
+      expect(getByText('3 / 10')).toBeTruthy();
+    });
+
+    it('envia sexo, idade e nível de atividade escolhidos', async () => {
+      await completeOnboarding(
+        render(<ProfileSetupScreen navigation={{} as never} route={{} as never} />),
+        { sex: 'Feminino', age: '30', activity: 'Moderado' },
+      );
+
+      await waitFor(() => expect(mockProfileSetup).toHaveBeenCalled());
+      expect(mockProfileSetup.mock.calls[0]![0]).toMatchObject({
+        sex: 'female',
+        age: 30,
+        activityLevel: 'moderate',
+        coachGender: 'neutral',
+      });
+      await waitFor(() => expect(mockSetProfileComplete).toHaveBeenCalledWith(true));
+    });
   });
 });

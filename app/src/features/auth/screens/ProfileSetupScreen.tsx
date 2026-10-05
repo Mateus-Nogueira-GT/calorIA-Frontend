@@ -18,28 +18,69 @@ import { OnboardingProgressBar } from '../components/OnboardingProgressBar';
 import { colors, typography, spacing } from '@theme';
 import type { AuthStackScreenProps } from '@navigation/types';
 
-type Step = 'name' | 'bodyType' | 'height' | 'weight' | 'goal' | 'personality' | 'gender';
+type Step =
+  | 'name'
+  | 'sex'
+  | 'age'
+  | 'bodyType'
+  | 'height'
+  | 'weight'
+  | 'activity'
+  | 'goal'
+  | 'personality'
+  | 'gender';
 
-const STEPS: Step[] = ['name', 'bodyType', 'height', 'weight', 'goal', 'personality', 'gender'];
+/**
+ * Sexo, idade e nível de atividade são do PRÓPRIO usuário (o coach precisa
+ * deles para calcular as calorias). Sem eles no cadastro, o coach perguntava
+ * de novo e o usuário achava que já tinha respondido. `gender` é outra coisa:
+ * o gênero do mentor.
+ */
+const STEPS: Step[] = [
+  'name',
+  'sex',
+  'age',
+  'bodyType',
+  'height',
+  'weight',
+  'activity',
+  'goal',
+  'personality',
+  'gender',
+];
 
 const QUESTIONS: Record<Step, string> = {
   name: 'Como você gostaria de ser chamado?',
+  sex: 'Qual é o seu sexo? (usamos para calcular suas calorias)',
+  age: 'Quantos anos você tem?',
   bodyType: 'Qual é o seu biotipo?',
   height: 'Qual é a sua altura? (cm)',
   weight: 'Qual é o seu peso atual? (kg)',
+  activity: 'Com que frequência você se exercita?',
   goal: 'Qual é o seu objetivo principal?',
   personality: 'Como você prefere que seu coach seja?',
-  gender: 'Qual o gênero do seu mentor?',
+  gender: 'Qual o gênero do seu mentor (o coach)?',
 };
 
 type OptionDef = { value: string; emoji: string; title: string; description: string };
 
 const OPTIONS: Partial<Record<Step, OptionDef[]>> = {
+  sex: [
+    { value: 'male', emoji: '👨', title: 'Masculino', description: '' },
+    { value: 'female', emoji: '👩', title: 'Feminino', description: '' },
+  ],
   bodyType: [
     { value: 'ectomorph', emoji: '🦴', title: 'Ectomorfo', description: 'Metabolismo rápido, difícil ganhar massa' },
     { value: 'mesomorph', emoji: '💪', title: 'Mesomorfo', description: 'Corpo atlético, ganha e perde peso com facilidade' },
     { value: 'endomorph', emoji: '🏋️', title: 'Endomorfo', description: 'Tende a acumular gordura, metabolismo mais lento' },
     { value: 'unknown', emoji: '❓', title: 'Não sei', description: 'Deixe a IA identificar pelo seu perfil' },
+  ],
+  activity: [
+    { value: 'sedentary', emoji: '🛋️', title: 'Sedentário', description: 'Pouco ou nenhum exercício' },
+    { value: 'light', emoji: '🚶', title: 'Leve', description: '1 a 3 vezes por semana' },
+    { value: 'moderate', emoji: '🏃', title: 'Moderado', description: '3 a 5 vezes por semana' },
+    { value: 'active', emoji: '🏋️', title: 'Ativo', description: '6 a 7 vezes por semana' },
+    { value: 'very_active', emoji: '🔥', title: 'Muito ativo', description: 'Treino intenso ou 2x por dia' },
   ],
   goal: [
     { value: 'lose_weight', emoji: '📉', title: 'Perder peso', description: 'Reduzir gordura corporal com saúde' },
@@ -81,6 +122,8 @@ const MIN_HEIGHT_CM = 100;
 const MAX_HEIGHT_CM = 250;
 const MIN_WEIGHT_KG = 30;
 const MAX_WEIGHT_KG = 300;
+const MIN_AGE = 13;
+const MAX_AGE = 100;
 
 type StepCheck = { ok: true; value: string } | { ok: false; reason: string };
 
@@ -92,6 +135,24 @@ export function validateStep(step: Step, raw: string): StepCheck {
       return { ok: false, reason: 'Preciso de pelo menos duas letras. Como posso te chamar?' };
     }
     return { ok: true, value: value.slice(0, 100) };
+  }
+
+  if (step === 'age') {
+    const n = parseNumber(value);
+    if (n === null || !Number.isInteger(Math.round(n))) {
+      return {
+        ok: false,
+        reason: 'Não entendi a idade. Me manda só o número, em anos — por exemplo: 30.',
+      };
+    }
+    const years = Math.round(n);
+    if (years < MIN_AGE || years > MAX_AGE) {
+      return {
+        ok: false,
+        reason: `Essa idade não parece certa. Me manda entre ${MIN_AGE} e ${MAX_AGE} anos — por exemplo: 30.`,
+      };
+    }
+    return { ok: true, value: String(years) };
   }
 
   if (step === 'height') {
@@ -194,7 +255,7 @@ export function ProfileSetupScreen({ navigation }: AuthStackScreenProps<'Profile
     const step = STEPS[currentStepIndex];
 
     // Valida ANTES de consumir o passo: inválido, o Coach repergunta e o
-    // usuário continua onde estava. Validar só no envio faria ele refazer os 7.
+    // usuário continua onde estava. Validar só no envio faria ele refazer todos.
     const check = validateStep(step, value);
     if (!check.ok) {
       setMessages([
@@ -246,6 +307,9 @@ export function ProfileSetupScreen({ navigation }: AuthStackScreenProps<'Profile
         goal: finalAnswers.goal ?? '',
         coachPersonality: (finalAnswers.personality as ProfileSetupPayload['coachPersonality']) ?? 'motivational',
         coachGender: (finalAnswers.gender as ProfileSetupPayload['coachGender']) ?? 'neutral',
+        sex: finalAnswers.sex as ProfileSetupPayload['sex'],
+        age: Number(finalAnswers.age),
+        activityLevel: finalAnswers.activity as ProfileSetupPayload['activityLevel'],
       };
       // O interceptor autentica esta chamada com pendingAuth.token.
       await authService.profileSetup(payload);
@@ -332,7 +396,11 @@ export function ProfileSetupScreen({ navigation }: AuthStackScreenProps<'Profile
           editable={!submitting}
           // Reduz a entrada ruim na origem. NÃO substitui validateStep: o
           // teclado numérico do Android tem vírgula.
-          keyboardType={currentStep === 'height' || currentStep === 'weight' ? 'numeric' : 'default'}
+          keyboardType={
+            currentStep === 'age' || currentStep === 'height' || currentStep === 'weight'
+              ? 'numeric'
+              : 'default'
+          }
         />
         <TouchableOpacity
           style={[styles.sendBtn, (!inputText.trim() || submitting) && styles.sendBtnDisabled]}
