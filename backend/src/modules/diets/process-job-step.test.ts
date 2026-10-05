@@ -1,7 +1,8 @@
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import type { AiSingleDay, CollectedUserData } from '../../shared/diet-ai-schema.js'
 import { AppError } from '../../shared/errors.js'
 import { fakeFastify } from '../../shared/testing/fake-fastify.js'
+import { __resetFiberColumnsCache } from './fiber-columns.js'
 import { computeTargets, processJobStep } from './jobs.service.js'
 
 const USER = '11111111-1111-1111-1111-111111111111'
@@ -51,6 +52,7 @@ function dayWith(food: string): AiSingleDay {
           protein_g: p,
           carbs_g: c,
           fat_g: f,
+          fiber_g: 4,
           preparation_tip: null,
         },
       ],
@@ -69,10 +71,11 @@ const jobRow = {
   error: null,
 }
 
-function setup(days: AiSingleDay[]) {
+function setup(days: AiSingleDay[], fiberColumns = 0) {
   const queue = [...days]
   return fakeFastify(
     [
+      ['information_schema.columns', [{ n: fiberColumns }]],
       ['FROM diet_jobs WHERE id', [jobRow]],
       ['SET step_started_at', [{ step_token: LOCK_TOKEN }]], // OP1: lock adquirido
       ['SET days_completed', [{ id: JOB }]],
@@ -85,6 +88,10 @@ function setup(days: AiSingleDay[]) {
     },
   )
 }
+
+// O cache de hasFiberColumns é de módulo: sem reset, um teste com as colunas
+// "liga" a fibra para todos os seguintes.
+beforeEach(() => __resetFiberColumnsCache())
 
 describe('processJobStep — guardrails do dia (O4)', () => {
   it('dia limpo: uma chamada, persiste', async () => {
@@ -286,5 +293,43 @@ describe('processJobStep — lock em voo (OP1)', () => {
     expect(fail?.sql).toContain('step_started_at = NULL')
     expect(fail?.sql).toContain('step_token = NULL')
     expect(fail?.params).toContain(LOCK_TOKEN)
+  })
+})
+
+describe('processJobStep — fibra (migration 020)', () => {
+  const sqlOf = (calls: { sql: string; params: unknown[] }[], table: string) =>
+    calls.filter((c) => c.sql.includes(`INSERT INTO ${table}`))
+
+  it('com as colunas: grava fiber_g por item e total_fiber na refeição e no dia', async () => {
+    const { fastify, calls } = setup([dayWith('Frango grelhado')], 3)
+    await processJobStep(fastify, USER, JOB)
+
+    const items = sqlOf(calls, 'diet_items')
+    expect(items).toHaveLength(3)
+    for (const it of items) {
+      expect(it.sql).toContain('fiber_g')
+      expect(it.params).toContain(4)
+    }
+    const meals = sqlOf(calls, 'diet_meals')
+    expect(meals).toHaveLength(3)
+    for (const m of meals) {
+      expect(m.sql).toContain('total_fiber')
+      expect(m.params).toContain(4) // 1 item de 4 g por refeição
+    }
+    const [day] = sqlOf(calls, 'diet_days')
+    expect(day.sql).toContain('total_fiber')
+    expect(day.params).toContain(12) // 3 refeições × 4 g
+  })
+
+  it('sem as colunas (deploy antes da 020): INSERTs exatamente sem fibra', async () => {
+    const { fastify, calls } = setup([dayWith('Frango grelhado')], 0)
+    const r = await processJobStep(fastify, USER, JOB)
+
+    expect(r.daysCompleted).toBe(1)
+    for (const t of ['diet_days', 'diet_meals', 'diet_items']) {
+      const inserts = sqlOf(calls, t)
+      expect(inserts.length).toBeGreaterThan(0)
+      for (const c of inserts) expect(c.sql).not.toMatch(/fiber/)
+    }
   })
 })

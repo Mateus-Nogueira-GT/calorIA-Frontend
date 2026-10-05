@@ -73,6 +73,8 @@ interface DbDietMeal {
   total_protein: number
   total_carbs: number
   total_fat: number
+  /** NUMERIC chega como string; NULL antes da migration 020 ou em dieta antiga. */
+  total_fiber: string | number | null
   is_completed: boolean
   completed_at: string | null
   sort_order: number
@@ -277,6 +279,7 @@ export async function getTodayPlan(
   const dbMeals = await fastify.db<DbDietMeal[]>`
     SELECT id, diet_day_id, meal_type, name, time_suggestion,
            total_calories, total_protein, total_carbs, total_fat,
+           (to_jsonb(diet_meals) ->> 'total_fiber')::numeric AS total_fiber,
            is_completed, completed_at::TEXT AS completed_at, sort_order
     FROM diet_meals
     WHERE diet_day_id = ${dbDay.id}
@@ -311,6 +314,8 @@ export async function getTodayPlan(
     protein: Number(dbMeal.total_protein),
     carbs: Number(dbMeal.total_carbs),
     fat: Number(dbMeal.total_fat),
+    // null = dieta sem o dado (não "0 g")
+    fiber: dbMeal.total_fiber == null ? null : Number(dbMeal.total_fiber),
     completedAt: dbMeal.completed_at,
     // Derivado por dia local — refeição marcada semana passada não conta hoje
     completedToday: completedOnDate(dbMeal.completed_at, today, tzOffsetMinutes),

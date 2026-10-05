@@ -85,6 +85,8 @@ export const plannedMealSchema = z.object({
   protein: z.number(),
   carbs: z.number(),
   fat: z.number(),
+  /** Fibra (g) da refeição; null em dieta gerada antes da migration 020. */
+  fiber: z.number().nullable(),
   completedAt: z.string().nullable(),
   /**
    * Concluída NO DIA consultado (completed_at convertido pro fuso do cliente).

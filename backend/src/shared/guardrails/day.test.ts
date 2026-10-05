@@ -20,6 +20,7 @@ function meal(type: MealType, items: Partial<Meal['items'][number]>[]): Meal {
     protein_g: 10,
     carbs_g: 20,
     fat_g: 8,
+    fiber_g: 3,
     preparation_tip: null,
     ...it,
   }))

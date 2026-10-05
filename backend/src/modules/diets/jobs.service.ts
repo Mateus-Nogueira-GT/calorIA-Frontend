@@ -13,6 +13,7 @@ import { AppError } from '../../shared/errors.js'
 import { mealTypesFor, reconcileDay } from '../../shared/guardrails/day.js'
 import { type DayGuardrailResult, applyDayGuardrails } from '../../shared/guardrails/index.js'
 import { createSystemPost } from '../feed/feed.service.js'
+import { hasFiberColumns } from './fiber-columns.js'
 
 // Reexport: reconcileDay migrou para shared/guardrails/day.ts (guardrails de
 // saída do dia gerado); mantido aqui para não quebrar quem já importa daqui.
@@ -239,7 +240,7 @@ ${u.dietary_restrictions?.length ? `Restrições alimentares (PROIBIDO qualquer 
 ${u.allergies?.length ? `Alergias (PROIBIDO, em qualquer ingrediente ou dica): ${u.allergies.join(', ')}.` : ''}
 ${u.food_preferences ? `Preferências: ${u.food_preferences}.` : ''}
 ${varietySection}${feedbackSection}
-Regras: varie os alimentos (evite repetir em relação a um dia típico), especifique quantidade em gramas e calorias/macros por item. Distribua as ${mealTypes.length} refeições ao longo do dia.`
+Regras: varie os alimentos (evite repetir em relação a um dia típico), especifique quantidade em gramas e calorias, proteína, carboidrato, gordura e fibra (g) por item. Distribua as ${mealTypes.length} refeições ao longo do dia.`
 }
 
 function dayTotals(day: AiSingleDay) {
@@ -247,15 +248,23 @@ function dayTotals(day: AiSingleDay) {
   let p = 0
   let c = 0
   let f = 0
+  let fib = 0
   for (const meal of day.meals) {
     for (const it of meal.items) {
       cal += it.calories
       p += it.protein_g
       c += it.carbs_g
       f += it.fat_g
+      fib += it.fiber_g
     }
   }
-  return { cal: Math.round(cal), p: Math.round(p), c: Math.round(c), f: Math.round(f) }
+  return {
+    cal: Math.round(cal),
+    p: Math.round(p),
+    c: Math.round(c),
+    f: Math.round(f),
+    fib: Math.round(fib),
+  }
 }
 
 interface JobRow {
@@ -552,33 +561,64 @@ export async function processJobStep(
   // 2) Persiste o dia + incrementa com concorrência otimista (tx curta).
   const totals = dayTotals(aiDay)
   try {
+    // Fora da transação: é uma leitura de catálogo, não precisa do lock da tx.
+    // Sem a migration 020 aplicada, os INSERTs ficam exatamente como antes.
+    const withFiber = await hasFiberColumns(fastify)
     await fastify.db.begin(async (sql) => {
       const dayId = randomUUID()
-      await sql`
-        INSERT INTO diet_days (id, diet_id, day_number, day_name, total_calories, total_protein, total_carbs, total_fat)
-        VALUES (${dayId}, ${job.diet_id}, ${dayNumber}, ${DAYS_PT[dayNumber] ?? `Dia ${dayNumber}`},
-                ${totals.cal}, ${totals.p}, ${totals.c}, ${totals.f})
-      `
+      const dayName = DAYS_PT[dayNumber] ?? `Dia ${dayNumber}`
+      if (withFiber) {
+        await sql`
+          INSERT INTO diet_days (id, diet_id, day_number, day_name, total_calories, total_protein, total_carbs, total_fat, total_fiber)
+          VALUES (${dayId}, ${job.diet_id}, ${dayNumber}, ${dayName},
+                  ${totals.cal}, ${totals.p}, ${totals.c}, ${totals.f}, ${totals.fib})
+        `
+      } else {
+        await sql`
+          INSERT INTO diet_days (id, diet_id, day_number, day_name, total_calories, total_protein, total_carbs, total_fat)
+          VALUES (${dayId}, ${job.diet_id}, ${dayNumber}, ${dayName},
+                  ${totals.cal}, ${totals.p}, ${totals.c}, ${totals.f})
+        `
+      }
       for (let mi = 0; mi < aiDay.meals.length; mi++) {
         const meal = aiDay.meals[mi]
         const mealId = randomUUID()
-        await sql`
-          INSERT INTO diet_meals (id, diet_day_id, meal_type, name, time_suggestion,
-                                  total_calories, total_protein, total_carbs, total_fat, sort_order)
-          VALUES (${mealId}, ${dayId}, ${meal.meal_type}, ${meal.name}, ${meal.time_suggestion},
-                  ${meal.items.reduce((s, i) => s + i.calories, 0)},
-                  ${meal.items.reduce((s, i) => s + i.protein_g, 0)},
-                  ${meal.items.reduce((s, i) => s + i.carbs_g, 0)},
-                  ${meal.items.reduce((s, i) => s + i.fat_g, 0)}, ${mi})
-        `
+        const mCal = meal.items.reduce((s, i) => s + i.calories, 0)
+        const mP = meal.items.reduce((s, i) => s + i.protein_g, 0)
+        const mC = meal.items.reduce((s, i) => s + i.carbs_g, 0)
+        const mF = meal.items.reduce((s, i) => s + i.fat_g, 0)
+        if (withFiber) {
+          await sql`
+            INSERT INTO diet_meals (id, diet_day_id, meal_type, name, time_suggestion,
+                                    total_calories, total_protein, total_carbs, total_fat, total_fiber, sort_order)
+            VALUES (${mealId}, ${dayId}, ${meal.meal_type}, ${meal.name}, ${meal.time_suggestion},
+                    ${mCal}, ${mP}, ${mC}, ${mF}, ${meal.items.reduce((s, i) => s + i.fiber_g, 0)}, ${mi})
+          `
+        } else {
+          await sql`
+            INSERT INTO diet_meals (id, diet_day_id, meal_type, name, time_suggestion,
+                                    total_calories, total_protein, total_carbs, total_fat, sort_order)
+            VALUES (${mealId}, ${dayId}, ${meal.meal_type}, ${meal.name}, ${meal.time_suggestion},
+                    ${mCal}, ${mP}, ${mC}, ${mF}, ${mi})
+          `
+        }
         for (let ii = 0; ii < meal.items.length; ii++) {
           const it = meal.items[ii]
-          await sql`
-            INSERT INTO diet_items (id, diet_meal_id, food_name, quantity_g, unit,
-                                    calories, protein_g, carbs_g, fat_g, preparation_tip, sort_order)
-            VALUES (${randomUUID()}, ${mealId}, ${it.food_name}, ${it.quantity_g}, ${it.unit},
-                    ${it.calories}, ${it.protein_g}, ${it.carbs_g}, ${it.fat_g}, ${it.preparation_tip}, ${ii})
-          `
+          if (withFiber) {
+            await sql`
+              INSERT INTO diet_items (id, diet_meal_id, food_name, quantity_g, unit,
+                                      calories, protein_g, carbs_g, fat_g, fiber_g, preparation_tip, sort_order)
+              VALUES (${randomUUID()}, ${mealId}, ${it.food_name}, ${it.quantity_g}, ${it.unit},
+                      ${it.calories}, ${it.protein_g}, ${it.carbs_g}, ${it.fat_g}, ${it.fiber_g}, ${it.preparation_tip}, ${ii})
+            `
+          } else {
+            await sql`
+              INSERT INTO diet_items (id, diet_meal_id, food_name, quantity_g, unit,
+                                      calories, protein_g, carbs_g, fat_g, preparation_tip, sort_order)
+              VALUES (${randomUUID()}, ${mealId}, ${it.food_name}, ${it.quantity_g}, ${it.unit},
+                      ${it.calories}, ${it.protein_g}, ${it.carbs_g}, ${it.fat_g}, ${it.preparation_tip}, ${ii})
+            `
+          }
         }
       }
       const res = await sql`

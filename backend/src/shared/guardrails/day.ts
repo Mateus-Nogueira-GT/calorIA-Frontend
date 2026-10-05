@@ -181,6 +181,7 @@ export function reconcileDay(
         protein_g: roundSmart(it.protein_g * factor),
         carbs_g: roundSmart(it.carbs_g * factor),
         fat_g: roundSmart(it.fat_g * factor),
+        fiber_g: roundSmart(it.fiber_g * factor),
       }))
       return { ...meal, items, total_calories: mealTotal(items) }
     }),

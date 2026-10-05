@@ -10,7 +10,7 @@ Restrições alimentares (PROIBIDO qualquer ingrediente incompatível, inclusive
 Alergias (PROIBIDO, em qualquer ingrediente ou dica): amendoim.
 Preferências: não gosta de peixe.
 
-Regras: varie os alimentos (evite repetir em relação a um dia típico), especifique quantidade em gramas e calorias/macros por item. Distribua as 4 refeições ao longo do dia."
+Regras: varie os alimentos (evite repetir em relação a um dia típico), especifique quantidade em gramas e calorias, proteína, carboidrato, gordura e fibra (g) por item. Distribua as 4 refeições ao longo do dia."
 `;
 
 exports[`prompt do dia (snapshot) > dia 3 com dias anteriores e feedback de rejeição 1`] = `
@@ -29,7 +29,7 @@ Terça: Tilápia, Batata-doce
 
 ATENÇÃO — a tentativa anterior foi REJEITADA
 
-Regras: varie os alimentos (evite repetir em relação a um dia típico), especifique quantidade em gramas e calorias/macros por item. Distribua as 4 refeições ao longo do dia."
+Regras: varie os alimentos (evite repetir em relação a um dia típico), especifique quantidade em gramas e calorias, proteína, carboidrato, gordura e fibra (g) por item. Distribua as 4 refeições ao longo do dia."
 `;
 
 exports[`prompts do coach (snapshot) > 'dados conhecidos, sem dieta' 1`] = `

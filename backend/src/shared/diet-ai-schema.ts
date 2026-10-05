@@ -18,6 +18,7 @@ export const aiDietItemSchema = z.object({
   protein_g: z.number(),
   carbs_g: z.number(),
   fat_g: z.number(),
+  fiber_g: z.number(),
   preparation_tip: z.string().nullable(),
 })
 
