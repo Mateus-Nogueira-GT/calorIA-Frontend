@@ -143,6 +143,20 @@ describe('assembleSystemPrompt — dieta já existente', () => {
   })
 })
 
+describe('assembleSystemPrompt — dados do cadastro parciais (F2)', () => {
+  it('com só peso/altura conhecidos, manda não reperguntar e perguntar só o que falta', () => {
+    const conhecidos = '## DADOS JÁ CONHECIDOS DO USUÁRIO\npeso: 80kg; altura: 175cm.'
+    const prompt = assembleSystemPrompt(buildSystemPrompt(null), '', conhecidos)
+
+    expect(prompt).toContain('NUNCA pergunte de novo')
+    expect(prompt).toContain('Pergunte apenas os dados obrigatórios que NÃO estão')
+  })
+
+  it('a lista de coleta do prompt base manda pular os já conhecidos', () => {
+    expect(buildSystemPrompt(null)).toContain('(pule os que já constam em DADOS JÁ CONHECIDOS)')
+  })
+})
+
 describe('formatDietStartedMarker (C2)', () => {
   it('usa o fuso do app (local = UTC + offset)', () => {
     expect(formatDietStartedMarker(new Date('2026-09-09T17:32:00Z'), -180)).toBe(

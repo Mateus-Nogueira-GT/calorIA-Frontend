@@ -19,6 +19,10 @@ export interface ProfileSetupPayload {
   goal: string;
   coachPersonality: 'motivational' | 'direct' | 'empathetic' | 'scientific';
   coachGender: 'male' | 'female' | 'neutral';
+  /** Sexo do próprio usuário — não confundir com `coachGender`. */
+  sex: 'male' | 'female';
+  age: number;
+  activityLevel: 'sedentary' | 'light' | 'moderate' | 'active' | 'very_active';
 }
 
 export interface AuthResponse {
@@ -87,6 +91,12 @@ export const authService = {
         body_type: data.bodyType,
         coach_personality: data.coachPersonality,
         coach_gender: data.coachGender,
+        gender: data.sex,
+        // Só a idade é perguntada. Com 1º de janeiro, o aniversário deste ano
+        // já passou em qualquer dia do ano corrente, então a idade que o
+        // backend calcula a partir da data é igual à informada o ano todo.
+        birth_date: `${new Date().getFullYear() - data.age}-01-01`,
+        activity_level: data.activityLevel,
       })
       .then((r) => r.data),
 

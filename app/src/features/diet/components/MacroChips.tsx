@@ -8,23 +8,29 @@ interface Props {
   protein: number;
   carbs: number;
   fat: number;
+  fiber?: number | null;
 }
 
-export function MacroChips({ kcal, protein, carbs, fat }: Props): React.JSX.Element {
+export function MacroChips({ kcal, protein, carbs, fat, fiber }: Props): React.JSX.Element {
   return (
     <View style={styles.row}>
       <View style={[styles.chip, styles.chipNeutral]}>
         <Text style={[styles.chipText, styles.textNeutral]}>{kcal} kcal</Text>
       </View>
       <View style={[styles.chip, styles.chipProtein]}>
-        <Text style={[styles.chipText, styles.textProtein]}>P {protein}g</Text>
+        <Text style={[styles.chipText, styles.textProtein]}>Proteína {protein}g</Text>
       </View>
       <View style={[styles.chip, styles.chipCarbs]}>
-        <Text style={[styles.chipText, styles.textCarbs]}>C {carbs}g</Text>
+        <Text style={[styles.chipText, styles.textCarbs]}>Carboidrato {carbs}g</Text>
       </View>
       <View style={[styles.chip, styles.chipFat]}>
-        <Text style={[styles.chipText, styles.textFat]}>G {fat}g</Text>
+        <Text style={[styles.chipText, styles.textFat]}>Gordura {fat}g</Text>
       </View>
+      {fiber != null && (
+        <View style={[styles.chip, styles.chipNeutral]}>
+          <Text style={[styles.chipText, styles.textNeutral]}>Fibra {fiber}g</Text>
+        </View>
+      )}
     </View>
   );
 }

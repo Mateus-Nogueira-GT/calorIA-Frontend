@@ -21,6 +21,8 @@ export interface PlannedMeal {
   protein: number;
   carbs: number;
   fat: number;
+  /** Ausente em backend anterior ao deploy da fibra; undefined = null. */
+  fiber?: number | null;
   completedAt: string | null;
   /** Concluída NO dia local consultado — é o campo que a UI deve ler. */
   completedToday: boolean;

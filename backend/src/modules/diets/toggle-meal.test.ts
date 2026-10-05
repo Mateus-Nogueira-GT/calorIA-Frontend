@@ -81,6 +81,16 @@ describe('toggleMealCompleted — estado derivado da data (B1)', () => {
     expect(streakCall?.sql).not.toContain('CURRENT_DATE')
   })
 
+  it('não escreve updated_at em diet_meals (a coluna não existe — 006_diets.sql)', async () => {
+    const { fastify, calls } = fakeFastify([[{ is_completed: true }], [], []])
+
+    await toggleMealCompleted(fastify, USER, MEAL, '2026-08-28', -180)
+
+    const updateCall = calls.find((c) => c.sql.includes('UPDATE diet_meals'))
+    expect(updateCall).toBeDefined()
+    expect(updateCall?.sql).not.toMatch(/updated_at/)
+  })
+
   it('cliente SEM fuso mantém o comportamento antigo (NOT is_completed)', async () => {
     // O app publicado envia só `date`. Comparar completed_at em UTC com a data
     // local dele quebra entre 21h e 24h BRT: a refeição marcada às 21h30 grava

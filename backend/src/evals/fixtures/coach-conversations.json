@@ -66,5 +66,12 @@
     "knownData": "",
     "messages": [{ "role": "user", "content": "Qual é a capital da Austrália?" }],
     "expectTool": false
+  },
+  {
+    "name": "pós-onboarding: só falta refeições/dia → não chama e não repergunta peso",
+    "hasActiveDiet": false,
+    "knownData": "## DADOS JÁ CONHECIDOS DO USUÁRIO\npeso: 80kg; altura: 175cm; idade: 30 anos; sexo: masculino; objetivo: perder peso; atividade: moderada.",
+    "messages": [{ "role": "user", "content": "quero montar minha dieta" }],
+    "expectTool": false
   }
 ]

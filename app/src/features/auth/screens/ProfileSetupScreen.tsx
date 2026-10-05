@@ -15,31 +15,80 @@ import { Text, screenShellStyle } from '@shared/components';
 import { OnboardingChatBubble } from '../components/OnboardingChatBubble';
 import { OnboardingOptionCard } from '../components/OnboardingOptionCard';
 import { OnboardingProgressBar } from '../components/OnboardingProgressBar';
+import { BODY_TYPE_LABELS, BODY_TYPE_QUIZ, BodyTypeKey, scoreBodyType } from '../bodyTypeQuiz';
 import { colors, typography, spacing } from '@theme';
 import type { AuthStackScreenProps } from '@navigation/types';
 
-type Step = 'name' | 'bodyType' | 'height' | 'weight' | 'goal' | 'personality' | 'gender';
+type Step =
+  | 'name'
+  | 'sex'
+  | 'age'
+  | 'bodyType'
+  | 'height'
+  | 'weight'
+  | 'activity'
+  | 'goal'
+  | 'personality'
+  | 'gender';
 
-const STEPS: Step[] = ['name', 'bodyType', 'height', 'weight', 'goal', 'personality', 'gender'];
+/**
+ * Sexo, idade e nível de atividade são do PRÓPRIO usuário (o coach precisa
+ * deles para calcular as calorias). Sem eles no cadastro, o coach perguntava
+ * de novo e o usuário achava que já tinha respondido. `gender` é outra coisa:
+ * o gênero do mentor.
+ */
+const STEPS: Step[] = [
+  'name',
+  'sex',
+  'age',
+  'bodyType',
+  'height',
+  'weight',
+  'activity',
+  'goal',
+  'personality',
+  'gender',
+];
 
 const QUESTIONS: Record<Step, string> = {
   name: 'Como você gostaria de ser chamado?',
+  sex: 'Qual é o seu sexo? (usamos para calcular suas calorias)',
+  age: 'Quantos anos você tem?',
   bodyType: 'Qual é o seu biotipo?',
   height: 'Qual é a sua altura? (cm)',
   weight: 'Qual é o seu peso atual? (kg)',
+  activity: 'Com que frequência você se exercita?',
   goal: 'Qual é o seu objetivo principal?',
   personality: 'Como você prefere que seu coach seja?',
-  gender: 'Qual o gênero do seu mentor?',
+  gender: 'Qual o gênero do seu mentor (o coach)?',
 };
 
 type OptionDef = { value: string; emoji: string; title: string; description: string };
 
+/**
+ * Valor só da tela: abre o quiz do mentor em vez de virar resposta. Nunca vai
+ * ao backend — o quiz termina gravando ectomorph/mesomorph/endomorph.
+ */
+const DISCOVER_BODY_TYPE = 'discover';
+
 const OPTIONS: Partial<Record<Step, OptionDef[]>> = {
+  sex: [
+    { value: 'male', emoji: '👨', title: 'Masculino', description: '' },
+    { value: 'female', emoji: '👩', title: 'Feminino', description: '' },
+  ],
   bodyType: [
-    { value: 'ectomorph', emoji: '🦴', title: 'Ectomorfo', description: 'Metabolismo rápido, difícil ganhar massa' },
-    { value: 'mesomorph', emoji: '💪', title: 'Mesomorfo', description: 'Corpo atlético, ganha e perde peso com facilidade' },
-    { value: 'endomorph', emoji: '🏋️', title: 'Endomorfo', description: 'Tende a acumular gordura, metabolismo mais lento' },
-    { value: 'unknown', emoji: '❓', title: 'Não sei', description: 'Deixe a IA identificar pelo seu perfil' },
+    // Usuário leigo não sabe o que é "Ectomorfo": o rótulo leigo vem primeiro.
+    { value: 'ectomorph', emoji: '🦴', title: BODY_TYPE_LABELS.ectomorph, description: 'Dificuldade para ganhar peso, metabolismo rápido' },
+    { value: 'mesomorph', emoji: '💪', title: BODY_TYPE_LABELS.mesomorph, description: 'Ganha músculo com facilidade, corpo naturalmente definido' },
+    { value: 'endomorph', emoji: '🏋️', title: BODY_TYPE_LABELS.endomorph, description: 'Ganha peso com facilidade, estrutura mais larga' },
+    { value: DISCOVER_BODY_TYPE, emoji: '❓', title: 'Ajude-me a descobrir', description: 'O mentor faz algumas perguntas rápidas' },
+  ],
+  activity: [
+    { value: 'sedentary', emoji: '🛋️', title: 'Sedentário', description: 'Pouco ou nenhum exercício' },
+    { value: 'light', emoji: '🚶', title: 'Leve', description: '1 a 3 vezes por semana' },
+    { value: 'moderate', emoji: '🏃', title: 'Moderado', description: '3 a 5 vezes por semana' },
+    { value: 'active', emoji: '🏋️', title: 'Ativo', description: '6 a 7 vezes por semana' },
+    { value: 'very_active', emoji: '🔥', title: 'Muito ativo', description: 'Treino intenso ou 2x por dia' },
   ],
   goal: [
     { value: 'lose_weight', emoji: '📉', title: 'Perder peso', description: 'Reduzir gordura corporal com saúde' },
@@ -81,6 +130,8 @@ const MIN_HEIGHT_CM = 100;
 const MAX_HEIGHT_CM = 250;
 const MIN_WEIGHT_KG = 30;
 const MAX_WEIGHT_KG = 300;
+const MIN_AGE = 13;
+const MAX_AGE = 100;
 
 type StepCheck = { ok: true; value: string } | { ok: false; reason: string };
 
@@ -92,6 +143,24 @@ export function validateStep(step: Step, raw: string): StepCheck {
       return { ok: false, reason: 'Preciso de pelo menos duas letras. Como posso te chamar?' };
     }
     return { ok: true, value: value.slice(0, 100) };
+  }
+
+  if (step === 'age') {
+    const n = parseNumber(value);
+    if (n === null || !Number.isInteger(Math.round(n))) {
+      return {
+        ok: false,
+        reason: 'Não entendi a idade. Me manda só o número, em anos — por exemplo: 30.',
+      };
+    }
+    const years = Math.round(n);
+    if (years < MIN_AGE || years > MAX_AGE) {
+      return {
+        ok: false,
+        reason: `Essa idade não parece certa. Me manda entre ${MIN_AGE} e ${MAX_AGE} anos — por exemplo: 30.`,
+      };
+    }
+    return { ok: true, value: String(years) };
   }
 
   if (step === 'height') {
@@ -132,6 +201,83 @@ export function validateStep(step: Step, raw: string): StepCheck {
   }
 
   return { ok: true, value };
+}
+
+/** Minúsculas, sem acento e sem espaço nas pontas: "  Atlético " → "atletico". */
+function normalize(raw: string): string {
+  return raw
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+}
+
+/** Como as pessoas escrevem o sexo sem tocar na opção. */
+const SEX_SYNONYMS: Record<string, string> = {
+  m: 'male',
+  homem: 'male',
+  masculino: 'male',
+  f: 'female',
+  mulher: 'female',
+  feminino: 'female',
+};
+
+/** "Ajude-me a descobrir" digitado. O valor interno 'discover' NÃO conta. */
+const DISCOVER_KEYWORDS = ['ajude', 'nao sei', 'descobrir'];
+
+const RETRY_PICK_OPTION = 'Toque em uma das opções acima 🙂';
+
+/**
+ * Texto livre num passo de opções: o backend só aceita os valores dos cards.
+ * Antes o texto ia cru ("banana", "masculino") e o perfil era sempre recusado,
+ * deixando o usuário novo preso no cadastro. Casa o texto com uma opção ou
+ * devolve null (o Coach repergunta).
+ */
+export function matchOption(step: Step, raw: string): OptionDef | null {
+  const options = OPTIONS[step];
+  if (!options) return null;
+  const text = normalize(raw);
+  if (!text) return null;
+
+  const real = options.filter((o) => o.value !== DISCOVER_BODY_TYPE);
+  if (step === 'bodyType' && DISCOVER_KEYWORDS.some((k) => text.includes(k))) {
+    return options.find((o) => o.value === DISCOVER_BODY_TYPE) ?? null;
+  }
+  if (step === 'sex' && SEX_SYNONYMS[text]) {
+    return real.find((o) => o.value === SEX_SYNONYMS[text]) ?? null;
+  }
+
+  const exact = real.find((o) => normalize(o.value) === text || normalize(o.title) === text);
+  if (exact) return exact;
+
+  // Parcial ("magro", "perder", "muito ativo"): só com 3+ letras e só se for
+  // de UMA opção — "peso" serve para duas metas, então repergunta.
+  if (text.length < 3) return null;
+  const partial = real.filter((o) => {
+    const title = normalize(o.title);
+    return title.includes(text) || text.includes(title);
+  });
+  return partial.length === 1 ? partial[0]! : null;
+}
+
+const REQUIRED_STEPS: Step[] = STEPS.filter((s) => s !== 'bodyType');
+
+/**
+ * Rede de segurança antes de enviar: o primeiro passo obrigatório sem resposta
+ * válida, ou null. O biotipo pode faltar (vai como 'unknown').
+ */
+export function findInvalidStep(answers: Partial<Record<Step, string | undefined>>): Step | null {
+  for (const step of REQUIRED_STEPS) {
+    const value = answers[step];
+    if (value === undefined) return step;
+    const options = OPTIONS[step];
+    if (options) {
+      if (!options.some((o) => o.value === value && o.value !== DISCOVER_BODY_TYPE)) return step;
+    } else if (!validateStep(step, value).ok) {
+      return step;
+    }
+  }
+  return null;
 }
 
 /** Extrai a causa que o backend explicou; sem ela, distingue rede de resto. */
@@ -178,10 +324,23 @@ export function ProfileSetupScreen({ navigation }: AuthStackScreenProps<'Profile
   const [submitting, setSubmitting] = useState(false);
   // Ids do FlatList precisam ser únicos: cada repergunta gera uma nova dupla.
   const [retryCount, setRetryCount] = useState(0);
+  // "Ajude-me a descobrir": sub-perguntas do mentor dentro do passo bodyType.
+  // Não mexem em currentStepIndex, então o progresso fica parado nelas.
+  const [quiz, setQuiz] = useState<{ index: number; answers: BodyTypeKey[] } | null>(null);
   const listRef = useRef<FlatList>(null);
+  // Toque duplo: os dois toques chegam antes do re-render e rodam com o mesmo
+  // closure. Sem esta trava o segundo gravava a resposta no passo seguinte e
+  // pulava uma pergunta (ex.: a idade ficava sem resposta). O ref muda na hora;
+  // o state, só no próximo render.
+  const stepIndexRef = useRef(0);
+  const quizIndexRef = useRef<number | null>(null);
 
   const currentStep = STEPS[currentStepIndex];
-  const hasOptions = !!OPTIONS[currentStep];
+  const currentOptions: OptionDef[] | undefined = quiz ? BODY_TYPE_QUIZ[quiz.index]!.options : OPTIONS[currentStep];
+
+  function scrollToEnd() {
+    setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100);
+  }
 
   /**
    * `displayText` é o que aparece na bolha do usuário. Para as opções, é o
@@ -191,45 +350,158 @@ export function ProfileSetupScreen({ navigation }: AuthStackScreenProps<'Profile
    * salvo e enviado ao backend.
    */
   function advanceWithAnswer(value: string, displayText: string = value) {
+    // Este closure é de um passo que já foi respondido (toque duplo).
+    if (currentStepIndex !== stepIndexRef.current || quizIndexRef.current !== null) return;
     const step = STEPS[currentStepIndex];
 
-    // Valida ANTES de consumir o passo: inválido, o Coach repergunta e o
-    // usuário continua onde estava. Validar só no envio faria ele refazer os 7.
-    const check = validateStep(step, value);
-    if (!check.ok) {
-      setMessages([
-        ...messages,
-        { id: `user-${step}-${retryCount}`, role: 'user', text: displayText },
-        { id: `coach-retry-${step}-${retryCount}`, role: 'coach', text: check.reason },
-      ]);
-      setRetryCount((n) => n + 1);
-      setInputText('');
-      setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100);
+    if (step === 'bodyType' && value === DISCOVER_BODY_TYPE) {
+      startBodyTypeQuiz(displayText);
       return;
     }
 
-    const newAnswers = { ...answers, [step]: check.value };
-    setAnswers(newAnswers);
+    // Valida ANTES de consumir o passo: inválido, o Coach repergunta e o
+    // usuário continua onde estava. Validar só no envio faria ele refazer todos.
+    const check = validateStep(step, value);
+    if (!check.ok) {
+      retry(step, displayText, check.reason);
+      return;
+    }
 
     // Reenvio depois de uma falha no último passo: a resposta anterior já está
     // na conversa com o mesmo id. Substitui em vez de duplicar — id repetido
     // quebra o keyExtractor do FlatList e a bolha aparecia duas vezes.
-    const nextMessages: ChatMessage[] = [
+    commitAnswer(check.value, [
       ...messages.filter((m) => m.id !== `user-${step}`),
       { id: `user-${step}`, role: 'user', text: displayText === value ? check.value : displayText },
+    ]);
+  }
+
+  /** Texto digitado num passo de opções: casa com um card ou repergunta. */
+  function answerTypedOption(raw: string) {
+    if (currentStepIndex !== stepIndexRef.current || quizIndexRef.current !== null) return;
+    const step = STEPS[currentStepIndex];
+    const option = matchOption(step, raw);
+    if (!option) {
+      retry(step, raw, RETRY_PICK_OPTION);
+      return;
+    }
+    advanceWithAnswer(option.value, option.title);
+  }
+
+  /** O Coach repergunta; o usuário continua no mesmo passo. */
+  function retry(step: Step, displayText: string, reason: string) {
+    setMessages([
+      ...messages,
+      { id: `user-${step}-${retryCount}`, role: 'user', text: displayText },
+      { id: `coach-retry-${step}-${retryCount}`, role: 'coach', text: reason },
+    ]);
+    setRetryCount((n) => n + 1);
+    setInputText('');
+    scrollToEnd();
+  }
+
+  /** Vai para o passo `index` (state e trava juntos). */
+  function goToStep(index: number) {
+    stepIndexRef.current = index;
+    setCurrentStepIndex(index);
+    setInputText('');
+    scrollToEnd();
+  }
+
+  /**
+   * Grava a resposta do passo atual e faz a próxima pergunta ainda sem
+   * resposta (ou envia). "Sem resposta" e não "a seguinte": depois que a rede
+   * de segurança repergunta um passo lá atrás, os outros já estão respondidos.
+   */
+  function commitAnswer(value: string, nextMessages: ChatMessage[]) {
+    const step = STEPS[currentStepIndex];
+    const newAnswers = { ...answers, [step]: value };
+    setAnswers(newAnswers);
+
+    const nextIndex = STEPS.findIndex((s, i) => i > currentStepIndex && newAnswers[s] === undefined);
+    if (nextIndex !== -1) {
+      const nextStep = STEPS[nextIndex];
+      setMessages([
+        ...nextMessages,
+        { id: `coach-${nextStep}`, role: 'coach', text: QUESTIONS[nextStep] },
+      ]);
+      goToStep(nextIndex);
+      return;
+    }
+
+    // Rede de segurança: nunca envia o que o backend recusa. Com resposta
+    // faltando ou inválida, repergunta aquele passo em vez de prender o
+    // usuário num "não foi possível salvar" sem saída.
+    const invalid = findInvalidStep(newAnswers);
+    if (invalid) {
+      const kept = { ...newAnswers };
+      delete kept[invalid];
+      setAnswers(kept);
+      setMessages([
+        ...nextMessages,
+        { id: `coach-reask-${invalid}-${retryCount}`, role: 'coach', text: QUESTIONS[invalid] },
+      ]);
+      setRetryCount((n) => n + 1);
+      goToStep(STEPS.indexOf(invalid));
+      return;
+    }
+
+    setMessages(nextMessages);
+    submitProfile(newAnswers);
+  }
+
+  /**
+   * Quiz local e determinístico, apresentado pelo mentor nas bolhas do chat:
+   * instantâneo, funciona sem rede e sem custo de IA (o onboarding nem tem
+   * token definitivo ainda).
+   */
+  function startBodyTypeQuiz(displayText: string) {
+    setMessages([
+      ...messages,
+      { id: 'user-bodyType-discover', role: 'user', text: displayText },
+      { id: 'coach-quiz-intro', role: 'coach', text: 'Vamos descobrir juntos! 3 perguntas rápidas.' },
+      { id: 'coach-quiz-0', role: 'coach', text: BODY_TYPE_QUIZ[0]!.question },
+    ]);
+    quizIndexRef.current = 0;
+    setQuiz({ index: 0, answers: [] });
+    setInputText('');
+    scrollToEnd();
+  }
+
+  function answerBodyTypeQuiz(value: BodyTypeKey, title: string) {
+    // Toque duplo: o segundo toque é de uma pergunta que já foi respondida.
+    if (!quiz || quizIndexRef.current !== quiz.index) return;
+    const quizAnswers = [...quiz.answers, value];
+    const withAnswer: ChatMessage[] = [
+      ...messages,
+      { id: `user-quiz-${quiz.index}`, role: 'user', text: title },
     ];
 
-    if (currentStepIndex < STEPS.length - 1) {
-      const nextStep = STEPS[currentStepIndex + 1];
-      nextMessages.push({ id: `coach-${nextStep}`, role: 'coach', text: QUESTIONS[nextStep] });
-      setMessages(nextMessages);
-      setCurrentStepIndex((i) => i + 1);
-      setInputText('');
-      setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100);
-    } else {
-      setMessages(nextMessages);
-      submitProfile(newAnswers);
+    const nextIndex = quiz.index + 1;
+    if (nextIndex < BODY_TYPE_QUIZ.length) {
+      setMessages([
+        ...withAnswer,
+        { id: `coach-quiz-${nextIndex}`, role: 'coach', text: BODY_TYPE_QUIZ[nextIndex]!.question },
+      ]);
+      quizIndexRef.current = nextIndex;
+      setQuiz({ index: nextIndex, answers: quizAnswers });
+      scrollToEnd();
+      return;
     }
+
+    const result = scoreBodyType(quizAnswers);
+    quizIndexRef.current = null;
+    setQuiz(null);
+    // A resposta do usuário já está nas bolhas do quiz: o mentor anuncia o
+    // resultado e segue direto para a próxima pergunta.
+    commitAnswer(result, [
+      ...withAnswer,
+      {
+        id: 'coach-quiz-result',
+        role: 'coach',
+        text: `Pelo que você me contou, seu biotipo é ${BODY_TYPE_LABELS[result]}.`,
+      },
+    ]);
   }
 
   async function submitProfile(finalAnswers: Partial<Record<Step, string>>) {
@@ -240,12 +512,20 @@ export function ProfileSetupScreen({ navigation }: AuthStackScreenProps<'Profile
     try {
       const payload: ProfileSetupPayload = {
         name: finalAnswers.name ?? user?.name ?? '',
-        bodyType: (finalAnswers.bodyType as ProfileSetupPayload['bodyType']) ?? 'unknown',
+        // Biotipo é o único opcional: fora dos valores aceitos, vai 'unknown'.
+        bodyType: OPTIONS.bodyType!.some(
+          (o) => o.value === finalAnswers.bodyType && o.value !== DISCOVER_BODY_TYPE,
+        )
+          ? (finalAnswers.bodyType as ProfileSetupPayload['bodyType'])
+          : 'unknown',
         heightCm: Number(finalAnswers.height ?? 0),
         weightKg: Number(finalAnswers.weight ?? 0),
         goal: finalAnswers.goal ?? '',
         coachPersonality: (finalAnswers.personality as ProfileSetupPayload['coachPersonality']) ?? 'motivational',
         coachGender: (finalAnswers.gender as ProfileSetupPayload['coachGender']) ?? 'neutral',
+        sex: finalAnswers.sex as ProfileSetupPayload['sex'],
+        age: Number(finalAnswers.age),
+        activityLevel: finalAnswers.activity as ProfileSetupPayload['activityLevel'],
       };
       // O interceptor autentica esta chamada com pendingAuth.token.
       await authService.profileSetup(payload);
@@ -279,7 +559,8 @@ export function ProfileSetupScreen({ navigation }: AuthStackScreenProps<'Profile
 
   function handleSend() {
     if (!inputText.trim()) return;
-    advanceWithAnswer(inputText.trim());
+    if (OPTIONS[currentStep]) answerTypedOption(inputText.trim());
+    else advanceWithAnswer(inputText.trim());
   }
 
   return (
@@ -305,44 +586,55 @@ export function ProfileSetupScreen({ navigation }: AuthStackScreenProps<'Profile
         onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
       />
 
-      {hasOptions && !submitting && (
+      {currentOptions && !submitting && (
         <View style={styles.options}>
-          {OPTIONS[currentStep]!.map((opt) => (
+          {currentOptions.map((opt) => (
             <OnboardingOptionCard
               key={opt.value}
               emoji={opt.emoji}
               title={opt.title}
               description={opt.description}
-              selected={answers[currentStep] === opt.value}
-              onPress={() => advanceWithAnswer(opt.value, opt.title)}
+              selected={!quiz && answers[currentStep] === opt.value}
+              onPress={() =>
+                quiz
+                  ? answerBodyTypeQuiz(opt.value as BodyTypeKey, opt.title)
+                  : advanceWithAnswer(opt.value, opt.title)
+              }
             />
           ))}
         </View>
       )}
 
-      <View style={styles.inputRow}>
-        <TextInput
-          style={styles.input}
-          placeholder="Digite aqui..."
-          placeholderTextColor={colors.textDisabled}
-          value={inputText}
-          onChangeText={setInputText}
-          onSubmitEditing={handleSend}
-          returnKeyType="send"
-          editable={!submitting}
-          // Reduz a entrada ruim na origem. NÃO substitui validateStep: o
-          // teclado numérico do Android tem vírgula.
-          keyboardType={currentStep === 'height' || currentStep === 'weight' ? 'numeric' : 'default'}
-        />
-        <TouchableOpacity
-          style={[styles.sendBtn, (!inputText.trim() || submitting) && styles.sendBtnDisabled]}
-          onPress={handleSend}
-          disabled={!inputText.trim() || submitting}
-          testID="send-btn"
-        >
-          <Text color={colors.white}>↑</Text>
-        </TouchableOpacity>
-      </View>
+      {/* No quiz a resposta é só por card: texto livre não tem como pontuar. */}
+      {!quiz && (
+        <View style={styles.inputRow}>
+          <TextInput
+            style={styles.input}
+            placeholder="Digite aqui..."
+            placeholderTextColor={colors.textDisabled}
+            value={inputText}
+            onChangeText={setInputText}
+            onSubmitEditing={handleSend}
+            returnKeyType="send"
+            editable={!submitting}
+            // Reduz a entrada ruim na origem. NÃO substitui validateStep: o
+            // teclado numérico do Android tem vírgula.
+            keyboardType={
+              currentStep === 'age' || currentStep === 'height' || currentStep === 'weight'
+                ? 'numeric'
+                : 'default'
+            }
+          />
+          <TouchableOpacity
+            style={[styles.sendBtn, (!inputText.trim() || submitting) && styles.sendBtnDisabled]}
+            onPress={handleSend}
+            disabled={!inputText.trim() || submitting}
+            testID="send-btn"
+          >
+            <Text color={colors.white}>↑</Text>
+          </TouchableOpacity>
+        </View>
+      )}
     </KeyboardAvoidingView>
   );
 }

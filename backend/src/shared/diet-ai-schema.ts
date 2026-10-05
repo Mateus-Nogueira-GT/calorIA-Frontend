@@ -18,6 +18,7 @@ export const aiDietItemSchema = z.object({
   protein_g: z.number(),
   carbs_g: z.number(),
   fat_g: z.number(),
+  fiber_g: z.number(),
   preparation_tip: z.string().nullable(),
 })
 
@@ -85,7 +86,12 @@ export const collectedUserDataSchema = z.object({
   height_cm: z.number().min(COLLECTED_BOUNDS.heightCm[0]).max(COLLECTED_BOUNDS.heightCm[1]),
   age: z.number().int().min(COLLECTED_BOUNDS.age[0]).max(COLLECTED_BOUNDS.age[1]),
   gender: z.enum(['male', 'female', 'other']),
-  goal: z.enum(['lose_weight', 'maintain', 'gain_muscle', 'gain_weight']),
+  // 'health' (opção do onboarding) não está no enum da tool (strict schema da
+  // OpenAI); se vier mesmo assim, vira 'maintain' — a meta calórica é a mesma.
+  goal: z.preprocess(
+    (v) => (v === 'health' ? 'maintain' : v),
+    z.enum(['lose_weight', 'maintain', 'gain_muscle', 'gain_weight']),
+  ),
   activity_level: z.enum(['sedentary', 'light', 'moderate', 'active', 'very_active']),
   meals_per_day: z
     .number()

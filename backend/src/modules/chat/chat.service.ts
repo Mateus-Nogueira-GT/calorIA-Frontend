@@ -15,7 +15,7 @@ import type { ChatMessageBody, ChatResponse } from './chat.schemas.js'
 const CHAT_SYSTEM_PROMPT = `Você é o CalorIA, um nutricionista virtual simpático e motivador.
 Seu objetivo é coletar informações do usuário em forma de conversa natural e, ao final, gerar um plano alimentar personalizado.
 
-## DADOS QUE VOCÊ DEVE COLETAR (obrigatórios):
+## DADOS QUE VOCÊ DEVE COLETAR (obrigatórios) (pule os que já constam em DADOS JÁ CONHECIDOS):
 1. Peso atual em kg
 2. Altura em cm (sempre em centímetros: 175, nunca 1,75)
 3. Idade (ou data de nascimento)
@@ -70,11 +70,13 @@ const CONTEXT_INSTRUCTION =
   'números do CONTEXTO DO USUÁRIO acima. Nunca invente valores que não estejam nele.'
 
 const KNOWN_DATA_INSTRUCTION =
-  'INSTRUÇÃO: se TODOS os dados obrigatórios (peso, altura, idade, sexo, objetivo, nível de ' +
-  'atividade e refeições/dia) constam em DADOS JÁ CONHECIDOS, NÃO refaça as perguntas — envie ' +
-  'UMA mensagem confirmando esses dados e perguntando se algo mudou. Se o usuário confirmar, ' +
-  'chame collect_diet_data com esses valores. Pergunte individualmente apenas os campos ' +
-  'ausentes ou que o usuário disser que mudaram.'
+  'INSTRUÇÃO: os DADOS JÁ CONHECIDOS vieram do cadastro do usuário. NUNCA pergunte de novo ' +
+  'nenhum deles — use-os direto. Pergunte apenas os dados obrigatórios que NÃO estão na lista, ' +
+  'um por vez. Ao começar a montar a dieta, diga em UMA frase quais dados do cadastro você vai ' +
+  'usar (ex.: "Vou usar seu peso de 80 kg e altura de 1,75 m"), sem esperar confirmação, e siga ' +
+  'para o primeiro dado que falta. Se TODOS os obrigatórios já constam, envie UMA mensagem ' +
+  'resumindo-os e perguntando se algo mudou; se o usuário confirmar, chame collect_diet_data. ' +
+  'Se o usuário disser que algo mudou, use o valor novo.'
 
 /**
  * Quando já existe dieta ativa, esta instrução SOBRESCREVE a parte do
@@ -482,6 +484,8 @@ async function handleDietGeneration(
   }
 
   // Atualiza perfil do usuário com os dados coletados.
+  // goal: o cadastro aceita 'health', que a tool só consegue expressar como
+  // 'maintain' (mesma meta) — não rebaixa 'health' para 'maintain'.
   // birth_date: aproximação (1º de julho do ano correspondente à idade) gravada
   // APENAS se ainda for NULL — permite pré-carregar a idade em conversas
   // futuras sem sobrescrever uma data real informada pelo usuário (F6).
@@ -491,7 +495,8 @@ async function handleDietGeneration(
       weight_kg      = ${userData.weight_kg},
       height_cm      = ${userData.height_cm},
       gender         = ${userData.gender},
-      goal           = ${userData.goal},
+      goal           = CASE WHEN goal = 'health' AND ${userData.goal} = 'maintain'
+                            THEN goal ELSE ${userData.goal} END,
       activity_level = ${userData.activity_level},
       dietary_restrictions = ${userData.dietary_restrictions},
       allergies      = ${userData.allergies},

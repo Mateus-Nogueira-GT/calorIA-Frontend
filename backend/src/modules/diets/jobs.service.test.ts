@@ -26,6 +26,7 @@ function dayWithCalories(...itemCalories: number[]): AiSingleDay {
           protein_g: cal / 4,
           carbs_g: cal / 4,
           fat_g: cal / 9,
+          fiber_g: cal / 100,
           preparation_tip: null,
         })),
       },
@@ -134,6 +135,14 @@ describe('parseInput (jsonb robusto)', () => {
 })
 
 describe('reconcileDay (I4 — escala determinística à meta)', () => {
+  it('fibra escala junto com as quantidades', () => {
+    const day = dayWithCalories(1500, 1500) // 3000 → fator 2000/3000
+    const r = reconcileDay(day, 2000)
+    expect(r.scaled).toBe(true)
+    // 15 g × 2/3 = 10 g por item
+    expect(r.day.meals[0].items.map((i) => i.fiber_g)).toEqual([10, 10])
+  })
+
   it('dia dentro de ±10% da meta fica intacto', () => {
     const day = dayWithCalories(1000, 1100) // 2100
     const r = reconcileDay(day, 2000) // desvio 5%
@@ -217,6 +226,12 @@ describe('summarizePreviousDays (I3 — variedade entre dias)', () => {
 })
 
 describe('buildDayPrompt (O5)', () => {
+  it('pede fibra por item junto das calorias/macros', () => {
+    expect(buildDayPrompt(base, computeTargets(base), 1)).toContain(
+      'calorias, proteína, carboidrato, gordura e fibra (g) por item',
+    )
+  })
+
   it('lista os meal_type exatos na ordem canônica para meals_per_day', () => {
     const p = buildDayPrompt({ ...base, meals_per_day: 4 }, computeTargets(base), 1)
     expect(p).toContain('breakfast, lunch, afternoon_snack, dinner')

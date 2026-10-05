@@ -19,6 +19,7 @@ function dayWith(...foods: (string | { name: string; tip: string })[]): AiSingle
           protein_g: 5,
           carbs_g: 10,
           fat_g: 2,
+          fiber_g: 3,
           preparation_tip: typeof f === 'string' ? null : f.tip,
         })),
       },

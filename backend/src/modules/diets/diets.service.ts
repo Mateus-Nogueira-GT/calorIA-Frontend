@@ -73,6 +73,8 @@ interface DbDietMeal {
   total_protein: number
   total_carbs: number
   total_fat: number
+  /** NUMERIC chega como string; NULL antes da migration 020 ou em dieta antiga. */
+  total_fiber: string | number | null
   is_completed: boolean
   completed_at: string | null
   sort_order: number
@@ -277,6 +279,7 @@ export async function getTodayPlan(
   const dbMeals = await fastify.db<DbDietMeal[]>`
     SELECT id, diet_day_id, meal_type, name, time_suggestion,
            total_calories, total_protein, total_carbs, total_fat,
+           (to_jsonb(diet_meals) ->> 'total_fiber')::numeric AS total_fiber,
            is_completed, completed_at::TEXT AS completed_at, sort_order
     FROM diet_meals
     WHERE diet_day_id = ${dbDay.id}
@@ -311,6 +314,8 @@ export async function getTodayPlan(
     protein: Number(dbMeal.total_protein),
     carbs: Number(dbMeal.total_carbs),
     fat: Number(dbMeal.total_fat),
+    // null = dieta sem o dado (não "0 g")
+    fiber: dbMeal.total_fiber == null ? null : Number(dbMeal.total_fiber),
     completedAt: dbMeal.completed_at,
     // Derivado por dia local — refeição marcada semana passada não conta hoje
     completedToday: completedOnDate(dbMeal.completed_at, today, tzOffsetMinutes),
@@ -393,6 +398,7 @@ export async function toggleMealCompleted(
   // atualizar passa a usar a lógica correta, derivada da data local.
   const hasClientTz = tzOffsetMinutes != null
 
+  // diet_meals não tem updated_at (006_diets.sql): o UPDATE abaixo não pode escrevê-lo.
   // B1: o novo estado vem da DATA de completed_at, não de `NOT is_completed`.
   // O plano é cíclico (day_number), então a mesma linha reaparece na semana
   // seguinte ainda com is_completed=true de uma conclusão antiga, enquanto a UI
@@ -422,8 +428,7 @@ export async function toggleMealCompleted(
     )
     UPDATE diet_meals dm
     SET is_completed = NOT target.completed_on_date,
-        completed_at = CASE WHEN target.completed_on_date THEN NULL ELSE NOW() END,
-        updated_at   = NOW()
+        completed_at = CASE WHEN target.completed_on_date THEN NULL ELSE NOW() END
     FROM target
     WHERE dm.id = target.id
     RETURNING dm.is_completed

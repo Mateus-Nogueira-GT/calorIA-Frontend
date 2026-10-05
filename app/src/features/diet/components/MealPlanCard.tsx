@@ -35,7 +35,13 @@ export function MealPlanCard({ meal, isToggling, onToggleComplete }: Props): Rea
         </View>
       </View>
 
-      <MacroChips kcal={meal.calories} protein={meal.protein} carbs={meal.carbs} fat={meal.fat} />
+      <MacroChips
+        kcal={meal.calories}
+        protein={meal.protein}
+        carbs={meal.carbs}
+        fat={meal.fat}
+        fiber={meal.fiber}
+      />
 
       <View style={styles.items}>
         {meal.items.map((item, idx) => (
@@ -47,7 +53,10 @@ export function MealPlanCard({ meal, isToggling, onToggleComplete }: Props): Rea
         accessibilityRole='button'
         accessibilityState={{ disabled: isToggling, selected: isDone }}
         disabled={isToggling}
-        onPress={() => onToggleComplete(meal.id)}
+        onPress={() => {
+          // O store já avisa o usuário e desfaz o otimista; aqui só evita a rejeição solta.
+          Promise.resolve(onToggleComplete(meal.id)).catch(() => {});
+        }}
         style={[styles.btn, isDone && styles.btnDone, isToggling && styles.btnDisabled]}
       >
         <Text style={[styles.btnText, isDone && styles.btnTextDone]}>
