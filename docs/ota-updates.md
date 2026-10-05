@@ -125,3 +125,12 @@ dentro. Feature grande → build de loja com revisão.
   foi recusado pelo próprio EAS por isso ("Runtime version mismatch"). Custo:
   mudança feita **só** no `project.pbxproj` não troca o runtime version — nesse
   caso, gere build de loja antes de publicar OTA.
+- **`PrivacyInfo.xcprivacy` também sai do hash.** O `pod install` do React
+  Native agrega os Required Reason APIs dos pods e reescreve
+  `ios/calorIA/PrivacyInfo.xcprivacy` no EAS. Era o último arquivo divergente:
+  todo build de iOS depois do OTA (29/09) caiu em "Runtime version mismatch".
+  Mesmo custo do `project.pbxproj`: mexer só nesse arquivo não troca o runtime.
+- **`cliFile` do Gradle resolve o `@expo/cli` a partir do `expo`.** O npm deixa
+  o `@expo/cli` aninhado em `node_modules/expo/node_modules`; resolvê-lo direto
+  de `android/` falhava, o `cliFile` virava a pasta `android/app` e o
+  `createBundleReleaseJsAndAssets` quebrava em todo build de Android no EAS.

@@ -55,7 +55,11 @@ react {
     //
     // Added by install-expo-modules
     entryFile = file(["node", "-e", "require('expo/scripts/resolveAppEntry')", rootDir.getAbsoluteFile().getParentFile().getAbsolutePath(), "android", "absolute"].execute(null, rootDir).text.trim())
-    cliFile = new File(["node", "--print", "require.resolve('@expo/cli')"].execute(null, rootDir).text.trim())
+    // @expo/cli fica aninhado em node_modules/expo/node_modules (o npm não o
+    // iça), então `require.resolve('@expo/cli')` a partir de android/ falha,
+    // devolve "" e o cliFile vira a pasta android/app — o bundle de release
+    // quebrava no EAS. Resolver a partir do pacote `expo`, como no template.
+    cliFile = new File(["node", "--print", "require.resolve('@expo/cli', { paths: [require.resolve('expo/package.json')] })"].execute(null, rootDir).text.trim())
     bundleCommand = "export:embed"
 }
 

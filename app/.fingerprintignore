@@ -13,3 +13,8 @@
 ios/Podfile.lock
 ios/*.xcworkspace/**/*
 ios/*.xcodeproj/project.pbxproj
+# O `pod install` do React Native agrega os Required Reason APIs dos pods
+# ("Privacy Manifest Aggregation") e REESCREVE o PrivacyInfo.xcprivacy do app.
+# Era o único arquivo de ios/ com hash diferente entre o EAS e a máquina de
+# dev — derrubava todo build de iOS com "Runtime version mismatch".
+ios/calorIA/PrivacyInfo.xcprivacy
