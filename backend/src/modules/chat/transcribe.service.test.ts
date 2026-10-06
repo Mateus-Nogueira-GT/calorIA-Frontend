@@ -179,6 +179,15 @@ describe('transcribeAudio', () => {
     })
   })
 
+  it('HTTP 400 genérico de formato da requisição → continua 503 TRANSCRIBE_UNAVAILABLE', async () => {
+    const { fastify } = fakeFastify()
+    const f = fakeFetch(() => json(400, { error: { message: 'invalid request format' } }))
+    await expect(transcribeAudio(fastify, USER, body, f.fn)).rejects.toMatchObject({
+      statusCode: 503,
+      code: 'TRANSCRIBE_UNAVAILABLE',
+    })
+  })
+
   it('HTTP 402 falando de áudio (sem crédito) → continua 503, só 400 vira 422', async () => {
     const { fastify } = fakeFastify()
     const f = fakeFetch(() =>

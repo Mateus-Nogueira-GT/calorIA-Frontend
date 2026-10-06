@@ -70,11 +70,11 @@ function usageForQuota(usage: OpenRouterTranscription['usage']) {
 }
 
 /**
- * 400 do provedor que fala do próprio áudio (curto demais, formato/arquivo
+ * 400 do provedor que fala do próprio áudio (curto demais, arquivo/formato de áudio
  * inválido, não decodificou): o problema é a gravação, não o serviço — o
  * usuário pode gravar de novo. Demais 400 (modelo, parâmetros) seguem 503.
  */
-const AUDIO_PROBLEM_PATTERN = /audio|too short|invalid file|format/i
+const AUDIO_PROBLEM_PATTERN = /audio|too short|invalid file/i
 
 const failed = () =>
   new AppError(502, 'TRANSCRIBE_FAILED', 'Não foi possível transcrever o áudio. Tente novamente.')
