@@ -45,3 +45,14 @@ cd app && npm install && npx expo start
 
 **App** — React Native, Expo, TypeScript, Zustand, React Navigation
 **API** — Node, Fastify, TypeScript, Zod, Supabase (PostgreSQL), OpenAI GPT-4o
+
+## Revisão visual e preview web
+
+```bash
+cd app
+npm run web -- --host 127.0.0.1
+```
+
+Abra `http://127.0.0.1:3000/`. Para inspecionar as telas internas sem sessão, o desenvolvimento oferece `?preview=app`; as operações da API ainda exigem autenticação.
+
+[Revisão de UI/UX, referências e resultados de validação](docs/ux-ui-review-2026-10-05.md).

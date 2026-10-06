@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, NativeSyntheticEvent, Platform, StyleSheet, TextInput, TextInputKeyPressEventData, TouchableOpacity, View } from 'react-native';
+import { screenShellStyle } from '@shared/components';
 import { colors, radius, spacing, typography } from '@theme';
 
 interface Props {
@@ -83,6 +84,7 @@ export function ChatInput({ onSend, disabled }: Props): React.JSX.Element {
 
 const styles = StyleSheet.create({
   container: {
+    ...screenShellStyle,
     flexDirection: 'row',
     padding: spacing.md,
     gap: spacing.sm,

@@ -19,20 +19,21 @@ export function ProfileMenuItem({
   testID,
 }: ProfileMenuItemProps): React.JSX.Element {
   return (
-    <TouchableOpacity style={styles.row} onPress={onPress} testID={testID} activeOpacity={0.7}>
+    <TouchableOpacity style={styles.row} onPress={onPress} testID={testID} activeOpacity={0.7} accessibilityRole="button">
       <View style={styles.textBlock}>
         <Text style={[styles.label, destructive && styles.destructive]}>{label}</Text>
         {description ? (
           <Text style={[styles.description, destructive && styles.destructive]}>{description}</Text>
         ) : null}
       </View>
-      <Text style={[styles.chevron, destructive && styles.destructive]}>›</Text>
+      <Text accessible={false} aria-hidden style={[styles.chevron, destructive && styles.destructive]}>›</Text>
     </TouchableOpacity>
   );
 }
 
 const styles = StyleSheet.create({
   row: {
+    minHeight: 64,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',

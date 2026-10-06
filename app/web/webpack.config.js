@@ -1,5 +1,6 @@
 const path = require('path');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
+const webpack = require('webpack');
 
 const appDirectory = path.resolve(__dirname, '..');
 
@@ -49,7 +50,7 @@ const babelLoaderConfig = {
 };
 
 module.exports = {
-  entry: path.resolve(appDirectory, 'index.js'),
+  entry: [path.resolve(__dirname, 'fonts.js'), path.resolve(appDirectory, 'index.js')],
   output: {
     path: path.resolve(appDirectory, 'web/dist'),
     filename: 'bundle.[contenthash].js',
@@ -84,10 +85,12 @@ module.exports = {
       {
         test: /\.(woff|woff2|eot|ttf|otf)$/i,
         type: 'asset/resource',
+        generator: { filename: 'fonts/[name][ext]' },
       },
     ],
   },
   plugins: [
+    new webpack.DefinePlugin({ __DEV__: JSON.stringify(process.env.NODE_ENV !== 'production') }),
     new HtmlWebpackPlugin({
       template: path.resolve(__dirname, 'index.html'),
     }),
@@ -96,6 +99,7 @@ module.exports = {
     port: 3000,
     hot: true,
     historyApiFallback: true,
+    static: { directory: path.resolve(appDirectory, 'assets'), publicPath: '/' },
     open: false,
   },
   mode: process.env.NODE_ENV === 'production' ? 'production' : 'development',

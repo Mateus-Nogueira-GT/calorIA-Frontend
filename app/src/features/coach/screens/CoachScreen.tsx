@@ -10,7 +10,7 @@ import { ChatInput } from '../components/ChatInput';
 import { TypingIndicator } from '../components/TypingIndicator';
 import { GenerateDietButton } from '../components/GenerateDietButton';
 import { DietJobBanner } from '../components/DietJobBanner';
-import { Text } from '@shared/components';
+import { Text, screenShellStyle } from '@shared/components';
 import { colors, typography, spacing, radius } from '@theme';
 import { CoachMark } from '../components/CoachMark';
 
@@ -118,6 +118,8 @@ export function CoachScreen(): React.JSX.Element {
                   onPress={() => void handleSuggestionPress(suggestion)}
                   style={({ pressed }) => [styles.suggestionButton, pressed && styles.suggestionButtonPressed]}
                   accessibilityRole='button'
+                  disabled={isLoading}
+                  accessibilityState={{ disabled: isLoading }}
                 >
                   <Text style={styles.suggestionText}>{suggestion}</Text>
                 </Pressable>
@@ -144,6 +146,7 @@ export function CoachScreen(): React.JSX.Element {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.brandBackground },
   header: {
+    ...screenShellStyle,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
@@ -174,13 +177,14 @@ const styles = StyleSheet.create({
   list: { flex: 1 },
   chatContent: {
     flexGrow: 1,
+    ...screenShellStyle,
     paddingHorizontal: spacing.lg,
     paddingTop: 18,
     paddingBottom: spacing.sm,
   },
   emptyState: {
     flex: 1,
-    minHeight: 420,
+    minHeight: 280,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: spacing.xl,
@@ -188,7 +192,7 @@ const styles = StyleSheet.create({
   },
   loadingState: {
     flex: 1,
-    minHeight: 420,
+    minHeight: 280,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: spacing.xl,
@@ -243,6 +247,7 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.sm,
   },
   errorBar: {
+    ...screenShellStyle,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',

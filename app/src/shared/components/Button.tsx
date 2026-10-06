@@ -93,7 +93,7 @@ export function Button({
       {loading ? (
         <ActivityIndicator
           testID={testID ? `${testID}-loading` : 'btn-loading'}
-          color={variant === 'primary' ? colors.white : colors.primary}
+          color={variant === 'primary' ? colors.brandAnchor : colors.primaryDark}
           size="small"
         />
       ) : (
@@ -127,21 +127,21 @@ const styles = StyleSheet.create({
     outlineStyle: 'solid',
     outlineWidth: 2,
   } as ViewStyle,
-  primary: { backgroundColor: colors.primary },
+  primary: { backgroundColor: colors.brandPrimary },
   secondary: {
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
   },
   ghost: { backgroundColor: colors.transparent },
-  sm: { paddingVertical: spacing.sm, paddingHorizontal: spacing.lg },
-  md: { paddingVertical: 14, paddingHorizontal: spacing.xxl },
+  sm: { minHeight: 48, paddingVertical: spacing.sm, paddingHorizontal: spacing.lg },
+  md: { minHeight: 48, paddingVertical: 14, paddingHorizontal: spacing.xxl },
   lg: { paddingVertical: 18, paddingHorizontal: spacing.xxxl },
   disabled: { opacity: 0.5 },
   label: {
     fontFamily: typography.fontFamily.semiBold,
     fontSize: typography.fontSize.base,
   },
-  labelPrimary: { color: colors.white },
+  labelPrimary: { color: colors.brandAnchor },
   labelSecondary: { color: colors.textPrimary },
 });
