@@ -69,6 +69,13 @@ function usageForQuota(usage: OpenRouterTranscription['usage']) {
   return { prompt_tokens: estimate, completion_tokens: 0, total_tokens: estimate }
 }
 
+/**
+ * 400 do provedor que fala do próprio áudio (curto demais, formato/arquivo
+ * inválido, não decodificou): o problema é a gravação, não o serviço — o
+ * usuário pode gravar de novo. Demais 400 (modelo, parâmetros) seguem 503.
+ */
+const AUDIO_PROBLEM_PATTERN = /audio|too short|invalid file|format/i
+
 const failed = () =>
   new AppError(502, 'TRANSCRIBE_FAILED', 'Não foi possível transcrever o áudio. Tente novamente.')
 
@@ -114,6 +121,9 @@ export async function transcribeAudio(
     // 4xx do provedor (modelo indisponível, sem crédito, chave inválida...) não
     // se resolve tentando de novo: serviço indisponível. 5xx, 408 (timeout) e
     // 429 (rate limit upstream) são transitórios: falha que vale repetir.
+    if (res.status === 400 && AUDIO_PROBLEM_PATTERN.test(detail)) {
+      throw new AppError(422, 'INVALID_AUDIO', 'Não entendi o áudio, tenta de novo')
+    }
     const transient = res.status === 408 || res.status === 429
     if (res.status >= 400 && res.status < 500 && !transient) {
       throw new AppError(

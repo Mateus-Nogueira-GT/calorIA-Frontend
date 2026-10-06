@@ -156,6 +156,40 @@ describe('transcribeAudio', () => {
     },
   )
 
+  it.each([
+    'Audio file is too short. Minimum audio length is 0.1 seconds.',
+    'Invalid file format. Supported formats: flac, m4a, mp3, mp4, wav, webm',
+    'Could not decode the audio data',
+  ])('HTTP 400 do provedor falando do áudio ("%s") → 422 INVALID_AUDIO', async (message) => {
+    const { fastify } = fakeFastify()
+    const f = fakeFetch(() => json(400, { error: { message } }))
+    await expect(transcribeAudio(fastify, USER, body, f.fn)).rejects.toMatchObject({
+      statusCode: 422,
+      code: 'INVALID_AUDIO',
+      message: 'Não entendi o áudio, tenta de novo',
+    })
+  })
+
+  it('HTTP 400 do provedor sem relação com o áudio → continua 503 TRANSCRIBE_UNAVAILABLE', async () => {
+    const { fastify } = fakeFastify()
+    const f = fakeFetch(() => json(400, { error: { message: 'Invalid model id' } }))
+    await expect(transcribeAudio(fastify, USER, body, f.fn)).rejects.toMatchObject({
+      statusCode: 503,
+      code: 'TRANSCRIBE_UNAVAILABLE',
+    })
+  })
+
+  it('HTTP 402 falando de áudio (sem crédito) → continua 503, só 400 vira 422', async () => {
+    const { fastify } = fakeFastify()
+    const f = fakeFetch(() =>
+      json(402, { error: { message: 'Insufficient credits for audio transcription' } }),
+    )
+    await expect(transcribeAudio(fastify, USER, body, f.fn)).rejects.toMatchObject({
+      statusCode: 503,
+      code: 'TRANSCRIBE_UNAVAILABLE',
+    })
+  })
+
   it('registra uso feature transcribe com os tokens do usage', async () => {
     const { fastify, calls } = fakeFastify()
     const f = fakeFetch(() =>

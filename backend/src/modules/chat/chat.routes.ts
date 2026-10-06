@@ -107,7 +107,9 @@ Envia uma mensagem para o assistente de dietas com IA.
         response: {
           200: transcribeResponseSchema,
           401: errorSchema,
-          422: errorSchema.describe('EMPTY_TRANSCRIPTION — nada foi entendido no áudio'),
+          422: errorSchema.describe(
+            'EMPTY_TRANSCRIPTION — nada foi entendido no áudio | INVALID_AUDIO — provedor recusou o áudio (curto/formato)',
+          ),
           429: errorSchema.describe('TOO_MANY_REQUESTS | AI_QUOTA_EXCEEDED'),
           502: errorSchema.describe(
             'TRANSCRIBE_FAILED — rede/timeout/5xx/408/429 do provedor; pode tentar de novo',
