@@ -43,6 +43,12 @@ const envSchema = z
       (v) => (v === '' || v == null ? undefined : v),
       z.string().default('openai/gpt-5'),
     ),
+    // Modelo de transcrição de áudio do coach (endpoint /audio/transcriptions do
+    // OpenRouter). Default resolvido no service: openai/whisper-1.
+    OPENAI_TRANSCRIBE_MODEL: z.preprocess(
+      (v) => (v === '' || v == null ? undefined : v),
+      z.string().optional(),
+    ),
     // Modelo da GERAÇÃO DE DIAS da dieta. Default = OPENAI_MODEL (resolvido no
     // transform abaixo): o custo só muda com opt-in explícito. Gerar um dia de
     // cardápio estruturado não precisa do modelo topo — aponte para um médio.
