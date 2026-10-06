@@ -6,7 +6,7 @@
 > não há cadastro nem coleta de dados — o que contradiz o aplicativo. É por isso que o
 > Google Play recusa com "Política de Privacidade inválida". Este texto cobre site **e** app.
 >
-> Antes de publicar, confirme os dois pontos marcados com **[CONFIRMAR]**.
+> Antes de publicar, confirme os três pontos marcados com **[CONFIRMAR]**.
 
 ---
 
@@ -55,7 +55,7 @@ funcionamento do app:
   (calorias, proteínas, carboidratos e gorduras);
 - Planos alimentares gerados e histórico de progresso.
 
-### 3.3 Fotos (opcionais)
+### 3.3 Fotos e mensagens de voz (opcionais)
 
 - **Foto de perfil (avatar):** opcional. Se você enviar uma, ela fica armazenada
   enquanto a conta existir ou até você substituí-la ou removê-la.
@@ -64,9 +64,15 @@ funcionamento do app:
   para análise e o resultado é devolvido ao app. **Essas fotos não são armazenadas em
   nossos servidores** — são processadas apenas durante a análise e descartadas em
   seguida. O que permanece é a estimativa nutricional que você escolher salvar.
+- **Áudio / voz:** o áudio só é gravado quando você toca no microfone do chat do
+  mentor, e cada gravação dura no máximo 60 segundos. O áudio é enviado aos nossos
+  provedores de inteligência artificial para ser convertido em texto (transcrição).
+  **O CalorIA não armazena o áudio** — o arquivo temporário é apagado do seu aparelho
+  após o envio. O que guardamos é apenas o texto transcrito, como mensagem do chat.
 
-O acesso à câmera e à galeria só ocorre mediante sua permissão, concedida no sistema
-operacional, e pode ser revogado a qualquer momento nas configurações do aparelho.
+O acesso à câmera, à galeria e ao microfone só ocorre mediante sua permissão, concedida
+no sistema operacional, e pode ser revogado a qualquer momento nas configurações do
+aparelho.
 
 ### 3.4 Conteúdo social (quando você usa esses recursos)
 
@@ -85,6 +91,7 @@ serviço, segurança e prevenção de abusos.
 | Criar, autenticar e gerenciar sua conta | Nome, e-mail, senha, ID Google/Apple |
 | Calcular metas nutricionais e gerar planos alimentares | Altura, peso, sexo, objetivo |
 | Estimar valores nutricionais de refeições | Fotos de refeições, descrições de alimentos |
+| Transcrever mensagens de voz para o mentor | Áudio das mensagens de voz |
 | Registrar e exibir seu histórico e progresso | Registro alimentar, peso, metas |
 | Exibir seu perfil e recursos sociais | Nome, avatar, publicações, amizades |
 | Manter a segurança e a estabilidade do serviço | Dados técnicos de acesso |
@@ -100,8 +107,8 @@ na medida necessária:
 | Prestador | O que recebe | Para quê |
 |---|---|---|
 | **Supabase, Inc.** | Dados de conta, perfil, saúde, registro alimentar e avatar | Autenticação, banco de dados e armazenamento de arquivos |
-| **OpenRouter, Inc.** | Fotos de refeições e dados de perfil (altura, peso, objetivo) | Roteamento das requisições de inteligência artificial |
-| **OpenAI, L.L.C.** | Os mesmos dados acima, encaminhados pelo OpenRouter | Análise de imagens e geração dos planos alimentares |
+| **OpenRouter, Inc.** | Fotos de refeições, dados de perfil (altura, peso, objetivo) e áudio de mensagens de voz (para transcrição) | Roteamento das requisições de inteligência artificial |
+| **OpenAI, L.L.C.** | Os mesmos dados acima, encaminhados pelo OpenRouter, incluindo o áudio de mensagens de voz (para transcrição) | Análise de imagens, transcrição de áudio e geração dos planos alimentares |
 | **Google LLC / Apple Inc.** | Identificador da conta | Login social, quando você escolhe essa opção |
 | **Vercel Inc.** | Dados técnicos de acesso | Hospedagem da aplicação e do site |
 
@@ -110,6 +117,11 @@ resposta solicitada por você**. **[CONFIRMAR]** *Verifique nas configurações 
 OpenRouter se a retenção zero de dados (ZDR) está ativada e ajuste esta frase de acordo —
 o texto abaixo pressupõe que sim:* Não autorizamos o uso desses dados para treinamento de
 modelos.
+
+**[CONFIRMAR]** *Confirme se a configuração de retenção do OpenRouter também se aplica ao
+endpoint de transcrição de áudio (modelo `openai/whisper-1`) e por quanto tempo o
+OpenRouter e a OpenAI podem reter o áudio enviado para transcrição; ajuste ou remova esta
+nota de acordo. Do lado do CalorIA, o áudio não é armazenado.*
 
 Compartilhamentos adicionais ocorrem somente mediante obrigação legal ou requisição de
 autoridade competente.
