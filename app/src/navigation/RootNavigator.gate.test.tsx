@@ -11,7 +11,11 @@ jest.mock('@shared/services/profile.service', () => ({
   profileService: { getMe: jest.fn() },
 }));
 jest.mock('@shared/services/diet.service', () => ({
-  dietService: { getActiveJob: jest.fn().mockResolvedValue(null), stepJob: jest.fn() },
+  dietService: {
+    getActiveJob: jest.fn().mockResolvedValue(null),
+    stepJob: jest.fn(),
+    retryJob: jest.fn(),
+  },
 }));
 
 const mockGetMe = profileService.getMe as jest.MockedFunction<typeof profileService.getMe>;
@@ -98,8 +102,8 @@ describe('RootNavigator — retomada da geração no boot', () => {
       daysCompleted: 4,
       totalDays: 7,
       dietId: 'd1',
-      error: 'STALE',
-      errorCode: 'STALE',
+      error: 'STEP_TIMEOUT',
+      errorCode: 'STEP_TIMEOUT',
       errorMessage: 'A geração parou de responder.',
     });
     render(<RootNavigator />);
@@ -112,5 +116,41 @@ describe('RootNavigator — retomada da geração no boot', () => {
     );
     expect(useCoachStore.getState().activeJobId).toBe('j1');
     expect(dietService.stepJob).not.toHaveBeenCalled();
+    expect(dietService.retryJob).not.toHaveBeenCalled();
+  });
+
+  it('job failed STALE no boot (app ficou fechado) reabre sozinho e retoma a geração', async () => {
+    autenticado(true);
+    (dietService.getActiveJob as jest.Mock).mockResolvedValueOnce({
+      jobId: 'j1',
+      status: 'failed',
+      daysCompleted: 4,
+      totalDays: 7,
+      dietId: 'd1',
+      error: 'STALE',
+      errorCode: 'STALE',
+      errorMessage: 'A geração parou de responder.',
+    });
+    (dietService.retryJob as jest.Mock).mockResolvedValueOnce({
+      jobId: 'j1',
+      status: 'running',
+      daysCompleted: 4,
+      totalDays: 7,
+      dietId: 'd1',
+      error: null,
+    });
+    (dietService.stepJob as jest.Mock).mockResolvedValue({
+      jobId: 'j1',
+      status: 'completed',
+      daysCompleted: 7,
+      totalDays: 7,
+      dietId: 'd1',
+      error: null,
+    });
+    render(<RootNavigator />);
+    await waitFor(() => expect(useCoachStore.getState().dietJob?.status).toBe('completed'));
+    expect(dietService.retryJob).toHaveBeenCalledTimes(1);
+    expect(dietService.retryJob).toHaveBeenCalledWith('j1');
+    expect(dietService.stepJob).toHaveBeenCalledWith('j1');
   });
 });

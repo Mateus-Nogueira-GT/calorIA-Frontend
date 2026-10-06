@@ -28,7 +28,9 @@ const DIET_GENERIC_MESSAGE = 'Não foi possível gerar sua dieta agora. Tente no
 // (~160 s, o request antigo certamente já morreu no servidor).
 const RECOVERY_POLLS = 8;
 const RECOVERY_POLL_MS = 20000;
-// Rodadas de recuperação seguidas sem avanço antes de desistir (~8 min).
+// Rodadas de recuperação seguidas sem avanço antes de desistir. Cada rodada
+// leva de ~160 s (step falha rápido + 8 polls) a ~310 s (step morre no timeout
+// de 150 s do cliente + 8 polls de 20 s), então 3 rodadas ≈ 8–15 min.
 // Antes eram até 30 (80 min–2,5 h) com o banner congelado em "dia N de 7".
 const MAX_NO_PROGRESS_ROUNDS = 3;
 const MAX_NETWORK_MISSES = 4;
@@ -77,6 +79,12 @@ let dietSession = 0;
 // reaproveitam a promise em vez de abrir um segundo loop (2 /step em voo =
 // 2 gerações de IA pagas e progresso brigando no banner).
 const dietLoops = new Map<string, Promise<void>>();
+// Single-flight do POST /retry por jobId: duas retomadas simultâneas (boot +
+// aba Dieta) não reabrem o job duas vezes.
+const dietRetries = new Map<string, Promise<void>>();
+
+/** STALE = ninguém chamou /step por >10 min (app em segundo plano/fechado), não uma falha real. */
+const isStaleFailure = (s: DietJobStatus) => s.status === 'failed' && s.errorCode === 'STALE';
 
 interface StoreMessage {
   id: string;
@@ -264,39 +272,63 @@ export const useCoachStore = create<CoachState>()(
         const jobId = explicitJobId ?? get().activeJobId;
         if (!jobId) return;
         // Loop desse job ainda vivo → não reabre nem abre um segundo loop.
-        const inFlight = dietLoops.get(jobId);
+        const inFlight = dietLoops.get(jobId) ?? dietRetries.get(jobId);
         if (inFlight) return inFlight;
         if (explicitJobId) set({ activeJobId: explicitJobId });
         const session = dietSession;
-        try {
-          await dietService.retryJob(jobId);
-        } catch (e) {
+        const reopen: Promise<void> = (async () => {
+          try {
+            await dietService.retryJob(jobId);
+          } catch (e) {
+            if (session !== dietSession) return;
+            // Segue failed, agora com o motivo (antes falhava calado); o botão
+            // permite tentar de novo.
+            set((st) => ({
+              activeJobId: jobId,
+              dietJob: {
+                status: 'failed',
+                daysCompleted: st.dietJob?.daysCompleted ?? 0,
+                totalDays: st.dietJob?.totalDays ?? 7,
+                slow: false,
+                errorMessage: retryErrorMessage(e),
+              },
+            }));
+            return;
+          }
           if (session !== dietSession) return;
-          // Segue failed, agora com o motivo (antes falhava calado); o botão
-          // permite tentar de novo.
-          set((st) => ({
-            activeJobId: jobId,
-            dietJob: {
-              status: 'failed',
-              daysCompleted: st.dietJob?.daysCompleted ?? 0,
-              totalDays: st.dietJob?.totalDays ?? 7,
-              slow: false,
-              errorMessage: retryErrorMessage(e),
-            },
-          }));
-          return;
-        }
-        if (session !== dietSession) return;
-        await get().runDietGeneration(jobId);
+          await get().runDietGeneration(jobId);
+        })().finally(() => {
+          if (dietRetries.get(jobId) === reopen) dietRetries.delete(jobId);
+        });
+        dietRetries.set(jobId, reopen);
+        return reopen;
       },
 
       resumeDietJob: async (job: DietJobStatus) => {
         if (job.status === 'pending' || job.status === 'running') {
           return get().runDietGeneration(job.jobId);
         }
-        // failed (backend devolve o último failed recuperável no /jobs/active):
-        // NÃO liga o polling — mostra a falha e o "Tentar novamente" reabre.
+        // failed (backend devolve o último failed recuperável no /jobs/active).
         if (job.status === 'failed' && !dietLoops.has(job.jobId)) {
+          // STALE = o app ficou parado (fechado/segundo plano >10 min), ninguém
+          // estava gerando → retoma sozinho, partindo do dia em que parou.
+          if (isStaleFailure(job)) {
+            if (!dietRetries.has(job.jobId)) {
+              set({
+                activeJobId: job.jobId,
+                dietJob: {
+                  status: 'running',
+                  daysCompleted: job.daysCompleted,
+                  totalDays: job.totalDays,
+                  slow: false,
+                  errorMessage: null,
+                },
+              });
+            }
+            return get().retryDietGeneration(job.jobId);
+          }
+          // Falha real (cota, timeout da IA…): NÃO liga o polling — mostra a
+          // falha e o "Tentar novamente" reabre.
           set({
             activeJobId: job.jobId,
             dietJob: {
@@ -313,12 +345,14 @@ export const useCoachStore = create<CoachState>()(
       resetDietGeneration: () => {
         dietSession++;
         dietLoops.clear();
+        dietRetries.clear();
         set({ dietJob: null, activeJobId: null });
       },
 
       clear: () => {
         dietSession++;
         dietLoops.clear();
+        dietRetries.clear();
         set({
           conversationId: null,
           messages: [],
@@ -387,6 +421,33 @@ async function driveDietJob(jobId: string): Promise<void> {
 
   let networkMisses = 0;
   let noProgressRounds = 0;
+  // STALE (app suspenso >10 min no meio da geração) é reaberto uma vez por
+  // execução do loop; um segundo STALE na mesma execução vira falha visível.
+  let staleReopened = false;
+  /** Reabre o job STALE; true = seguir dirigindo, false = loop acabou (estado aplicado). */
+  const reopenStale = async (): Promise<boolean> => {
+    staleReopened = true;
+    markDietJobSlow();
+    try {
+      const r = await dietService.retryJob(jobId);
+      if (stale()) return false;
+      if (r && r.status === 'completed') {
+        applyJobStatus(r);
+        await onDietJobCompleted();
+        return false;
+      }
+      if (r && r.status === 'failed') {
+        applyJobStatus(r);
+        return false;
+      }
+      return true;
+    } catch (e) {
+      if (stale()) return false;
+      failDietJob(retryErrorMessage(e));
+      return false;
+    }
+  };
+
   // 7 passos + folga pras janelas de recuperação.
   for (let i = 0; i < MAX_STEPS; i++) {
     if (stale()) return; // ex.: logout durante a espera de 5 s
@@ -395,6 +456,10 @@ async function driveDietJob(jobId: string): Promise<void> {
       const s = await dietService.stepJob(jobId);
       if (stale()) return;
       networkMisses = 0;
+      if (isStaleFailure(s) && !staleReopened) {
+        if (await reopenStale()) continue;
+        return;
+      }
       applyJobStatus(s);
       if (s.status === 'completed') return onDietJobCompleted();
       if (s.status === 'failed') return; // mensagem do servidor já aplicada
@@ -415,6 +480,7 @@ async function driveDietJob(jobId: string): Promise<void> {
     // status até o dia avançar ou ~160 s antes de um novo step.
     markDietJobSlow();
     let progressed = false;
+    let reopened = false;
     for (let poll = 0; poll < RECOVERY_POLLS; poll++) {
       await sleep(RECOVERY_POLL_MS);
       if (stale()) return;
@@ -425,6 +491,11 @@ async function driveDietJob(jobId: string): Promise<void> {
         if (g.status === 'completed') {
           applyJobStatus(g);
           return onDietJobCompleted();
+        }
+        if (isStaleFailure(g) && !staleReopened) {
+          if (!(await reopenStale())) return;
+          reopened = true;
+          break;
         }
         if (g.status === 'failed') return applyJobStatus(g);
         if (g.daysCompleted > before) {
@@ -439,6 +510,8 @@ async function driveDietJob(jobId: string): Promise<void> {
         if (networkMisses >= MAX_NETWORK_MISSES) return failDietJob(DIET_GENERIC_MESSAGE);
       }
     }
+    // Reaberto do STALE: volta ao step sem contar como rodada sem avanço.
+    if (reopened) continue;
     if (progressed) noProgressRounds = 0;
     else if (++noProgressRounds >= MAX_NO_PROGRESS_ROUNDS) {
       return failDietJob(DIET_GENERIC_MESSAGE);
