@@ -266,9 +266,15 @@ describe('(b) job sem progresso há mais de 10 min expira como STALE ao ser lido
   })
 })
 
+/** O UPDATE que reabre o job no retryJob (RETURNING id quando casou). */
+const REOPEN = "SET status = 'running', error = NULL"
+
 describe('(c) retryJob num job failed STALE', () => {
   it('volta para running mantendo days_completed e devolve a draft', async () => {
-    const { fastify, calls } = fakeFastify([['FROM diet_jobs WHERE id', [staleRow]]])
+    const { fastify, calls } = fakeFastify([
+      ['FROM diet_jobs WHERE id', [staleRow]],
+      [REOPEN, [{ id: JOB }]],
+    ])
 
     const r = await retryJob(fastify, USER, JOB)
 
@@ -292,12 +298,57 @@ describe('(c) retryJob num job failed STALE', () => {
     const { fastify, calls } = fakeFastify([
       ['WITH expired', [{ id: JOB, diet_id: DIET }]],
       ['FROM diet_jobs WHERE id', [staleRow]],
+      [REOPEN, [{ id: JOB }]],
     ])
 
     const r = await retryJob(fastify, USER, JOB)
 
     expect(calls.findIndex(isExpire)).toBe(0)
     expect(r.status).toBe('running')
+  })
+
+  it("o UPDATE de reabertura só casa job ainda failed (AND status = 'failed')", async () => {
+    const { fastify, calls } = fakeFastify([
+      ['FROM diet_jobs WHERE id', [staleRow]],
+      [REOPEN, [{ id: JOB }]],
+    ])
+
+    await retryJob(fastify, USER, JOB)
+
+    const reopen = calls.find((c) => c.sql.includes(REOPEN))
+    expect(reopen?.sql).toContain("AND status = 'failed'")
+    expect(reopen?.sql).toContain('RETURNING id')
+    expect(reopen?.params).toContain(JOB)
+  })
+
+  it('UPDATE casa 0 linhas (outro retry/step já reabriu) → devolve o status atual recarregado', async () => {
+    // 1ª leitura: failed; a reabertura perde a corrida; a releitura já vê o
+    // job running com 4 dias (o outro retry reabriu e um step avançou).
+    const reads = [staleRow, { ...jobRow, status: 'running', days_completed: 4 }]
+    const { fastify, calls } = fakeFastify([
+      ['FROM diet_jobs WHERE id', () => [reads.shift() ?? reads[0]]],
+      [REOPEN, []],
+    ])
+
+    const r = await retryJob(fastify, USER, JOB)
+
+    expect(r.status).toBe('running')
+    expect(r.daysCompleted).toBe(4)
+    expect(calls.filter((c) => c.sql.includes('FROM diet_jobs WHERE id'))).toHaveLength(2)
+    // Não mexe na draft quando não reabriu nada.
+    expect(calls.some((c) => c.sql.includes("UPDATE diets SET status = 'draft'"))).toBe(false)
+  })
+
+  it('UPDATE casa 0 linhas e o job segue failed → devolve failed, não "running"', async () => {
+    const { fastify } = fakeFastify([
+      ['FROM diet_jobs WHERE id', [staleRow]],
+      [REOPEN, []],
+    ])
+
+    const r = await retryJob(fastify, USER, JOB)
+
+    expect(r.status).toBe('failed')
+    expect(r.errorCode).toBe('STALE')
   })
 })
 

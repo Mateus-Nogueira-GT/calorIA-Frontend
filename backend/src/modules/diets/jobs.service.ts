@@ -411,17 +411,25 @@ export async function retryJob(
   const job = await loadJob(fastify, userId, jobId)
   if (job.status !== 'failed') return toStatus(job)
 
-  await fastify.db.begin(async (sql) => {
-    await sql`
+  // Guard `AND status = 'failed'`: dois retries simultâneos (boot + aba Dieta)
+  // ou um step entre a leitura e o UPDATE não podem reabrir de novo nem
+  // devolver "running" sem ter reaberto nada.
+  const reopened = await fastify.db.begin(async (sql) => {
+    const rows = await sql`
       UPDATE diet_jobs SET status = 'running', error = NULL, updated_at = NOW()
-      WHERE id = ${jobId}
+      WHERE id = ${jobId} AND status = 'failed'
+      RETURNING id
     `
+    if (rows.length === 0) return false
     await sql`
       UPDATE diets SET status = 'draft', updated_at = NOW()
       WHERE id = ${job.diet_id} AND status = 'failed'
     `
+    return true
   })
 
+  // Perdeu a corrida: devolve o estado real em vez de afirmar "running".
+  if (!reopened) return toStatus(await loadJob(fastify, userId, jobId))
   return toStatus({ ...job, status: 'running', error: null })
 }
 
