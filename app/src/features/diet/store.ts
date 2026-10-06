@@ -27,7 +27,26 @@ export const useDietStore = create<DietState>((set, get) => ({
     // ficava em esqueleto eterno: nada distinguia "carregando" de "falhou".
     set({ isLoading: true, error: false });
     try {
-      const plan = await dietService.getToday();
+      const fetched = await dietService.getToday();
+      // Um toggle em voo já aplicou o estado otimista; o GET pode ter sido
+      // servido antes do toggle e apagaria a marcação. Preserva a dessa refeição.
+      const { togglingMealId, plan: current } = get();
+      const inFlight = togglingMealId ? current?.meals.find((m) => m.id === togglingMealId) : null;
+      const plan =
+        fetched && inFlight
+          ? {
+              ...fetched,
+              meals: fetched.meals.map((m) =>
+                m.id === inFlight.id
+                  ? {
+                      ...m,
+                      completedAt: inFlight.completedAt,
+                      completedToday: inFlight.completedToday,
+                    }
+                  : m,
+              ),
+            }
+          : fetched;
       set({ plan, isLoading: false });
       // Só quando não há plano: distingue "sem dieta" de "dia não gerado", para
       // não mostrar o vazio de onboarding a quem tem plano ativo incompleto.
