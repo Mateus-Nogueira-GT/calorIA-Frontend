@@ -109,8 +109,12 @@ Envia uma mensagem para o assistente de dietas com IA.
           401: errorSchema,
           422: errorSchema.describe('EMPTY_TRANSCRIPTION — nada foi entendido no áudio'),
           429: errorSchema.describe('TOO_MANY_REQUESTS | AI_QUOTA_EXCEEDED'),
-          502: errorSchema.describe('TRANSCRIBE_FAILED — falha/timeout; pode tentar de novo'),
-          503: errorSchema.describe('TRANSCRIBE_UNAVAILABLE — provedor recusou; digitar'),
+          502: errorSchema.describe(
+            'TRANSCRIBE_FAILED — rede/timeout/5xx/408/429 do provedor; pode tentar de novo',
+          ),
+          503: errorSchema.describe(
+            'TRANSCRIBE_UNAVAILABLE — provedor recusou (demais 4xx); digitar',
+          ),
         },
       },
     },

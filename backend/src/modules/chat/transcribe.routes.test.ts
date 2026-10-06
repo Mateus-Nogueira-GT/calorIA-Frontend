@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AppError } from '../../shared/errors.js'
 import { fakeFastify } from '../../shared/testing/fake-fastify.js'
 import chatRoutes from './chat.routes.js'
+import { TRANSCRIBE_AUDIO_MAX_CHARS, TRANSCRIBE_BODY_LIMIT } from './chat.schemas.js'
 
 const USER = '11111111-1111-1111-1111-111111111111'
 
@@ -74,6 +75,19 @@ describe('POST /chat/transcribe', () => {
       payload: { audio: 'A'.repeat(1_500_000), mimeType: 'audio/m4a' },
     })
     expect(res.statusCode).toBe(200)
+  })
+
+  it('campo audio acima do teto (cabe no bodyLimit mas passa do .max) → 400', async () => {
+    const { app, auth } = await buildTestApp()
+    // Tamanho entre TRANSCRIBE_AUDIO_MAX_CHARS e o bodyLimit: prova a validação do campo.
+    const res = await app.inject({
+      method: 'POST',
+      url: '/chat/transcribe',
+      headers: auth,
+      payload: { audio: 'A'.repeat(TRANSCRIBE_AUDIO_MAX_CHARS + 4), mimeType: 'audio/m4a' },
+    })
+    expect(TRANSCRIBE_AUDIO_MAX_CHARS + 100).toBeLessThan(TRANSCRIBE_BODY_LIMIT)
+    expect(res.statusCode).toBe(400)
   })
 
   it('data URI (com prefixo data:) → 400', async () => {

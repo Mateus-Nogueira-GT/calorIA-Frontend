@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { env } from '../../shared/env.js'
 import { fakeFastify } from '../../shared/testing/fake-fastify.js'
-import { audioFormatFromMime, transcribeAudio } from './transcribe.service.js'
+import {
+  TRANSCRIBE_FALLBACK_TOKENS,
+  TRANSCRIBE_TOKENS_PER_SECOND,
+  audioFormatFromMime,
+  transcribeAudio,
+} from './transcribe.service.js'
 
 const USER = '11111111-1111-1111-1111-111111111111'
 const AUDIO = 'AAAAGGZ0eXBNNEEg'
@@ -127,14 +132,29 @@ describe('transcribeAudio', () => {
     })
   })
 
-  it.each([400, 402, 404])('HTTP %i do provedor → 503 TRANSCRIBE_UNAVAILABLE', async (status) => {
-    const { fastify } = fakeFastify()
-    const f = fakeFetch(() => json(status, { error: { message: 'model not available' } }))
-    await expect(transcribeAudio(fastify, USER, body, f.fn)).rejects.toMatchObject({
-      statusCode: 503,
-      code: 'TRANSCRIBE_UNAVAILABLE',
-    })
-  })
+  it.each([408, 429])(
+    'HTTP %i do provedor (transitório) → 502 TRANSCRIBE_FAILED',
+    async (status) => {
+      const { fastify } = fakeFastify()
+      const f = fakeFetch(() => json(status, { error: { message: 'slow down' } }))
+      await expect(transcribeAudio(fastify, USER, body, f.fn)).rejects.toMatchObject({
+        statusCode: 502,
+        code: 'TRANSCRIBE_FAILED',
+      })
+    },
+  )
+
+  it.each([400, 401, 402, 404])(
+    'HTTP %i do provedor → 503 TRANSCRIBE_UNAVAILABLE',
+    async (status) => {
+      const { fastify } = fakeFastify()
+      const f = fakeFetch(() => json(status, { error: { message: 'model not available' } }))
+      await expect(transcribeAudio(fastify, USER, body, f.fn)).rejects.toMatchObject({
+        statusCode: 503,
+        code: 'TRANSCRIBE_UNAVAILABLE',
+      })
+    },
+  )
 
   it('registra uso feature transcribe com os tokens do usage', async () => {
     const { fastify, calls } = fakeFastify()
@@ -150,12 +170,57 @@ describe('transcribeAudio', () => {
     expect(insert?.params.slice(0, 6)).toEqual([USER, 'transcribe', 'openai/whisper-1', 40, 2, 42])
   })
 
-  it('sem usage: registra com tokens 0', async () => {
+  it('usage só com seconds: estima tokens = ceil(seconds × TRANSCRIBE_TOKENS_PER_SECOND)', async () => {
+    const { fastify, calls } = fakeFastify()
+    const f = fakeFetch(() => json(200, { text: 'oi', usage: { seconds: 10.2, cost: 0.001 } }))
+    await transcribeAudio(fastify, USER, body, f.fn)
+    const insert = calls.find((c) => c.sql.includes('INSERT INTO ai_usage'))
+    const est = Math.ceil(10.2 * TRANSCRIBE_TOKENS_PER_SECOND)
+    expect(insert?.params.slice(0, 6)).toEqual([
+      USER,
+      'transcribe',
+      'openai/whisper-1',
+      est,
+      0,
+      est,
+    ])
+  })
+
+  it('usage com total_tokens 0 e seconds: também estima pelos segundos', async () => {
+    const { fastify, calls } = fakeFastify()
+    const f = fakeFetch(() =>
+      json(200, {
+        text: 'oi',
+        usage: { seconds: 4, total_tokens: 0, input_tokens: 0, output_tokens: 0 },
+      }),
+    )
+    await transcribeAudio(fastify, USER, body, f.fn)
+    const insert = calls.find((c) => c.sql.includes('INSERT INTO ai_usage'))
+    const est = 4 * TRANSCRIBE_TOKENS_PER_SECOND
+    expect(insert?.params.slice(0, 6)).toEqual([
+      USER,
+      'transcribe',
+      'openai/whisper-1',
+      est,
+      0,
+      est,
+    ])
+  })
+
+  it('sem usage (nem tokens nem seconds): registra a estimativa fixa de 60 s', async () => {
     const { fastify, calls } = fakeFastify()
     const f = fakeFetch(() => json(200, { text: 'oi' }))
     await transcribeAudio(fastify, USER, body, f.fn)
     const insert = calls.find((c) => c.sql.includes('INSERT INTO ai_usage'))
-    expect(insert?.params.slice(0, 6)).toEqual([USER, 'transcribe', 'openai/whisper-1', 0, 0, 0])
+    expect(TRANSCRIBE_FALLBACK_TOKENS).toBe(60 * TRANSCRIBE_TOKENS_PER_SECOND)
+    expect(insert?.params.slice(0, 6)).toEqual([
+      USER,
+      'transcribe',
+      'openai/whisper-1',
+      TRANSCRIBE_FALLBACK_TOKENS,
+      0,
+      TRANSCRIBE_FALLBACK_TOKENS,
+    ])
   })
 
   it('falha ao gravar ai_usage (migration 021 ausente) não derruba a transcrição', async () => {

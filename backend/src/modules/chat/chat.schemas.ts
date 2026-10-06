@@ -18,6 +18,9 @@ export const chatMessageBodySchema = z.object({
 /** Teto do corpo de POST /chat/transcribe (abaixo dos 4,5 MB da Vercel). */
 export const TRANSCRIBE_BODY_LIMIT = Math.floor(3.5 * 1024 * 1024)
 
+/** Teto do campo audio: o bodyLimit menos uma folga para o resto do JSON. */
+export const TRANSCRIBE_AUDIO_MAX_CHARS = TRANSCRIBE_BODY_LIMIT - 1024
+
 export const transcribeMimeTypes = ['audio/m4a', 'audio/mp4', 'audio/aac', 'audio/webm'] as const
 
 export const transcribeBodySchema = z.object({
@@ -25,6 +28,7 @@ export const transcribeBodySchema = z.object({
   audio: z
     .string({ required_error: 'Áudio é obrigatório' })
     .min(1, 'Áudio vazio')
+    .max(TRANSCRIBE_AUDIO_MAX_CHARS, 'Áudio muito longo (máx. 60 s)')
     .regex(/^[A-Za-z0-9+/]+={0,2}$/, 'Áudio deve ser base64 puro, sem prefixo data:'),
   mimeType: z.enum(transcribeMimeTypes),
 })
