@@ -48,6 +48,8 @@
 	</dict>
 	<key>NSCameraUsageDescription</key>
 	<string>Precisamos da câmera para você fotografar seus pratos.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>O CalorIA usa o microfone para você falar com seu mentor.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Precisamos da galeria para você escolher fotos dos seus pratos.</string>
 	<!-- O app tem paleta fixa clara (src/theme/colors.ts) e nenhum suporte a dark

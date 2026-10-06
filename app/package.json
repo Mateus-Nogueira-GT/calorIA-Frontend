@@ -23,6 +23,8 @@
     "@react-navigation/native-stack": "^6.11.0",
     "axios": "^1.7.9",
     "expo": "~56.0.0",
+    "expo-audio": "~56.0.13",
+    "expo-file-system": "~56.0.11",
     "expo-updates": "~56.0.28",
     "react": "19.2.3",
     "react-native": "0.85.3",
@@ -114,7 +116,9 @@
       "^@invertase/react-native-apple-authentication$": "<rootDir>/__mocks__/@invertase/react-native-apple-authentication.js",
       "AndroidHorizontalScrollContentViewNativeComponent": "<rootDir>/__mocks__/nativeComponentMock.js",
       "^@env$": "<rootDir>/__mocks__/@env.js",
-      "^@react-native-async-storage/async-storage$": "<rootDir>/__mocks__/@react-native-async-storage/async-storage.js"
+      "^@react-native-async-storage/async-storage$": "<rootDir>/__mocks__/@react-native-async-storage/async-storage.js",
+      "^expo-audio$": "<rootDir>/__mocks__/expo-audio.js",
+      "^expo-file-system$": "<rootDir>/__mocks__/expo-file-system.js"
     }
   },
   "engines": {
