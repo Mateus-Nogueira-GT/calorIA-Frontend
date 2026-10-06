@@ -234,8 +234,8 @@ describe('useVoiceMessage', () => {
     expect(mockTranscribe).not.toHaveBeenCalled();
     expect(onSend).not.toHaveBeenCalled();
     expect(result.current.status).toBe('idle');
-    const [title, message] = alertSpy.mock.calls[0];
-    expect(`${title} ${message ?? ''}`).toMatch(/um pouco mais/i);
+    const [, message] = alertSpy.mock.calls[0];
+    expect(message).toBe('Fale um pouco mais antes de parar a gravação.');
   });
 
   it('falha local ao parar/ler a gravação → "Não foi possível gravar o áudio", sem rede', async () => {

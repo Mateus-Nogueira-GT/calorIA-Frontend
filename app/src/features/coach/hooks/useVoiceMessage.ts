@@ -56,7 +56,7 @@ function showTranscribeError(e: unknown): void {
 }
 
 function showTooShort(): void {
-  Alert.alert('Áudio muito curto', 'Segure um pouco mais para gravar sua mensagem.');
+  Alert.alert('Áudio muito curto', 'Fale um pouco mais antes de parar a gravação.');
 }
 
 /** Falha do aparelho (parar/ler a gravação), não da rede. */
