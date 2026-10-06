@@ -86,6 +86,9 @@ const jobRow = {
 const staleRow = { ...jobRow, status: 'failed', error: 'STALE' }
 
 type Call = { sql: string; params: unknown[] }
+/** Substring da query de getActiveJob que busca o último job failed recuperável. */
+const RECOVERABLE = "j.status = 'failed'"
+
 const isExpire = (c: Call) => c.sql.includes('WITH expired')
 /** O UPDATE do failJob: o único que marca failed fenceado pelo token do lock. */
 const failJobCall = (calls: Call[]) =>
@@ -179,7 +182,7 @@ describe('(b) job sem progresso há mais de 10 min expira como STALE ao ser lido
     const { fastify, calls } = fakeFastify([
       ['WITH expired', [{ id: JOB, diet_id: DIET, created_at: new Date() }]],
       ['ORDER BY created_at DESC', []],
-      ['FROM diet_jobs WHERE id', [staleRow]],
+      [RECOVERABLE, [staleRow]],
     ])
 
     const r = await getActiveJob(fastify, USER)
@@ -389,5 +392,118 @@ describe('contrato da resposta (jobStatusSchema)', () => {
     const status = await getJob(fastify, USER, JOB)
     expect(jobStatusSchema.parse(status)).toEqual(status)
     expect(jobStatusSchema.parse(status).errorCode).toBe('STALE')
+  })
+})
+
+describe('fix 1 — getActiveJob devolve o último job failed ainda recuperável', () => {
+  it('expirado por getPendingJob (chat), o boot seguinte ainda vê failed STALE', async () => {
+    // 1) o chat lê primeiro e expira o job — o app nunca vê essa leitura
+    const chat = fakeFastify([
+      ['WITH expired', [{ id: JOB, diet_id: DIET, created_at: new Date() }]],
+      ['ORDER BY created_at DESC', []],
+    ])
+    expect(await getPendingJob(chat.fastify, USER)).toBeNull()
+
+    // 2) boot do app: nada mais expira, nada em voo — o failed recuperável volta
+    const { fastify } = fakeFastify([
+      ['WITH expired', []],
+      ['ORDER BY created_at DESC', []],
+      [RECOVERABLE, [staleRow]],
+    ])
+    const r = await getActiveJob(fastify, USER)
+
+    expect(r).toMatchObject({
+      jobId: JOB,
+      status: 'failed',
+      daysCompleted: 3,
+      errorCode: 'STALE',
+      errorMessage: expect.stringMatching(/parou de responder/i),
+    })
+  })
+
+  it('pending/running tem precedência: nem consulta os failed', async () => {
+    const { fastify, calls } = fakeFastify([
+      ['WITH expired', []],
+      ['ORDER BY created_at DESC', [jobRow]],
+      [RECOVERABLE, [staleRow]],
+    ])
+    const r = await getActiveJob(fastify, USER)
+    expect(r.status).toBe('running')
+    expect(calls.some((c) => c.sql.includes(RECOVERABLE))).toBe(false)
+  })
+
+  it('a query só aceita failed das últimas 24 h, draft ainda draft/failed e sem job mais novo', async () => {
+    const { fastify, calls } = fakeFastify([
+      ['WITH expired', []],
+      ['ORDER BY created_at DESC', []],
+      [RECOVERABLE, [staleRow]],
+    ])
+    await getActiveJob(fastify, USER)
+    const q = calls.find((c) => c.sql.includes(RECOVERABLE))
+    const sql = q?.sql ?? ''
+    expect(q?.params).toContain(USER)
+    expect(sql).toContain('JOIN diets d ON d.id = j.diet_id')
+    expect(sql).toContain("d.status IN ('draft', 'failed')")
+    expect(sql).toContain('j.updated_at > NOW() - make_interval(hours => 24)')
+    expect(sql).toMatch(
+      /NOT EXISTS \(\s*SELECT 1 FROM diet_jobs n\s+WHERE n.user_id = j.user_id AND n.created_at > j.created_at/,
+    )
+  })
+
+  it('failed há mais de 24 h (query não devolve) → 404 NO_ACTIVE_JOB', async () => {
+    const { fastify } = fakeFastify([
+      ['WITH expired', []],
+      ['ORDER BY created_at DESC', []],
+      [RECOVERABLE, []],
+    ])
+    await expect(getActiveJob(fastify, USER)).rejects.toMatchObject({ code: 'NO_ACTIVE_JOB' })
+  })
+
+  it('failed cuja draft foi substituída por uma geração mais nova concluída → 404', async () => {
+    // A geração nova é um job mais novo (NOT EXISTS) e a draft antiga não está
+    // mais draft/failed — a query não devolve nada.
+    const { fastify } = fakeFastify([
+      ['WITH expired', []],
+      ['ORDER BY created_at DESC', []],
+      [RECOVERABLE, []],
+    ])
+    await expect(getActiveJob(fastify, USER)).rejects.toMatchObject({ code: 'NO_ACTIVE_JOB' })
+  })
+})
+
+describe('fix 2 — persistir o dia é fenceado pelo lock e pelo status', () => {
+  const dayFake = (persistRows: unknown[], reloadRow: unknown) =>
+    fakeFastify(
+      [
+        ['FROM diet_jobs WHERE id', [reloadRow]],
+        ['SET step_started_at = NOW()', [{ step_token: LOCK_TOKEN }]],
+        ['SET days_completed', persistRows],
+      ],
+      {
+        parse: async () => ({ choices: [{ message: { parsed: cleanDay() } }], usage: null }),
+      },
+    )
+
+  it('o UPDATE do dia exige o token desta chamada e job ainda em voo', async () => {
+    const { fastify, calls } = dayFake([{ id: JOB }], jobRow)
+    await processJobStep(fastify, USER, JOB)
+    const persist = calls.find((c) => c.sql.includes('SET days_completed'))
+    expect(persist?.sql).toContain('AND step_token =')
+    expect(persist?.sql).toContain("AND status IN ('pending', 'running')")
+    expect(persist?.params).toContain(LOCK_TOKEN)
+  })
+
+  it('step que sobreviveu ao lock (job já failed STALE): 0 linhas, não ressuscita nem marca failed', async () => {
+    const { fastify, calls } = dayFake([], jobRow)
+    const r = await processJobStep(fastify, USER, JOB)
+    expect(failJobCall(calls)).toBeUndefined()
+    // caminho CONCURRENT_STEP: libera o lock fenceado e devolve o estado atual
+    const release = calls.find(
+      (c) =>
+        c.sql.includes('SET step_started_at = NULL, step_token = NULL') &&
+        c.params.includes(LOCK_TOKEN),
+    )
+    expect(release).toBeDefined()
+    expect(r.jobId).toBe(JOB)
   })
 })

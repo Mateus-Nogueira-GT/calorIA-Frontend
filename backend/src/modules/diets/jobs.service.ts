@@ -431,7 +431,7 @@ export async function retryJob(
  * (app fechado no meio) — sem isso a dieta ficava parcial para sempre.
  */
 export async function getActiveJob(fastify: FastifyInstance, userId: string): Promise<JobStatus> {
-  const expired = await expireStaleJobs(fastify, userId)
+  await expireStaleJobs(fastify, userId)
   const [job] = await fastify.db<JobRow[]>`
     SELECT id, conversation_id, diet_id, status, input, total_days, days_completed, error
     FROM diet_jobs
@@ -440,15 +440,28 @@ export async function getActiveJob(fastify: FastifyInstance, userId: string): Pr
     LIMIT 1
   `
   if (job) return toStatus(job)
-  // O job que o boot do app vinha retomar acabou de expirar: devolve-o como
-  // failed STALE (uma vez) para o app mostrar a falha com "Tentar novamente",
-  // em vez de sumir calado. Nas leituras seguintes já não está em voo → 404.
-  if (expired.length > 0) {
-    const latest = expired.reduce((a, b) =>
-      new Date(b.created_at ?? 0).getTime() > new Date(a.created_at ?? 0).getTime() ? b : a,
-    )
-    return toStatus(await loadJob(fastify, userId, latest.id))
-  }
+
+  // Sem geração em voo: devolve o último job failed AINDA RECUPERÁVEL, para o
+  // boot do app mostrar a falha com "Tentar novamente". A expiração STALE pode
+  // ter acontecido numa leitura que o app nunca viu (getPendingJob no chat);
+  // sem isto o boot recebia 404 e a draft ficava failed para sempre.
+  // Recuperável = falhou nas últimas 24 h, a draft ainda é draft/failed (não
+  // virou active/replaced) e nenhum job mais novo do usuário a substituiu.
+  const [failed] = await fastify.db<JobRow[]>`
+    SELECT j.id, j.conversation_id, j.diet_id, j.status, j.input, j.total_days, j.days_completed, j.error
+    FROM diet_jobs j
+    JOIN diets d ON d.id = j.diet_id
+    WHERE j.user_id = ${userId} AND j.status = 'failed'
+      AND j.updated_at > NOW() - make_interval(hours => 24)
+      AND d.status IN ('draft', 'failed')
+      AND NOT EXISTS (
+        SELECT 1 FROM diet_jobs n
+        WHERE n.user_id = j.user_id AND n.created_at > j.created_at
+      )
+    ORDER BY j.created_at DESC
+    LIMIT 1
+  `
+  if (failed) return toStatus(failed)
   throw new AppError(404, 'NO_ACTIVE_JOB', 'Nenhuma geração de dieta em andamento')
 }
 
@@ -758,7 +771,11 @@ export async function processJobStep(
         UPDATE diet_jobs
         SET days_completed = ${dayNumber}, status = 'running', step_started_at = NULL, step_token = NULL, updated_at = NOW()
         WHERE id = ${jobId} AND days_completed = ${dayNumber - 1}
+          AND step_token = ${lockToken} AND status IN ('pending', 'running')
       `
+      // 0 linhas: outra chamada avançou o dia, OU este step sobreviveu ao
+      // próprio lock (expirado/reassumido, ou job já failed STALE) — nos dois
+      // casos não persiste nem ressuscita o job (rollback da tx).
       if (res.count === 0) throw new Error('CONCURRENT_STEP')
     })
   } catch (err) {
