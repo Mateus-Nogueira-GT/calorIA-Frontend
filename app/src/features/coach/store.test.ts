@@ -348,3 +348,220 @@ describe('runDietGeneration — falhas', () => {
     });
   });
 });
+
+// Fix round 1 da Task 3.
+describe('geração da dieta — boot, retry, sessão e 401', () => {
+  const GENERIC = 'Não foi possível gerar sua dieta agora. Tente novamente.';
+  const ds = () =>
+    jest.requireMock('@shared/services/diet.service').dietService as {
+      stepJob: jest.Mock;
+      getJob: jest.Mock;
+      retryJob: jest.Mock;
+    };
+  const job = (o: Record<string, unknown> = {}) => ({
+    jobId: 'j1',
+    status: 'running',
+    daysCompleted: 0,
+    totalDays: 7,
+    dietId: null,
+    error: null,
+    errorCode: null,
+    errorMessage: null,
+    ...o,
+  });
+  const httpErr = (status: number, data?: unknown) =>
+    Object.assign(new Error(String(status)), { isAxiosError: true, response: { status, data } });
+  const netErr = () => Object.assign(new Error('Network Error'), { isAxiosError: true });
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    ds().stepJob.mockReset();
+    ds().getJob.mockReset();
+    ds().retryJob.mockReset();
+    useCoachStore.getState().resetDietGeneration();
+  });
+  afterEach(() => {
+    useCoachStore.getState().resetDietGeneration();
+    jest.useRealTimers();
+  });
+
+  describe('resumeDietJob (boot)', () => {
+    it('job failed mostra o banner de falha com a mensagem e NÃO liga o polling', async () => {
+      await useCoachStore
+        .getState()
+        .resumeDietJob(
+          job({
+            status: 'failed',
+            daysCompleted: 4,
+            errorCode: 'STALE',
+            errorMessage: 'A geração parou de responder.',
+          }) as never,
+        );
+      expect(useCoachStore.getState().activeJobId).toBe('j1');
+      expect(useCoachStore.getState().dietJob).toEqual({
+        status: 'failed',
+        daysCompleted: 4,
+        totalDays: 7,
+        slow: false,
+        errorMessage: 'A geração parou de responder.',
+      });
+      await jest.advanceTimersByTimeAsync(60000);
+      expect(ds().stepJob).not.toHaveBeenCalled();
+      expect(ds().getJob).not.toHaveBeenCalled();
+    });
+
+    it('job failed sem errorMessage usa a mensagem genérica', async () => {
+      await useCoachStore
+        .getState()
+        .resumeDietJob(job({ status: 'failed', daysCompleted: 2 }) as never);
+      expect(useCoachStore.getState().dietJob?.errorMessage).toBe(GENERIC);
+    });
+
+    it('job running/pending retoma o polling como antes', async () => {
+      ds().stepJob.mockResolvedValue(job({ status: 'completed', daysCompleted: 7 }));
+      await useCoachStore.getState().resumeDietJob(job({ status: 'pending' }) as never);
+      expect(ds().stepJob).toHaveBeenCalledWith('j1');
+      expect(useCoachStore.getState().dietJob?.status).toBe('completed');
+    });
+
+    it('job failed não sobrescreve o loop vivo do mesmo job', async () => {
+      let release: (v: unknown) => void = () => {};
+      ds().stepJob.mockImplementationOnce(() => new Promise((r) => (release = r)));
+      const loop = useCoachStore.getState().runDietGeneration('j1');
+      await useCoachStore
+        .getState()
+        .resumeDietJob(job({ status: 'failed', errorMessage: 'x' }) as never);
+      expect(useCoachStore.getState().dietJob?.status).toBe('running');
+      release(job({ status: 'completed', daysCompleted: 7 }));
+      await loop;
+    });
+  });
+
+  describe('retryDietGeneration com POST retry falhando', () => {
+    it('4xx mantém o banner failed com a mensagem do servidor', async () => {
+      useCoachStore.setState({
+        activeJobId: 'j1',
+        dietJob: {
+          status: 'failed',
+          daysCompleted: 3,
+          totalDays: 7,
+          slow: false,
+          errorMessage: 'antes',
+        },
+      });
+      ds().retryJob.mockRejectedValue(
+        httpErr(404, { error: 'JOB_NOT_FOUND', message: 'Job de geração não encontrado' }),
+      );
+      await useCoachStore.getState().retryDietGeneration();
+      expect(useCoachStore.getState().dietJob).toEqual({
+        status: 'failed',
+        daysCompleted: 3,
+        totalDays: 7,
+        slow: false,
+        errorMessage: 'Job de geração não encontrado',
+      });
+      expect(ds().stepJob).not.toHaveBeenCalled();
+    });
+
+    it('rede/5xx mostra a mensagem genérica (inclusive vindo da aba Dieta, sem banner antes)', async () => {
+      ds().retryJob.mockRejectedValue(netErr());
+      await useCoachStore.getState().retryDietGeneration('j9');
+      expect(useCoachStore.getState().activeJobId).toBe('j9');
+      expect(useCoachStore.getState().dietJob).toMatchObject({
+        status: 'failed',
+        errorMessage: GENERIC,
+      });
+
+      ds().retryJob.mockRejectedValue(
+        httpErr(500, { error: 'INTERNAL_SERVER_ERROR', message: 'boom' }),
+      );
+      await useCoachStore.getState().retryDietGeneration();
+      expect(useCoachStore.getState().dietJob?.errorMessage).toBe(GENERIC);
+    });
+  });
+
+  describe('sessão (logout) encerra o loop', () => {
+    it('reset durante um step em voo: nenhum /step a mais e nenhum banner do usuário anterior', async () => {
+      let release: (v: unknown) => void = () => {};
+      ds().stepJob.mockImplementationOnce(() => new Promise((r) => (release = r)));
+      ds().stepJob.mockResolvedValue(job({ daysCompleted: 2 }));
+      const loop = useCoachStore.getState().runDietGeneration('j1');
+      await jest.advanceTimersByTimeAsync(0);
+      useCoachStore.getState().resetDietGeneration();
+      release(job({ daysCompleted: 1 }));
+      await jest.advanceTimersByTimeAsync(600000);
+      await loop;
+      expect(ds().stepJob).toHaveBeenCalledTimes(1);
+      expect(useCoachStore.getState().dietJob).toBeNull();
+      expect(useCoachStore.getState().activeJobId).toBeNull();
+    });
+
+    it('reset durante a janela de recuperação: não consulta getJob nem falha depois', async () => {
+      ds().stepJob.mockRejectedValue(netErr());
+      ds().getJob.mockResolvedValue(job());
+      const loop = useCoachStore.getState().runDietGeneration('j1');
+      await jest.advanceTimersByTimeAsync(0);
+      useCoachStore.getState().resetDietGeneration();
+      await jest.advanceTimersByTimeAsync(3 * 160000 + 1000);
+      await loop;
+      expect(ds().getJob).not.toHaveBeenCalled();
+      expect(ds().stepJob).toHaveBeenCalledTimes(1);
+      expect(useCoachStore.getState().dietJob).toBeNull();
+    });
+
+    it('depois do reset, um novo login pode gerar o mesmo job de novo (single-flight não fica preso)', async () => {
+      ds().stepJob.mockImplementationOnce(() => new Promise(() => {}));
+      void useCoachStore.getState().runDietGeneration('j1');
+      await jest.advanceTimersByTimeAsync(0);
+      useCoachStore.getState().resetDietGeneration();
+      ds().stepJob.mockResolvedValue(job({ status: 'completed', daysCompleted: 7 }));
+      await useCoachStore.getState().runDietGeneration('j1');
+      expect(ds().stepJob).toHaveBeenCalledTimes(2);
+      expect(useCoachStore.getState().dietJob?.status).toBe('completed');
+    });
+
+    it('clear() também encerra o loop', async () => {
+      ds().stepJob.mockRejectedValue(netErr());
+      ds().getJob.mockResolvedValue(job());
+      const loop = useCoachStore.getState().runDietGeneration('j1');
+      await jest.advanceTimersByTimeAsync(0);
+      useCoachStore.getState().clear();
+      await jest.advanceTimersByTimeAsync(3 * 160000 + 1000);
+      await loop;
+      expect(ds().getJob).not.toHaveBeenCalled();
+      expect(useCoachStore.getState().dietJob).toBeNull();
+    });
+  });
+
+  describe('401 no loop', () => {
+    it('401 no step não vira falha "Não autorizado": segue como transitório', async () => {
+      ds()
+        .stepJob.mockRejectedValueOnce(
+          httpErr(401, { error: 'UNAUTHORIZED', message: 'Não autorizado' }),
+        )
+        .mockResolvedValue(job({ status: 'completed', daysCompleted: 7 }));
+      ds().getJob.mockResolvedValue(job({ daysCompleted: 1 }));
+      const loop = useCoachStore.getState().runDietGeneration('j1');
+      await jest.advanceTimersByTimeAsync(0);
+      expect(useCoachStore.getState().dietJob).toMatchObject({ status: 'running', slow: true });
+      await jest.advanceTimersByTimeAsync(20000);
+      await loop;
+      expect(useCoachStore.getState().dietJob?.status).toBe('completed');
+    });
+
+    it('401 com a sessão derrubada (clearToken) para em silêncio', async () => {
+      ds().stepJob.mockImplementationOnce(async () => {
+        // o interceptor do api chama clearToken antes de rejeitar
+        useCoachStore.getState().resetDietGeneration();
+        throw httpErr(401, { error: 'UNAUTHORIZED', message: 'Não autorizado' });
+      });
+      ds().getJob.mockResolvedValue(job());
+      const loop = useCoachStore.getState().runDietGeneration('j1');
+      await jest.advanceTimersByTimeAsync(3 * 160000 + 1000);
+      await loop;
+      expect(ds().stepJob).toHaveBeenCalledTimes(1);
+      expect(ds().getJob).not.toHaveBeenCalled();
+      expect(useCoachStore.getState().dietJob).toBeNull();
+    });
+  });
+});

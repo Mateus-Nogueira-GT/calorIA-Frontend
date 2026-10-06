@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import { kvStorage } from '@shared/services/storage';
 import { useDietStore } from '@features/diet/store';
+import { useCoachStore } from '@features/coach/store';
 import { useFoodLogStore } from '@features/food-log/store';
 import { useScannerStore } from '@features/scanner/store';
 import { useWeightStore } from '@features/evolution/store';
@@ -212,6 +213,9 @@ export const useAuthStore = create<AuthState>()(
           return { user: { ...state.user, ...clean } };
         }),
       clearToken: () => {
+        // Encerra o loop da geração da dieta e apaga o banner (job/sessão do
+        // usuário anterior) — sem isso seguiam /step e o banner sobrevivia.
+        useCoachStore.getState().resetDietGeneration();
         useDietStore.getState().clear();
         useFoodLogStore.getState().clear();
         useScannerStore.getState().clear();

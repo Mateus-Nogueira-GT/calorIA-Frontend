@@ -45,12 +45,33 @@ function fatalStepError(e: unknown): string | null {
   if (!axios.isAxiosError(e) || !e.response) return null;
   const { status, data } = e.response;
   const body = data as { error?: string; message?: string } | undefined;
+  // 401: o interceptor do api já tentou o refresh. Se a sessão caiu de vez,
+  // o clearToken encerra o loop (resetDietGeneration); senão é transitório —
+  // nunca um "Não autorizado" no banner.
+  if (status === 401) return null;
   if (status === 429) return body?.error === 'TOO_MANY_REQUESTS' ? null : DIET_QUOTA_MESSAGE;
   if (status >= 400 && status < 500 && status !== 408) {
     return body?.message || DIET_GENERIC_MESSAGE;
   }
   return null;
 }
+
+/** Mensagem quando o POST /retry falha: a do servidor em 4xx, genérica no resto. */
+function retryErrorMessage(e: unknown): string {
+  if (!axios.isAxiosError(e) || !e.response) return DIET_GENERIC_MESSAGE;
+  const { status, data } = e.response;
+  const body = data as { error?: string; message?: string } | undefined;
+  if (status === 429 && body?.error !== 'TOO_MANY_REQUESTS') return DIET_QUOTA_MESSAGE;
+  if (status >= 400 && status < 500 && status !== 401 && status !== 408) {
+    return body?.message || DIET_GENERIC_MESSAGE;
+  }
+  return DIET_GENERIC_MESSAGE;
+}
+
+// Sessão da geração: logout/clear incrementa. Cada loop guarda a sessão em que
+// nasceu e sai em silêncio depois de qualquer await se ela mudou — nenhum
+// /step a mais e nenhum banner do usuário anterior.
+let dietSession = 0;
 
 // Single-flight por jobId: retry/retomada com o loop do mesmo job ainda vivo
 // reaproveitam a promise em vez de abrir um segundo loop (2 /step em voo =
@@ -92,6 +113,10 @@ interface CoachState {
   retryLastAction: () => Promise<void>;
   runDietGeneration: (jobId: string) => Promise<void>;
   retryDietGeneration: (explicitJobId?: string) => Promise<void>;
+  /** Boot: pending/running → retoma o polling; failed → só mostra a falha (com retry). */
+  resumeDietJob: (job: DietJobStatus) => Promise<void>;
+  /** Logout: encerra os loops e apaga o estado da geração. */
+  resetDietGeneration: () => void;
   clear: () => void;
 }
 
@@ -223,7 +248,10 @@ export const useCoachStore = create<CoachState>()(
       runDietGeneration: (jobId: string) => {
         const inFlight = dietLoops.get(jobId);
         if (inFlight) return inFlight;
-        const loop = driveDietJob(jobId).finally(() => dietLoops.delete(jobId));
+        const loop = driveDietJob(jobId).finally(() => {
+          // Após um reset, outro loop do mesmo job pode já ocupar a vaga.
+          if (dietLoops.get(jobId) === loop) dietLoops.delete(jobId);
+        });
         dietLoops.set(jobId, loop);
         return loop;
       },
@@ -239,15 +267,58 @@ export const useCoachStore = create<CoachState>()(
         const inFlight = dietLoops.get(jobId);
         if (inFlight) return inFlight;
         if (explicitJobId) set({ activeJobId: explicitJobId });
+        const session = dietSession;
         try {
           await dietService.retryJob(jobId);
-        } catch {
-          return; // segue como failed; o botão permite tentar de novo
+        } catch (e) {
+          if (session !== dietSession) return;
+          // Segue failed, agora com o motivo (antes falhava calado); o botão
+          // permite tentar de novo.
+          set((st) => ({
+            activeJobId: jobId,
+            dietJob: {
+              status: 'failed',
+              daysCompleted: st.dietJob?.daysCompleted ?? 0,
+              totalDays: st.dietJob?.totalDays ?? 7,
+              slow: false,
+              errorMessage: retryErrorMessage(e),
+            },
+          }));
+          return;
         }
+        if (session !== dietSession) return;
         await get().runDietGeneration(jobId);
       },
 
-      clear: () =>
+      resumeDietJob: async (job: DietJobStatus) => {
+        if (job.status === 'pending' || job.status === 'running') {
+          return get().runDietGeneration(job.jobId);
+        }
+        // failed (backend devolve o último failed recuperável no /jobs/active):
+        // NÃO liga o polling — mostra a falha e o "Tentar novamente" reabre.
+        if (job.status === 'failed' && !dietLoops.has(job.jobId)) {
+          set({
+            activeJobId: job.jobId,
+            dietJob: {
+              status: 'failed',
+              daysCompleted: job.daysCompleted,
+              totalDays: job.totalDays,
+              slow: false,
+              errorMessage: job.errorMessage || DIET_GENERIC_MESSAGE,
+            },
+          });
+        }
+      },
+
+      resetDietGeneration: () => {
+        dietSession++;
+        dietLoops.clear();
+        set({ dietJob: null, activeJobId: null });
+      },
+
+      clear: () => {
+        dietSession++;
+        dietLoops.clear();
         set({
           conversationId: null,
           messages: [],
@@ -257,7 +328,8 @@ export const useCoachStore = create<CoachState>()(
           lastFailedAction: null,
           dietJob: null,
           activeJobId: null,
-        }),
+        });
+      },
     }),
     {
       name: 'caloria:coach',
@@ -297,6 +369,8 @@ const markDietJobSlow = () =>
 const onDietJobCompleted = () => useDietStore.getState().loadCurrent();
 
 async function driveDietJob(jobId: string): Promise<void> {
+  const session = dietSession;
+  const stale = () => session !== dietSession;
   const prev =
     useCoachStore.getState().activeJobId === jobId ? useCoachStore.getState().dietJob : null;
   useCoachStore.setState({
@@ -315,9 +389,11 @@ async function driveDietJob(jobId: string): Promise<void> {
   let noProgressRounds = 0;
   // 7 passos + folga pras janelas de recuperação.
   for (let i = 0; i < MAX_STEPS; i++) {
+    if (stale()) return; // ex.: logout durante a espera de 5 s
     const before = useCoachStore.getState().dietJob?.daysCompleted ?? 0;
     try {
       const s = await dietService.stepJob(jobId);
+      if (stale()) return;
       networkMisses = 0;
       applyJobStatus(s);
       if (s.status === 'completed') return onDietJobCompleted();
@@ -328,6 +404,7 @@ async function driveDietJob(jobId: string): Promise<void> {
       else await sleep(BUSY_WAIT_MS);
       continue;
     } catch (e) {
+      if (stale()) return;
       // 4xx (cota, job inexistente, dados inválidos): repetir não resolve.
       const fatal = fatalStepError(e);
       if (fatal) return failDietJob(fatal);
@@ -340,8 +417,10 @@ async function driveDietJob(jobId: string): Promise<void> {
     let progressed = false;
     for (let poll = 0; poll < RECOVERY_POLLS; poll++) {
       await sleep(RECOVERY_POLL_MS);
+      if (stale()) return;
       try {
         const g = await dietService.getJob(jobId);
+        if (stale()) return;
         networkMisses = 0;
         if (g.status === 'completed') {
           applyJobStatus(g);
@@ -355,6 +434,7 @@ async function driveDietJob(jobId: string): Promise<void> {
         }
         applyJobStatus(g, true);
       } catch {
+        if (stale()) return;
         networkMisses++;
         if (networkMisses >= MAX_NETWORK_MISSES) return failDietJob(DIET_GENERIC_MESSAGE);
       }
@@ -368,5 +448,6 @@ async function driveDietJob(jobId: string): Promise<void> {
   // L4: o for pode esgotar as iterações sem completed nem failed
   // (servidor lento). Sem isto o banner ficava "Gerando sua dieta" para
   // sempre, com a barra congelada e sem botão de tentar de novo.
+  if (stale()) return;
   if (useCoachStore.getState().dietJob?.status !== 'completed') failDietJob(DIET_GENERIC_MESSAGE);
 }

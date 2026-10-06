@@ -21,6 +21,8 @@ export function DietPlanSection(): React.JSX.Element {
   const loadCurrent = useDietStore((s) => s.loadCurrent);
   const todayStatus = useDietStore((s) => s.todayStatus);
   const retryDietGeneration = useCoachStore((s) => s.retryDietGeneration);
+  const dietJob = useCoachStore((s) => s.dietJob);
+  const activeJobId = useCoachStore((s) => s.activeJobId);
 
   if (isLoading) {
     return (
@@ -56,9 +58,22 @@ export function DietPlanSection(): React.JSX.Element {
   if (plan === null) {
     // M8: dieta ativa com o dia de hoje não gerado ≠ não ter dieta.
     if (todayStatus?.dayMissing) {
+      // Mesmo estado do banner do coach: o "Retomar" usa o mesmo retry
+      // (single-flight), e a aba mostra o progresso ou o motivo da falha.
+      const job =
+        dietJob && todayStatus.resumableJobId && activeJobId === todayStatus.resumableJobId
+          ? dietJob
+          : null;
+      const subtitle =
+        job?.status === 'failed'
+          ? job.errorMessage
+          : job?.status === 'running' || job?.status === 'pending'
+            ? `Gerando sua dieta — dia ${Math.min(job.daysCompleted + 1, job.totalDays)} de ${job.totalDays}…`
+            : null;
       return (
         <EmptyDietState
           mode="incomplete"
+          subtitle={subtitle}
           onAction={() => {
             if (todayStatus.resumableJobId) {
               void retryDietGeneration(todayStatus.resumableJobId);

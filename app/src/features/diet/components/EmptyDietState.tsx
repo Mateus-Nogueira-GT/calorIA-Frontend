@@ -13,6 +13,8 @@ type Mode = 'empty' | 'error' | 'incomplete';
 interface Props {
   mode?: Mode;
   onAction: () => void;
+  /** Substitui o subtítulo padrão do modo (ex.: motivo da falha da geração). */
+  subtitle?: string | null;
 }
 
 const COPY: Record<Mode, { title: string; subtitle: string; cta: string }> = {
@@ -33,8 +35,13 @@ const COPY: Record<Mode, { title: string; subtitle: string; cta: string }> = {
   },
 };
 
-export function EmptyDietState({ mode = 'empty', onAction }: Props): React.JSX.Element {
-  const { title, subtitle, cta } = COPY[mode];
+export function EmptyDietState({
+  mode = 'empty',
+  onAction,
+  subtitle: subtitleOverride,
+}: Props): React.JSX.Element {
+  const { title, cta } = COPY[mode];
+  const subtitle = subtitleOverride || COPY[mode].subtitle;
 
   return (
     <View style={styles.card}>

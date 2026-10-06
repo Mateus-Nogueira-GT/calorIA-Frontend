@@ -1,4 +1,5 @@
 import { useAuthStore } from './store';
+import { useCoachStore } from '@features/coach/store';
 
 describe('useAuthStore', () => {
   const originalWindow = global.window;
@@ -195,5 +196,15 @@ describe('preferências por usuário sem localStorage (RN puro — L1)', () => {
     useAuthStore.getState().setToken('t', userB, 'r');
 
     expect(useAuthStore.getState().profilePreferences.goal).toBeNull();
+  });
+
+  it('logout zera a geração de dieta do coach (nada do usuário anterior sobrevive)', () => {
+    useCoachStore.setState({
+      activeJobId: 'j1',
+      dietJob: { status: 'failed', daysCompleted: 3, totalDays: 7, slow: false, errorMessage: 'x' },
+    });
+    useAuthStore.getState().clearToken();
+    expect(useCoachStore.getState().dietJob).toBeNull();
+    expect(useCoachStore.getState().activeJobId).toBeNull();
   });
 });
