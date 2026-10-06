@@ -1,3 +1,4 @@
+import { colors } from '@theme';
 import React from 'react';
 import { StyleSheet } from 'react-native';
 import { render, fireEvent } from '@testing-library/react-native';
@@ -47,6 +48,6 @@ describe('OnboardingOptionCard', () => {
     const el = getByTestId('card');
     // O RN 0.85 entrega o style já achatado quando vem de callback do Pressable;
     // asserção por arrayContaining passava a depender do formato interno.
-    expect(StyleSheet.flatten(el.props.style)).toMatchObject({ borderColor: '#3DDC84' });
+    expect(StyleSheet.flatten(el.props.style)).toMatchObject({ borderColor: colors.primary });
   });
 });

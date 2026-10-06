@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import type { TabScreenProps } from '@navigation/types';
 import { ErrorState, Text, screenShellStyle } from '@shared/components';
 import { colors, typography, spacing, radius } from '@theme';
 import { useAuthStore } from '@features/auth/store';
@@ -55,6 +57,9 @@ function DashboardMealSkeleton(): React.JSX.Element {
 }
 
 export function DashboardScreen(): React.JSX.Element {
+  const navigation = useNavigation<TabScreenProps<'Dashboard'>['navigation']>();
+  const { width } = useWindowDimensions();
+  const compact = width < 420;
   const user = useAuthStore((s) => s.user);
   const today = todayString();
   const [foodLogError, setFoodLogError] = useState(false);
@@ -127,11 +132,11 @@ export function DashboardScreen(): React.JSX.Element {
       <View style={styles.shell}>
         <View style={styles.headerRow}>
           <Text style={styles.date}>{todayLabel()}</Text>
-          <Text style={styles.greeting}>{greetingLabel}</Text>
+          <Text accessibilityRole="header" style={styles.greeting}>{greetingLabel}</Text>
           <Text style={styles.headerHint}>Calorias, macros e o que ainda falta no seu dia.</Text>
         </View>
 
-        <View style={styles.ringCard}>
+        <View style={[styles.ringCard, compact && styles.ringCardCompact]}>
           <View style={styles.ringSummary}>
             <View style={styles.badge}>
               <Text style={styles.badgeText}>Resumo calórico</Text>
@@ -147,7 +152,20 @@ export function DashboardScreen(): React.JSX.Element {
               <Text style={styles.progressMetaValue}>{percentLabel}</Text>
             </View>
           </View>
-          <CalorieRing current={totals.calories} goal={calorieGoal} size={132} />
+          <CalorieRing current={totals.calories} goal={calorieGoal} size={compact ? 108 : 144} />
+        </View>
+
+        <View style={styles.quickActions}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Escanear refeição" onPress={() => navigation.navigate('Scanner')}
+            style={({ pressed }) => [styles.scanAction, pressed && styles.actionPressed]}>
+            <Text style={[styles.actionTitle, compact && styles.actionTitleCompact]}>Escanear refeição</Text>
+            <Text style={[styles.actionCopy, compact && styles.actionCopyCompact]}>Uma foto do seu prato</Text>
+          </Pressable>
+          <Pressable accessibilityRole="button" onPress={() => navigation.navigate('FoodLog')}
+            style={({ pressed }) => [styles.diaryAction, pressed && styles.actionPressed]}>
+            <Text style={[styles.actionTitle, compact && styles.actionTitleCompact]}>Abrir diário</Text>
+            <Text style={[styles.actionCopy, compact && styles.actionCopyCompact]}>Registrar e revisar</Text>
+          </Pressable>
         </View>
 
         <View style={styles.sectionHeader}>
@@ -164,19 +182,19 @@ export function DashboardScreen(): React.JSX.Element {
             label="Proteína"
             current={totals.protein}
             goal={proteinGoal}
-            color={colors.brandPrimary}
+            color={colors.brandProtein}
           />
           <MacroCard
             label="Carboidratos"
             current={totals.carbs}
             goal={carbsGoal}
-            color={colors.brandAnchor}
+            color={colors.brandCarbs}
           />
           <MacroCard
             label="Gordura"
             current={totals.fat}
             goal={fatGoal}
-            color={colors.brandSupport}
+            color={colors.brandFat}
           />
         </View>
 
@@ -208,7 +226,7 @@ export function DashboardScreen(): React.JSX.Element {
           <View style={styles.feedbackCard}>
             <Text style={styles.feedbackTitle}>Nada registrado por aqui ainda</Text>
             <Text style={styles.feedbackText}>
-              Quando você adicionar algo no diário livre, ele aparece nesta seção.
+              Fotografe seu prato ou abra o diário para adicionar sua primeira refeição.
             </Text>
           </View>
         )}
@@ -219,7 +237,7 @@ export function DashboardScreen(): React.JSX.Element {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.brandBackground, paddingTop: 56 },
-  content: { paddingHorizontal: spacing.lg, paddingBottom: 110 },
+  content: { paddingHorizontal: spacing.lg, paddingBottom: 40 },
   shell: screenShellStyle,
   headerRow: { marginBottom: spacing.xxl },
   greeting: {
@@ -243,9 +261,18 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     borderWidth: 1,
     borderColor: colors.brandDivider,
-    padding: 22,
+    padding: 24,
     marginBottom: spacing.xl,
   },
+  ringCardCompact: { padding: spacing.lg, gap: spacing.md },
+  actionTitleCompact: { fontSize: typography.fontSize.sm },
+  actionCopyCompact: { fontSize: typography.fontSize.xs },
+  quickActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md, marginBottom: spacing.xxxl },
+  scanAction: { flex: 1, minWidth: 140, minHeight: 76, backgroundColor: colors.brandPrimary, borderRadius: radius.lg, padding: spacing.lg, justifyContent: 'center' },
+  diaryAction: { flex: 1, minWidth: 140, minHeight: 76, backgroundColor: colors.brandSurface, borderWidth: 1, borderColor: colors.brandDividerStrong, borderRadius: radius.lg, padding: spacing.lg, justifyContent: 'center' },
+  actionPressed: { opacity: 0.8 },
+  actionTitle: { color: colors.brandAnchor, fontFamily: typography.fontFamily.bold, fontSize: typography.fontSize.base },
+  actionCopy: { color: colors.brandAnchor, fontSize: typography.fontSize.sm, marginTop: spacing.xs },
   ringSummary: { flex: 1, minWidth: 0 },
   badge: {
     alignSelf: 'flex-start',
@@ -261,7 +288,7 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontFamily.semiBold,
   },
   kcalValue: {
-    fontSize: typography.fontSize.xxxl,
+    fontSize: 48,
     fontFamily: typography.fontFamily.extraBold,
     color: colors.brandAnchor,
   },
@@ -276,7 +303,7 @@ const styles = StyleSheet.create({
   progressMetaLabel: { fontSize: typography.fontSize.sm, color: colors.brandTextMuted },
   progressMetaValue: {
     fontSize: typography.fontSize.md,
-    color: colors.brandPrimary,
+    color: colors.brandPrimaryText,
     fontFamily: typography.fontFamily.bold,
   },
   sectionHeader: { marginBottom: spacing.md },

@@ -4,6 +4,7 @@ import {
   createBottomTabNavigator,
 } from '@react-navigation/bottom-tabs';
 import { Pressable, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { DashboardScreen } from '@features/dashboard/screens/DashboardScreen';
 import { FoodLogScreen } from '@features/food-log/screens/FoodLogScreen';
@@ -20,7 +21,7 @@ function CameraTabButton({ onPress }: { onPress: () => void }): React.JSX.Elemen
   return (
     <Pressable
       onPress={onPress}
-      style={styles.cameraButton}
+      style={({ pressed }) => [styles.cameraButton, pressed && styles.cameraPressed]}
       accessibilityRole='button'
       accessibilityLabel='Escanear refeição'
     >
@@ -60,7 +61,7 @@ function TabIcon({ routeName, color, focused }: { routeName: keyof TabParamList;
     return (
       <View style={styles.iconFrame}>
         {[0, 1, 2].map((line) => (
-          <View key={line} style={[styles.diaryLine, { backgroundColor: tint, width: line === 2 ? 11 : 15 }]} />
+          <View key={line} style={[styles.diaryLine, { backgroundColor: tint }, line === 2 && styles.diaryLineShort]} />
         ))}
       </View>
     );
@@ -85,7 +86,7 @@ function TabIcon({ routeName, color, focused }: { routeName: keyof TabParamList;
       <View style={styles.iconFrame}>
         <View style={styles.communityRow}>
           <View style={[styles.communityHead, { borderColor: tint }]} />
-          <View style={[styles.communityHead, { borderColor: tint, marginLeft: -3 }]} />
+          <View style={[styles.communityHead, { borderColor: tint }, styles.communityHeadOverlap]} />
         </View>
         <View style={[styles.communityBody, { borderColor: tint }]} />
       </View>
@@ -103,16 +104,16 @@ function TabIcon({ routeName, color, focused }: { routeName: keyof TabParamList;
 function getScreenOptions({ route }: { route: { name: keyof TabParamList } }): BottomTabNavigationOptions {
   return {
     headerShown: false,
-    tabBarActiveTintColor: colors.brandPrimary,
+    tabBarActiveTintColor: colors.brandPrimaryText,
     tabBarInactiveTintColor: colors.brandAnchor,
     tabBarHideOnKeyboard: true,
     tabBarLabelStyle: styles.tabLabel,
     tabBarItemStyle: styles.tabItem,
     tabBarStyle: {
-      height: 74,
+      height: 76,
       paddingTop: spacing.sm,
       paddingBottom: 10,
-      backgroundColor: colors.brandBackground,
+      backgroundColor: colors.brandSurface,
       borderTopColor: colors.brandDivider,
       borderTopWidth: 1,
       elevation: 0,
@@ -123,11 +124,15 @@ function getScreenOptions({ route }: { route: { name: keyof TabParamList } }): B
 }
 
 export function BrandTabNavigator(): React.JSX.Element {
+  const insets = useSafeAreaInsets();
   const rootNavigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
 
   return (
-    <Tab.Navigator screenOptions={getScreenOptions}>
-      <Tab.Screen name='Dashboard' component={DashboardScreen} options={{ title: 'Dashboard' }} />
+    <Tab.Navigator screenOptions={(props) => {
+      const options = getScreenOptions(props);
+      return { ...options, tabBarStyle: [options.tabBarStyle, { height: 76 + insets.bottom, paddingBottom: Math.max(insets.bottom, 10) }] };
+    }}>
+      <Tab.Screen name='Dashboard' component={DashboardScreen} options={{ title: 'Hoje' }} />
       <Tab.Screen name='FoodLog' component={FoodLogScreen} options={{ title: 'Diário' }} />
       <Tab.Screen
         name='CameraAction'
@@ -139,7 +144,7 @@ export function BrandTabNavigator(): React.JSX.Element {
         }}
       />
       <Tab.Screen name='Coach' component={CoachScreen} options={{ title: 'Coach' }} />
-      <Tab.Screen name='Community' component={CommunityNavigator} options={{ title: 'Comunidade' }} />
+      <Tab.Screen name='Community' component={CommunityNavigator} options={{ title: 'Social' }} />
       <Tab.Screen name='Profile' component={ProfileScreen} options={{ title: 'Perfil' }} />
     </Tab.Navigator>
   );
@@ -158,13 +163,15 @@ const styles = StyleSheet.create({
   iconFrame: { width: 22, height: 18, alignItems: 'center', justifyContent: 'center' },
   grid: { width: 16, height: 16, flexDirection: 'row', flexWrap: 'wrap', gap: 2 },
   gridCell: { width: 7, height: 7, borderRadius: 2, borderWidth: 1.3 },
-  diaryLine: { height: 2, borderRadius: radius.pill, marginVertical: 1.5 },
+  diaryLineShort: { width: 11 },
+  diaryLine: { width: 15, height: 2, borderRadius: radius.pill, marginVertical: 1.5 },
   coachBubble: { width: 18, height: 14, borderRadius: 5, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
   coachDots: { flexDirection: 'row', gap: 2 },
   dot: { width: 2.5, height: 2.5, borderRadius: radius.pill },
   profileHead: { width: 8, height: 8, borderRadius: radius.pill, borderWidth: 1.5, marginBottom: 1.5 },
   profileBody: { width: 14, height: 7, borderTopLeftRadius: radius.sm, borderTopRightRadius: radius.sm, borderWidth: 1.5, borderBottomWidth: 0 },
   // Botão central de câmera
+  cameraPressed: { opacity: 0.8 },
   cameraButton: {
     flex: 1,
     alignItems: 'center',
@@ -180,7 +187,7 @@ const styles = StyleSheet.create({
     marginTop: -16,
     shadowColor: colors.brandPrimary,
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
+    shadowOpacity: 0.12,
     shadowRadius: 8,
     elevation: 6,
   },
@@ -211,6 +218,7 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: colors.brandBackground,
   },
+  communityHeadOverlap: { marginLeft: -3 },
   communityRow: { flexDirection: 'row' },
   communityHead: { width: 6, height: 6, borderRadius: radius.pill, borderWidth: 1.4 },
   communityBody: { width: 16, height: 7, borderTopLeftRadius: radius.sm, borderTopRightRadius: radius.sm, borderWidth: 1.4, borderBottomWidth: 0, marginTop: 1.5 },

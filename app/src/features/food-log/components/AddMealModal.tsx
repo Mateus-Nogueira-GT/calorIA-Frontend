@@ -5,12 +5,11 @@ import {
   Modal,
   Platform,
   View,
-  TextInput,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
 } from 'react-native';
-import { Text, Button } from '@shared/components';
+import { Text, Button, Input, screenShellStyle } from '@shared/components';
 import { colors, typography, spacing, radius } from '@theme';
 import { AddMealPayload, AppMealType } from '@shared/services/food-log.service';
 import { showAlert } from '@shared/utils/show-alert';
@@ -105,13 +104,13 @@ export function AddMealModal({ visible, onClose, onSubmit }: Props): React.JSX.E
         <View style={styles.sheet}>
           <View style={styles.header}>
             <Text style={styles.headerTitle}>Registrar refeição</Text>
-            <TouchableOpacity onPress={onClose}>
+            <TouchableOpacity onPress={onClose} style={styles.closeTarget} accessibilityRole="button" accessibilityLabel="Fechar registro de refeição">
               <Text style={styles.closeBtn}>✕</Text>
             </TouchableOpacity>
           </View>
           <ScrollView showsVerticalScrollIndicator={false}>
-            <TextInput
-              style={styles.input}
+            <Input
+              label="Nome da refeição"
               placeholder="Nome da refeição"
               placeholderTextColor={colors.textDisabled}
               value={name}
@@ -139,8 +138,8 @@ export function AddMealModal({ visible, onClose, onSubmit }: Props): React.JSX.E
                 </TouchableOpacity>
               ))}
             </View>
-            <TextInput
-              style={styles.input}
+            <Input
+              label="Calorias (kcal)"
               placeholder="Calorias (kcal)"
               placeholderTextColor={colors.textDisabled}
               keyboardType="numeric"
@@ -148,17 +147,17 @@ export function AddMealModal({ visible, onClose, onSubmit }: Props): React.JSX.E
               onChangeText={setCalories}
               testID="meal-calories-input"
             />
-            <View style={styles.row}>
-              <TextInput
-                style={[styles.input, styles.inputHalf]}
+            <View>
+              <Input
+                label="Proteína (g)"
                 placeholder="Proteína (g)"
                 placeholderTextColor={colors.textDisabled}
                 keyboardType="numeric"
                 value={protein}
                 onChangeText={setProtein}
               />
-              <TextInput
-                style={[styles.input, styles.inputHalf]}
+              <Input
+                label="Carboidratos (g)"
                 placeholder="Carbs (g)"
                 placeholderTextColor={colors.textDisabled}
                 keyboardType="numeric"
@@ -166,8 +165,8 @@ export function AddMealModal({ visible, onClose, onSubmit }: Props): React.JSX.E
                 onChangeText={setCarbs}
               />
             </View>
-            <TextInput
-              style={styles.input}
+            <Input
+              label="Gordura (g)"
               placeholder="Gordura (g)"
               placeholderTextColor={colors.textDisabled}
               keyboardType="numeric"
@@ -194,6 +193,7 @@ export function AddMealModal({ visible, onClose, onSubmit }: Props): React.JSX.E
 const styles = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: colors.overlay, justifyContent: 'flex-end' },
   sheet: {
+    ...screenShellStyle,
     backgroundColor: colors.brandBackground,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
@@ -212,22 +212,12 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontFamily.bold,
     color: colors.brandAnchor,
   },
+  closeTarget: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
   closeBtn: { fontSize: 18, color: colors.brandAnchor, padding: spacing.xs },
-  input: {
-    borderWidth: 1,
-    borderColor: colors.brandDivider,
-    borderRadius: 10,
-    padding: spacing.md,
-    fontSize: typography.fontSize.base,
-    color: colors.brandAnchor,
-    marginBottom: spacing.md,
-    fontFamily: typography.fontFamily.regular,
-    backgroundColor: colors.brandSurface,
-  },
-  row: { flexDirection: 'row', gap: 10 },
-  inputHalf: { flex: 1 },
   typeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.md },
   typeChip: {
+    minHeight: 48,
+    justifyContent: 'center',
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
     borderRadius: radius.pill,

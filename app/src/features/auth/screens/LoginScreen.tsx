@@ -29,12 +29,12 @@ const titleLabel = 'Entrar';
 const subtitleLabel = 'Continue seu plano com o coach de nutrição inteligente.';
 
 const interfaceFont = Platform.select({
-  web: '"DM Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+  web: 'Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
   default: typography.fontFamily.regular,
 });
 
 const interfaceSemiBoldFont = Platform.select({
-  web: '"DM Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+  web: '"Inter-SemiBold", Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
   default: typography.fontFamily.semiBold,
 });
 
@@ -154,6 +154,7 @@ export function LoginScreen({ navigation }: AuthStackScreenProps<'Login'>): Reac
       />
 
       <TouchableOpacity
+        accessibilityRole="button"
         onPress={() => navigation.navigate('ForgotPassword')}
         style={styles.forgotLink}
       >
@@ -258,8 +259,8 @@ const styles = StyleSheet.create({
     maxWidth: 310,
     textAlign: 'center',
   },
-  forgotLink: { alignSelf: 'flex-end', marginBottom: spacing.xxl, marginTop: -8 },
-  linkText: { color: colors.brandPrimary, fontFamily: interfaceFont },
+  forgotLink: { minHeight: 44, justifyContent: 'center', alignSelf: 'flex-end', marginBottom: spacing.xxl, marginTop: -8 },
+  linkText: { color: colors.brandPrimaryText, fontFamily: interfaceFont },
   btn: { borderRadius: radius.lg, marginBottom: spacing.md, minHeight: 52, paddingVertical: 0 },
   primaryButton: { backgroundColor: colors.brandPrimary },
   primaryButtonLabel: {
@@ -283,5 +284,5 @@ const styles = StyleSheet.create({
   line: { flex: 1, height: 1, backgroundColor: colors.brandDivider },
   orText: { color: colors.brandText, fontFamily: interfaceFont },
   footerButton: { marginTop: 10, minHeight: 44, paddingHorizontal: spacing.lg },
-  footerButtonLabel: { color: colors.brandPrimary, fontFamily: interfaceSemiBoldFont, fontSize: typography.fontSize.sm },
+  footerButtonLabel: { color: colors.brandPrimaryText, fontFamily: interfaceSemiBoldFont, fontSize: typography.fontSize.sm },
 });
