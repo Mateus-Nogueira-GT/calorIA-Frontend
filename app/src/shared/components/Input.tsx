@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useId, useState } from 'react';
 import {
   StyleSheet,
   TextInput,
@@ -14,12 +14,13 @@ interface Props extends TextInputProps {
   rightIcon?: React.ReactNode;
 }
 
-export function Input({ label, error, rightIcon, style, ...rest }: Props): React.JSX.Element {
+export function Input({ label, error, rightIcon, style, onFocus, onBlur, ...rest }: Props): React.JSX.Element {
+  const id = useId();
   const [focused, setFocused] = useState(false);
 
   return (
     <View style={styles.wrapper}>
-      <Text variant="label" style={styles.label}>
+      <Text nativeID={`${id}-label`} variant="label" style={styles.label}>
         {label}
       </Text>
       <View
@@ -32,14 +33,18 @@ export function Input({ label, error, rightIcon, style, ...rest }: Props): React
         <TextInput
           style={[styles.input, style]}
           placeholderTextColor={colors.textDisabled}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
+          accessibilityLabel={label}
+          accessibilityHint={error}
+          aria-invalid={Boolean(error)}
+          aria-describedby={error ? `${id}-error` : undefined}
+          onFocus={(event) => { setFocused(true); onFocus?.(event); }}
+          onBlur={(event) => { setFocused(false); onBlur?.(event); }}
           {...rest}
         />
         {rightIcon && <View style={styles.icon}>{rightIcon}</View>}
       </View>
       {error ? (
-        <Text variant="caption" color={colors.error} style={styles.error}>
+        <Text nativeID={`${id}-error`} accessibilityLiveRegion="polite" variant="caption" color={colors.error} style={styles.error}>
           {error}
         </Text>
       ) : null}
@@ -49,20 +54,22 @@ export function Input({ label, error, rightIcon, style, ...rest }: Props): React
 
 const styles = StyleSheet.create({
   wrapper: { marginBottom: spacing.lg },
-  label: { marginBottom: 6 },
+  label: { marginBottom: 8, fontSize: typography.fontSize.sm, textTransform: 'none', letterSpacing: 0, color: colors.brandAnchor },
   container: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.surface,
+    backgroundColor: colors.brandSurface,
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.border,
     paddingHorizontal: spacing.lg,
   },
-  containerFocused: { borderColor: colors.primary },
+  containerFocused: { borderColor: colors.brandAnchor, backgroundColor: colors.white },
   containerError: { borderColor: colors.error },
   input: {
     flex: 1,
+    minWidth: 0,
+    minHeight: 52,
     paddingVertical: 14,
     fontFamily: typography.fontFamily.regular,
     fontSize: typography.fontSize.base,

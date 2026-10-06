@@ -104,38 +104,38 @@ export function ProfileScreen({ navigation }: TabScreenProps<'Profile'>): React.
       </View>
       <View style={styles.menuCard}>
         <ProfileMenuItem
-          label="👤 Editar perfil"
+          label="Editar perfil"
           description="Altere seu nome e foto de perfil"
           onPress={() => navigation.navigate('ProfileEdit')}
           testID="profile-edit-btn"
         />
         <ProfileMenuItem
-          label="🎯 Metas e objetivos"
+          label="Metas e objetivos"
           description={profilePreferences.goal ? goalLabels[profilePreferences.goal] : 'Defina o foco principal do seu plano'}
           onPress={() => navigation.navigate('ProfileGoals')}
           testID="profile-goals-btn"
         />
         <ProfileMenuItem
-          label="🤖 Personalidade do Coach"
+          label="Personalidade do Coach"
           description={profilePreferences.coachPersonality ? coachPersonalityLabels[profilePreferences.coachPersonality] : 'Escolha como seu coach deve falar com você'}
           onPress={() => navigation.navigate('ProfileCoachPersonality')}
           testID="profile-coach-personality-btn"
         />
         <ProfileMenuItem
-          label="📈 Evolução"
+          label="Evolução"
           description="Acompanhe seu peso e o histórico de calorias"
           onPress={() => navigation.navigate('Evolution')}
           testID="profile-evolution-btn"
         />
         <ProfileMenuItem
-          label="🔒 Política de privacidade"
+          label="Política de privacidade"
           description="Como seus dados são coletados e usados"
           onPress={openPrivacyPolicy}
           testID="privacy-policy-btn"
         />
-        <ProfileMenuItem label="🚪 Sair" onPress={confirmLogout} destructive testID="logout-btn" />
+        <ProfileMenuItem label="Sair" onPress={confirmLogout} destructive testID="logout-btn" />
         <ProfileMenuItem
-          label="🗑️ Excluir conta"
+          label="Excluir conta"
           description="Apaga permanentemente sua conta e todos os seus dados"
           onPress={confirmDeleteAccount}
           destructive
@@ -150,5 +150,5 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background, paddingTop: 56 },
   content: { ...screenShellStyle, padding: spacing.lg },
   section: { marginTop: spacing.xl, marginBottom: spacing.sm },
-  menuCard: { marginTop: spacing.lg, backgroundColor: colors.white, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, overflow: 'hidden' },
+  menuCard: { marginTop: spacing.lg, backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, overflow: 'hidden' },
 });

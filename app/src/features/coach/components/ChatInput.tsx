@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, NativeSyntheticEvent, Platform, StyleSheet, Text, TextInput, TextInputKeyPressEventData, TouchableOpacity, View } from 'react-native';
+import { screenShellStyle } from '@shared/components';
 import { colors, radius, spacing, typography } from '@theme';
 import { useVoiceMessage } from '../hooks/useVoiceMessage';
 
@@ -166,6 +167,7 @@ function MicGlyph(): React.JSX.Element {
 
 const styles = StyleSheet.create({
   container: {
+    ...screenShellStyle,
     flexDirection: 'row',
     padding: spacing.md,
     gap: spacing.sm,

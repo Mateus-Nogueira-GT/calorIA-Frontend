@@ -3,6 +3,17 @@ import { render, fireEvent } from '@testing-library/react-native';
 import { Input } from './Input';
 
 describe('Input', () => {
+  it('mantém foco visual e repassa validação do consumidor', () => {
+    const onFocus = jest.fn();
+    const onBlur = jest.fn();
+    const { getByLabelText } = render(<Input label="E-mail" onFocus={onFocus} onBlur={onBlur} />);
+    const input = getByLabelText('E-mail');
+    fireEvent(input, 'focus', { nativeEvent: {} });
+    expect(onFocus).toHaveBeenCalledTimes(1);
+    fireEvent(input, 'blur', { nativeEvent: {} });
+    expect(onBlur).toHaveBeenCalledTimes(1);
+  });
+
   it('renderiza o label', () => {
     const { getByText } = render(<Input label="E-mail" />);
     expect(getByText('E-mail')).toBeTruthy();

@@ -16,10 +16,10 @@ export function MacroCard({ label, current, goal, unit = 'g', color }: Props): R
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.label}>{label}</Text>
-        <Text style={[styles.percent, { color }]}>{pctLabel}</Text>
+        {hasGoal ? <Text numberOfLines={1} style={[styles.percent, { color }]}>{pctLabel}</Text> : null}
       </View>
       <Text style={[styles.value, { color }]}>{current}{unit}</Text>
-      <Text style={styles.goal}>{hasGoal ? `Meta ${goal}${unit}` : 'Sem meta ainda'}</Text>
+      <Text style={styles.goal}>{hasGoal ? `Meta ${goal}${unit}` : 'Sem meta'}</Text>
       <View style={styles.track}>
         <View style={[styles.fill, { width: `${pct * 100}%` as const, backgroundColor: color }]} />
       </View>
@@ -29,15 +29,16 @@ export function MacroCard({ label, current, goal, unit = 'g', color }: Props): R
 
 const styles = StyleSheet.create({
   container: {
-    minWidth: 0,
+    minWidth: 94,
     flex: 1,
+    flexBasis: 94,
     backgroundColor: colors.brandSurface,
-    borderRadius: 20,
+    borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: colors.brandDivider,
-    padding: 14,
+    padding: spacing.md,
   },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: spacing.sm },
+  header: { flexDirection: 'column', justifyContent: 'space-between', alignItems: 'flex-start', gap: spacing.xs },
   label: { flex: 1, fontSize: typography.fontSize.xs, color: colors.brandTextMuted, fontFamily: typography.fontFamily.semiBold },
   percent: { fontSize: typography.fontSize.xs, fontFamily: typography.fontFamily.bold },
   value: { fontSize: typography.fontSize.lg, fontFamily: typography.fontFamily.extraBold, marginTop: 10 },

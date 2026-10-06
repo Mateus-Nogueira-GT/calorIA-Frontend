@@ -28,12 +28,12 @@ const titleLabel = 'Criar conta';
 const subtitleLabel = 'Monte seu perfil para receber um plano de nutrição com IA.';
 
 const interfaceFont = Platform.select({
-  web: '"DM Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+  web: 'Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
   default: typography.fontFamily.regular,
 });
 
 const interfaceSemiBoldFont = Platform.select({
-  web: '"DM Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+  web: '"Inter-SemiBold", Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
   default: typography.fontFamily.semiBold,
 });
 

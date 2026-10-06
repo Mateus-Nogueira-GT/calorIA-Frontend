@@ -39,10 +39,12 @@ export function Card({ onPress, children, style, testID, ...rest }: Props): Reac
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: colors.white,
+    backgroundColor: colors.brandSurface,
     borderRadius: radius.lg,
     padding: spacing.lg,
-    shadowColor: colors.black,
+    borderWidth: 1,
+    borderColor: colors.brandDivider,
+    shadowColor: colors.brandAnchor,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.06,
     shadowRadius: 8,
