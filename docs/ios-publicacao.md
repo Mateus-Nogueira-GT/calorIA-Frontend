@@ -117,8 +117,14 @@ Antes de submeter para revisão:
 
 - **Privacidade:** informe a URL `https://caloriaoficial.com.br/politica-de-privacidade`
 - **App Privacy:** o equivalente ao formulário de Segurança dos dados do Google. As
-  respostas são as mesmas que levantamos, incluindo o compartilhamento das fotos com
-  **OpenRouter e OpenAI** (o provedor é o OpenRouter; a OpenAI recebe via ele)
+  respostas são as mesmas que levantamos, incluindo o compartilhamento das fotos e do
+  áudio das mensagens de voz com **OpenRouter e OpenAI** (o provedor é o OpenRouter; a
+  OpenAI recebe via ele)
+- **Áudio (mensagens de voz ao mentor):** em App Privacy, declare **Audio Data** com
+  finalidade **App Functionality**, seguindo o mesmo padrão usado para as fotos
+  (vínculo à identidade e rastreamento respondidos do mesmo jeito). No Google Play, em
+  Segurança dos dados, marque **"Gravações de voz ou som"**. O app não guarda o áudio —
+  só o texto transcrito vira mensagem do chat
 - **Exclusão de conta:** a Apple também exige, e já existe no app (Perfil → Excluir conta)
 - Capturas de tela, descrição, categoria e classificação etária
 

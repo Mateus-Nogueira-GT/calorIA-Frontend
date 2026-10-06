@@ -29,6 +29,12 @@ interface BackendChatResponse {
   diet_job_id: string | null;
 }
 
+export type TranscribeMimeType = 'audio/m4a' | 'audio/mp4' | 'audio/aac' | 'audio/webm';
+
+// O backend espera o provedor de transcrição até 55 s; o cliente espera um
+// pouco mais para receber o erro dele (502/503) em vez de um timeout local.
+const TRANSCRIBE_TIMEOUT_MS = 65000;
+
 function toCoachRole(role: 'user' | 'assistant'): 'coach' | 'user' {
   return role === 'assistant' ? 'coach' : 'user';
 }
@@ -73,4 +79,14 @@ export const coachService = {
           dietJobId: r.data.diet_job_id,
         },
       })),
+
+  /** Áudio em base64 puro (sem prefixo data:) → texto transcrito. */
+  transcribe: (audioBase64: string, mimeType: TranscribeMimeType) =>
+    api
+      .post<{ text: string }>(
+        '/chat/transcribe',
+        { audio: audioBase64, mimeType },
+        { timeout: TRANSCRIBE_TIMEOUT_MS },
+      )
+      .then((r) => r.data.text),
 };
