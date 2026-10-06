@@ -17,7 +17,12 @@ export interface OpenAiHandlers {
 export interface FakeFastify {
   fastify: FastifyInstance
   calls: { sql: string; params: unknown[] }[]
-  openaiCalls: { kind: 'chat' | 'parse'; params: Record<string, unknown> }[]
+  openaiCalls: {
+    kind: 'chat' | 'parse'
+    params: Record<string, unknown>
+    /** 2º argumento do SDK (RequestOptions: timeout, maxRetries...). */
+    options?: Record<string, unknown>
+  }[]
   logs: { level: string; msg: string }[]
 }
 
@@ -66,8 +71,8 @@ export function fakeFastify(routes: DbRoute[] = [], openai: OpenAiHandlers = {})
       beta: {
         chat: {
           completions: {
-            parse: (params: Record<string, unknown>) => {
-              openaiCalls.push({ kind: 'parse', params })
+            parse: (params: Record<string, unknown>, options?: Record<string, unknown>) => {
+              openaiCalls.push({ kind: 'parse', params, options })
               return parse(params)
             },
           },
