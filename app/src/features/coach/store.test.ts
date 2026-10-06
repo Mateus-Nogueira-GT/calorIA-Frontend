@@ -387,16 +387,14 @@ describe('geração da dieta — boot, retry, sessão e 401', () => {
 
   describe('resumeDietJob (boot)', () => {
     it('job failed mostra o banner de falha com a mensagem e NÃO liga o polling', async () => {
-      await useCoachStore
-        .getState()
-        .resumeDietJob(
-          job({
-            status: 'failed',
-            daysCompleted: 4,
-            errorCode: 'STALE',
-            errorMessage: 'A geração parou de responder.',
-          }) as never,
-        );
+      await useCoachStore.getState().resumeDietJob(
+        job({
+          status: 'failed',
+          daysCompleted: 4,
+          errorCode: 'STEP_TIMEOUT',
+          errorMessage: 'A geração parou de responder.',
+        }) as never,
+      );
       expect(useCoachStore.getState().activeJobId).toBe('j1');
       expect(useCoachStore.getState().dietJob).toEqual({
         status: 'failed',
@@ -562,6 +560,173 @@ describe('geração da dieta — boot, retry, sessão e 401', () => {
       expect(ds().stepJob).toHaveBeenCalledTimes(1);
       expect(ds().getJob).not.toHaveBeenCalled();
       expect(useCoachStore.getState().dietJob).toBeNull();
+    });
+  });
+});
+
+// Fix final do PR1: STALE = "ninguém estava dirigindo" (app em segundo plano
+// >10 min), não uma falha — retoma sozinho em vez de pedir um toque.
+describe('geração da dieta — STALE retoma automaticamente', () => {
+  const GENERIC = 'Não foi possível gerar sua dieta agora. Tente novamente.';
+  const ds = () =>
+    jest.requireMock('@shared/services/diet.service').dietService as {
+      stepJob: jest.Mock;
+      getJob: jest.Mock;
+      retryJob: jest.Mock;
+    };
+  const job = (o: Record<string, unknown> = {}) => ({
+    jobId: 'j1',
+    status: 'running',
+    daysCompleted: 0,
+    totalDays: 7,
+    dietId: null,
+    error: null,
+    errorCode: null,
+    errorMessage: null,
+    ...o,
+  });
+  const staleJob = (days: number) =>
+    job({
+      status: 'failed',
+      daysCompleted: days,
+      errorCode: 'STALE',
+      errorMessage: 'A geração parou de responder.',
+    });
+  const netErr = () =>
+    Object.assign(new Error('timeout of 150000ms exceeded'), {
+      isAxiosError: true,
+      code: 'ECONNABORTED',
+    });
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    ds().stepJob.mockReset();
+    ds().getJob.mockReset();
+    ds().retryJob.mockReset();
+    useCoachStore.getState().resetDietGeneration();
+  });
+  afterEach(() => {
+    useCoachStore.getState().resetDietGeneration();
+    jest.useRealTimers();
+  });
+
+  describe('loop', () => {
+    it('step devolve failed STALE → reabre uma vez e segue até concluir, sem mostrar falha', async () => {
+      ds()
+        .stepJob.mockResolvedValueOnce(staleJob(3))
+        .mockResolvedValue(job({ status: 'completed', daysCompleted: 7 }));
+      ds().retryJob.mockResolvedValue(job({ status: 'running', daysCompleted: 3 }));
+      const seen: (string | undefined)[] = [];
+      const unsub = useCoachStore.subscribe((s) => seen.push(s.dietJob?.status));
+      const p = useCoachStore.getState().runDietGeneration('j1');
+      await jest.advanceTimersByTimeAsync(10000);
+      await p;
+      unsub();
+      expect(ds().retryJob).toHaveBeenCalledTimes(1);
+      expect(ds().retryJob).toHaveBeenCalledWith('j1');
+      expect(ds().stepJob).toHaveBeenCalledTimes(2);
+      expect(seen).not.toContain('failed');
+      expect(useCoachStore.getState().dietJob).toMatchObject({
+        status: 'completed',
+        errorMessage: null,
+      });
+    });
+
+    it('getJob da recuperação devolve failed STALE → reabre e volta ao step', async () => {
+      ds()
+        .stepJob.mockRejectedValueOnce(netErr())
+        .mockResolvedValue(job({ status: 'completed', daysCompleted: 7 }));
+      ds().getJob.mockResolvedValue(staleJob(2));
+      ds().retryJob.mockResolvedValue(job({ status: 'running', daysCompleted: 2 }));
+      const p = useCoachStore.getState().runDietGeneration('j1');
+      await jest.advanceTimersByTimeAsync(30000);
+      await p;
+      expect(ds().retryJob).toHaveBeenCalledTimes(1);
+      expect(ds().stepJob).toHaveBeenCalledTimes(2);
+      expect(useCoachStore.getState().dietJob?.status).toBe('completed');
+    });
+
+    it('segundo STALE na mesma execução do loop → mostra a falha', async () => {
+      ds().stepJob.mockResolvedValue(staleJob(3));
+      ds().retryJob.mockResolvedValue(job({ status: 'running', daysCompleted: 3 }));
+      const p = useCoachStore.getState().runDietGeneration('j1');
+      await jest.advanceTimersByTimeAsync(10000);
+      await p;
+      expect(ds().retryJob).toHaveBeenCalledTimes(1);
+      expect(ds().stepJob).toHaveBeenCalledTimes(2);
+      expect(useCoachStore.getState().dietJob).toMatchObject({
+        status: 'failed',
+        daysCompleted: 3,
+        errorMessage: 'A geração parou de responder.',
+      });
+    });
+
+    it('POST retry falha ao reabrir o STALE → mostra a falha', async () => {
+      ds().stepJob.mockResolvedValue(staleJob(3));
+      ds().retryJob.mockRejectedValue(netErr());
+      const p = useCoachStore.getState().runDietGeneration('j1');
+      await jest.advanceTimersByTimeAsync(10000);
+      await p;
+      expect(ds().stepJob).toHaveBeenCalledTimes(1);
+      expect(useCoachStore.getState().dietJob).toMatchObject({
+        status: 'failed',
+        errorMessage: GENERIC,
+      });
+    });
+  });
+
+  describe('resumeDietJob (boot)', () => {
+    it('job failed STALE → reabre (retry) e liga exatamente um loop', async () => {
+      ds().retryJob.mockResolvedValue(job({ status: 'running', daysCompleted: 4 }));
+      let release: (v: unknown) => void = () => {};
+      ds()
+        .stepJob.mockImplementationOnce(() => new Promise((r) => (release = r)))
+        .mockResolvedValue(job({ status: 'completed', daysCompleted: 7 }));
+      const seen: (string | undefined)[] = [];
+      const unsub = useCoachStore.subscribe((s) => seen.push(s.dietJob?.status));
+      const p = useCoachStore.getState().resumeDietJob(staleJob(4) as never);
+      // Boot duplicado (RootNavigator + aba Dieta) não reabre duas vezes.
+      const p2 = useCoachStore.getState().resumeDietJob(staleJob(4) as never);
+      await jest.advanceTimersByTimeAsync(0);
+      expect(ds().retryJob).toHaveBeenCalledTimes(1);
+      expect(ds().retryJob).toHaveBeenCalledWith('j1');
+      expect(ds().stepJob).toHaveBeenCalledTimes(1);
+      expect(useCoachStore.getState().activeJobId).toBe('j1');
+      // Não pisca "dia 1": parte do dia em que parou.
+      expect(useCoachStore.getState().dietJob).toMatchObject({
+        status: 'running',
+        daysCompleted: 4,
+      });
+      // Retomada repetida (ex.: segundo foco) não abre outro loop.
+      const again = useCoachStore.getState().runDietGeneration('j1');
+      await jest.advanceTimersByTimeAsync(0);
+      expect(ds().stepJob).toHaveBeenCalledTimes(1);
+      release(job({ status: 'completed', daysCompleted: 7 }));
+      await Promise.all([p, p2, again]);
+      unsub();
+      expect(ds().retryJob).toHaveBeenCalledTimes(1);
+      expect(ds().stepJob).toHaveBeenCalledTimes(1);
+      expect(seen).not.toContain('failed');
+      expect(useCoachStore.getState().dietJob?.status).toBe('completed');
+    });
+
+    it('job failed AI_QUOTA_EXCEEDED → só o banner, sem retry nem polling', async () => {
+      await useCoachStore.getState().resumeDietJob(
+        job({
+          status: 'failed',
+          daysCompleted: 2,
+          errorCode: 'AI_QUOTA_EXCEEDED',
+          errorMessage: 'Limite diário de IA atingido.',
+        }) as never,
+      );
+      await jest.advanceTimersByTimeAsync(60000);
+      expect(ds().retryJob).not.toHaveBeenCalled();
+      expect(ds().stepJob).not.toHaveBeenCalled();
+      expect(useCoachStore.getState().dietJob).toMatchObject({
+        status: 'failed',
+        daysCompleted: 2,
+        errorMessage: 'Limite diário de IA atingido.',
+      });
     });
   });
 });
