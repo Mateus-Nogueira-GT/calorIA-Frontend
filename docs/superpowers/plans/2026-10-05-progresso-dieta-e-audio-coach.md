@@ -18,7 +18,7 @@
 - Gates: `cd backend && npm run typecheck && npm test`; `cd app && npm run type-check && npm test`; o build web (`cd app && npm run build:web`) continua compilando nas tasks 4–5.
 - Job velho: sem progresso há mais de **10 min** (`updated_at`) → `failed` com código `STALE`.
 - Step: `MAX_DAY_ATTEMPTS × timeout do generateDay` < **270 s**, `maxRetries: 0` na chamada de dieta.
-- Áudio: máx. **60 s**; corpo máx. **3 MB** base64; rate limit **10/min**; env `OPENAI_TRANSCRIBE_API_KEY`, `OPENAI_TRANSCRIBE_MODEL` (default `whisper-1`); `language: 'pt'`.
+- Áudio: máx. **60 s**; corpo máx. **3 MB** base64; rate limit **10/min**; transcrição pelo **OpenRouter** com a chave/base URL já existentes (`OPENAI_API_KEY`, `OPENAI_BASE_URL`), `POST {OPENAI_BASE_URL}/audio/transcriptions` JSON `{ model, input_audio: { data, format }, language: 'pt' }`; env opcional `OPENAI_TRANSCRIBE_MODEL` (default `openai/whisper-1`).
 
 ## Review Focus
 
@@ -26,7 +26,7 @@
 2. 429 de cota no meio da geração → app para em segundos com mensagem clara, não em 80 min.
 3. Toggle de refeição durante pull-to-refresh → contagem final correta.
 4. Usuário nega o microfone → alerta com instrução; nenhum crash; texto continua funcionando.
-5. Backend sem `OPENAI_TRANSCRIBE_API_KEY` → 503 tratado no app com mensagem amigável; chat por texto intacto.
+5. Transcrição indisponível (OpenRouter fora/erro) → 502/503 tratado no app com mensagem amigável; chat por texto intacto.
 
 ---
 
@@ -62,13 +62,19 @@
 
 ### Task 4: Endpoint de transcrição (backend)
 
-**Files:** create `backend/src/modules/chat/transcribe.service.ts` (+ test), modify `backend/src/modules/chat/chat.routes.ts`, `backend/src/modules/chat/chat.schemas.ts`, `backend/src/shared/env.ts`, `backend/src/shared/ai-usage.ts` (`AiFeature` += `'transcribe'`), create `backend/supabase/migrations/021_ai_usage_transcribe.sql`, `backend/.env.example`.
+**Files:** create `backend/src/modules/chat/transcribe.service.ts` (+ test), modify `backend/src/modules/chat/chat.routes.ts`, `backend/src/modules/chat/chat.schemas.ts`, `backend/src/shared/env.ts` (`OPENAI_TRANSCRIBE_MODEL` opcional), `backend/src/shared/ai-usage.ts` (`AiFeature` += `'transcribe'`), create `backend/supabase/migrations/021_ai_usage_transcribe.sql` com EXATAMENTE o SQL abaixo, `backend/.env.example`.
+
+```sql
+-- Migration 021 — transcrição de áudio do coach entra na telemetria de IA. Idempotente.
+ALTER TABLE public.ai_usage DROP CONSTRAINT IF EXISTS ai_usage_feature_check;
+ALTER TABLE public.ai_usage ADD CONSTRAINT ai_usage_feature_check
+  CHECK (feature IN ('chat', 'diet_day', 'vision', 'transcribe'));
+```
 
 **Interfaces produzidas:** `POST /chat/transcribe` body `{ audio: string (base64, sem prefixo data:), mimeType: 'audio/m4a'|'audio/mp4'|'audio/aac'|'audio/webm' }` → 200 `{ text: string }`; erros 400 (validação), 401, 413/400 (tamanho), 422 `EMPTY_TRANSCRIPTION`, 429 (`TOO_MANY_REQUESTS`|`AI_QUOTA_EXCEEDED`), 502 `TRANSCRIBE_FAILED`, 503 `TRANSCRIBE_UNAVAILABLE`.
 
-- [ ] Testes do service com cliente OpenAI fake (injetado): chave ausente → 503; texto vazio/só espaços → 422; erro da OpenAI → 502; sucesso → texto `trim()`; chama `audio.transcriptions.create` com `model` do env, `language: 'pt'` e um `File` com o nome/extensão coerentes com o mimeType; registra uso `feature: 'transcribe'`. Teste de rota: corpo > limite → 413/400; sem JWT → 401.
-- [ ] Implementar: cliente `new OpenAI({ apiKey: env.OPENAI_TRANSCRIBE_API_KEY, maxRetries: 1, timeout: 30_000 })` criado sob demanda (não registrar no plugin do OpenRouter); `toFile(Buffer.from(audio,'base64'), 'audio.m4a', { type })` do SDK; `bodyLimit` 3.5 MB na rota; `checkDailyQuota` antes.
-- [ ] Migration 021: recria o CHECK de `ai_usage.feature` incluindo `'transcribe'` (DROP CONSTRAINT IF EXISTS pelo nome real — conferir em 015 — e ADD).
+- [ ] Testes do service com `fetch` injetável/fake: sucesso → `text.trim()`; chama `${OPENAI_BASE_URL}/audio/transcriptions` com `Authorization: Bearer ${OPENAI_API_KEY}`, headers `HTTP-Referer`/`X-Title` iguais ao plugin, corpo `{ model: env.OPENAI_TRANSCRIBE_MODEL ?? 'openai/whisper-1', input_audio: { data, format }, language: 'pt' }` (format derivado do mimeType: m4a/mp4→`m4a`, aac→`aac`, webm→`webm`); texto vazio → 422 `EMPTY_TRANSCRIPTION`; HTTP 5xx/timeout/rede → 502 `TRANSCRIBE_FAILED`; 4xx do provedor (ex.: 400/402/404 modelo indisponível) → 503 `TRANSCRIBE_UNAVAILABLE`; registra uso `feature: 'transcribe'` com `usage.total_tokens` quando vier. Teste de rota: corpo > limite → 413/400; sem JWT → 401.
+- [ ] Implementar: `fetch` nativo do Node com `AbortSignal.timeout(55_000)` (o upstream do OpenRouter tem teto de 60 s); `bodyLimit` 3.5 MB na rota; `checkDailyQuota` antes.
 - [ ] Gates do backend; commit `feat(chat): transcrição de áudio para o coach (Whisper)`.
 
 ### Task 5: Microfone no chat do coach (app, nativo)

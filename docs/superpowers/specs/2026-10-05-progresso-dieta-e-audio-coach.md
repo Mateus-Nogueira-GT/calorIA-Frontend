@@ -61,10 +61,10 @@ grava, o backend transcreve e o texto vai como mensagem normal do coach.
 - **Backend** `POST /chat/transcribe` (JWT, rate limit 10/min, `checkDailyQuota`)
   - Corpo JSON `{ audio: base64, mimeType: 'audio/m4a' | 'audio/mp4' | 'audio/aac' | 'audio/webm' }`,
     máx. ~3 MB (60 s de m4a mono 32 kbps ≈ 250 KB; Vercel limita corpo a 4,5 MB).
-  - Cliente OpenAI **direto** (`api.openai.com`), separado do OpenRouter:
-    env `OPENAI_TRANSCRIBE_API_KEY` (obrigatória para o recurso) e
-    `OPENAI_TRANSCRIBE_MODEL` (default `whisper-1`), `language: 'pt'`.
-    Sem a chave → 503 `TRANSCRIBE_UNAVAILABLE`.
+  - Transcrição pelo **OpenRouter** (`/audio/transcriptions`, mesma chave já
+    usada no projeto), modelo `openai/whisper-1` (env opcional
+    `OPENAI_TRANSCRIBE_MODEL`), `language: 'pt'`. Provedor indisponível →
+    503 `TRANSCRIBE_UNAVAILABLE`; falha/timeout → 502 `TRANSCRIBE_FAILED`.
   - Resposta `{ text }`; texto vazio → 422 `EMPTY_TRANSCRIPTION`.
   - Uso registrado em `ai_usage` com `feature: 'transcribe'` (migration 021
     amplia o CHECK; o insert já é tolerante a falha antes da migration).
@@ -89,7 +89,5 @@ grava, o backend transcreve e o texto vai como mensagem normal do coach.
 - Streaming de transcrição em tempo real.
 
 ## Ações do usuário
-1. Criar chave na OpenAI e cadastrar `OPENAI_TRANSCRIBE_API_KEY` nas variáveis
-   de ambiente da Vercel (produção).
-2. Rodar `021_ai_usage_transcribe.sql` no SQL Editor do Supabase.
-3. Conferir que as migrations 017 e 019 estão aplicadas em produção.
+1. Rodar `021_ai_usage_transcribe.sql` no SQL Editor do Supabase.
+2. Conferir que as migrations 017 e 019 estão aplicadas em produção.
