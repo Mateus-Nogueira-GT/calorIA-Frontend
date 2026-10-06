@@ -21,13 +21,25 @@ import {
 } from './diets.service.js'
 import { getActiveJob, getJob, processJobStep, retryJob } from './jobs.service.js'
 
-const jobStatusSchema = z.object({
+// Exportado só para o teste de contrato (job-recovery.test.ts).
+export const jobStatusSchema = z.object({
   jobId: z.string().uuid(),
   status: z.enum(['pending', 'running', 'completed', 'failed']),
   daysCompleted: z.number().int(),
   totalDays: z.number().int(),
   dietId: z.string().uuid().nullable(),
+  /** Texto cru gravado no job (legado — prefira errorCode/errorMessage). */
   error: z.string().nullable(),
+  errorCode: z
+    .string()
+    .nullable()
+    .describe(
+      "Só quando status='failed': AI_QUOTA_EXCEEDED | STALE | STEP_TIMEOUT | ALLERGEN_IN_OUTPUT | DAY_VALIDATION_FAILED | RECONCILE_FAILED | INVALID_JOB_INPUT | DIET_STEP_FAILED",
+    ),
+  errorMessage: z
+    .string()
+    .nullable()
+    .describe("Mensagem amigável (pt-BR) para o usuário quando status='failed'"),
 })
 
 const dietsRoutes: FastifyPluginAsyncZod = async (fastify) => {
@@ -303,7 +315,9 @@ const dietsRoutes: FastifyPluginAsyncZod = async (fastify) => {
         tags: ['Diets'],
         summary: 'Gerar próximo dia da dieta',
         description:
-          'Gera e persiste o próximo dia do plano. Chamar em polling até status=completed.',
+          'Gera e persiste o próximo dia do plano. Chamar em polling até status=completed. ' +
+          "Cota diária de IA estourada → 200 com status='failed' e errorCode=AI_QUOTA_EXCEEDED. " +
+          "Job sem progresso há mais de 10 min → status='failed' com errorCode=STALE (vale também para GET /jobs/:id e /jobs/active); /retry continua do dia onde parou.",
         security: [{ bearerAuth: [] }],
         params: z.object({ id: z.string().uuid() }),
         response: {
@@ -311,9 +325,9 @@ const dietsRoutes: FastifyPluginAsyncZod = async (fastify) => {
           401: errorSchema,
           404: errorSchema,
           422: errorSchema,
-          429: errorSchema.describe('TOO_MANY_REQUESTS (30/min) | AI_QUOTA_EXCEEDED (teto diário)'),
+          429: errorSchema.describe('TOO_MANY_REQUESTS (30/min)'),
           502: errorSchema.describe(
-            'DIET_STEP_FAILED (IA indisponível) | ALLERGEN_IN_OUTPUT | DAY_VALIDATION_FAILED | RECONCILE_FAILED (dia gerado reprovado nos guardrails; o job vai para failed e /retry continua do mesmo dia)',
+            'DIET_STEP_FAILED (IA indisponível) | STEP_TIMEOUT (IA estourou o orçamento de tempo) | ALLERGEN_IN_OUTPUT | DAY_VALIDATION_FAILED | RECONCILE_FAILED (dia gerado reprovado nos guardrails; o job vai para failed e /retry continua do mesmo dia)',
           ),
         },
       },

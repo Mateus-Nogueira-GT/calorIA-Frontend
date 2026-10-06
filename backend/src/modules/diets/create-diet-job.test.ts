@@ -47,29 +47,34 @@ describe('createDietJob — não abre duas gerações para o mesmo usuário', ()
    * plano novo zerava as refeições marcadas como concluídas.
    */
   it('reaproveita o job pendente/rodando em vez de criar outra dieta', async () => {
-    const { fastify, calls } = fakeFastify([[{ id: 'job-existente', diet_id: 'dieta-existente' }]])
+    // 1ª query: expiração de jobs parados (spec B) — nada expirado aqui.
+    const { fastify, calls } = fakeFastify([
+      [],
+      [{ id: 'job-existente', diet_id: 'dieta-existente' }],
+    ])
 
     const result = await createDietJob(fastify, USER, CONVERSA, DADOS)
 
     expect(result).toEqual({ jobId: 'job-existente', dietId: 'dieta-existente' })
-    // Uma única consulta: a de checagem. Nada foi inserido.
-    expect(calls).toHaveLength(1)
+    // Só a expiração e a checagem. Nada foi inserido.
+    expect(calls).toHaveLength(2)
+    expect(calls[0].sql).toContain('WITH expired')
     expect(calls.every((c) => !c.sql.includes('INSERT INTO diets'))).toBe(true)
     expect(calls.every((c) => !c.sql.includes('INSERT INTO diet_jobs'))).toBe(true)
   })
 
   it('a checagem considera só pending/running do próprio usuário', async () => {
-    const { fastify, calls } = fakeFastify([[{ id: 'j', diet_id: 'd' }]])
+    const { fastify, calls } = fakeFastify([[], [{ id: 'j', diet_id: 'd' }]])
 
     await createDietJob(fastify, USER, CONVERSA, DADOS)
 
-    expect(calls[0].sql).toContain('FROM diet_jobs')
-    expect(calls[0].sql).toContain("status IN ('pending', 'running')")
-    expect(calls[0].params).toContain(USER)
+    expect(calls[1].sql).toContain('FROM diet_jobs')
+    expect(calls[1].sql).toContain("status IN ('pending', 'running')")
+    expect(calls[1].params).toContain(USER)
   })
 
   it('sem job em andamento, cria a dieta e o job normalmente', async () => {
-    const { fastify, calls } = fakeFastify([[]])
+    const { fastify, calls } = fakeFastify([[], []])
 
     const result = await createDietJob(fastify, USER, CONVERSA, DADOS)
 

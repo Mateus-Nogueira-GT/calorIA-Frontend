@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import { act, renderHook } from '@testing-library/react-native';
 import { useDietStore } from './store';
+import { useDiet } from './hooks/useDiet';
 import type { DietPlan, PlannedMeal } from '@shared/services/diet.service';
 
 const meal = (id: string, completedAt: string | null = null): PlannedMeal => ({
@@ -156,5 +157,56 @@ describe('useDietStore', () => {
 
     expect(dietService.getTodayStatus).not.toHaveBeenCalled();
     expect(result.current.todayStatus).toBeNull();
+  });
+
+  it('toggle de refeição pendente sobe completedToday e o completedCount', async () => {
+    dietService.toggleMeal.mockResolvedValue({ is_completed: true });
+    useDietStore.setState({ plan });
+    const { result } = renderHook(() => useDiet());
+    expect(result.current.completedCount).toBe(1);
+    await act(() => result.current.toggleMealComplete('m1'));
+    expect(result.current.plan?.meals[0].completedToday).toBe(true);
+    expect(result.current.completedCount).toBe(2);
+    expect(result.current.totalCount).toBe(2);
+  });
+
+  it('completedAt de semana passada com completedToday=false conta ao concluir', async () => {
+    dietService.toggleMeal.mockResolvedValue({ is_completed: true });
+    const old = { ...meal('m1', '2026-06-01T08:00:00Z'), completedToday: false };
+    useDietStore.setState({ plan: { ...plan, meals: [old, meal('m2')] } });
+    const { result } = renderHook(() => useDiet());
+    expect(result.current.completedCount).toBe(0);
+    await act(() => result.current.toggleMealComplete('m1'));
+    expect(result.current.completedCount).toBe(1);
+  });
+
+  it('loadCurrent no meio de um toggle não perde a marcação otimista', async () => {
+    let resolveToggle: (v: { is_completed: boolean }) => void = () => {};
+    dietService.toggleMeal.mockReturnValue(
+      new Promise((r) => {
+        resolveToggle = r;
+      }),
+    );
+    // GET ainda sem a marcação (servidor não processou o toggle).
+    dietService.getToday.mockResolvedValue(plan);
+    useDietStore.setState({ plan });
+    const { result } = renderHook(() => useDiet());
+
+    let togglePromise: Promise<void> = Promise.resolve();
+    act(() => {
+      togglePromise = result.current.toggleMealComplete('m1');
+    });
+    expect(result.current.completedCount).toBe(2);
+
+    await act(() => result.current.loadCurrent());
+    expect(result.current.plan?.meals[0].completedToday).toBe(true);
+    expect(result.current.completedCount).toBe(2);
+
+    await act(async () => {
+      resolveToggle({ is_completed: true });
+      await togglePromise;
+    });
+    expect(result.current.plan?.meals[0].completedToday).toBe(true);
+    expect(result.current.completedCount).toBe(2);
   });
 });

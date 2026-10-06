@@ -53,6 +53,13 @@ export interface DietJobStatus {
   totalDays: number;
   dietId: string | null;
   error: string | null;
+  /**
+   * Só quando status='failed' (backend novo): AI_QUOTA_EXCEEDED | STALE |
+   * STEP_TIMEOUT | DIET_STEP_FAILED | … Opcional: backends antigos não mandam.
+   */
+  errorCode?: string | null;
+  /** Mensagem amigável (pt-BR) para o usuário quando status='failed'. */
+  errorMessage?: string | null;
 }
 
 export const dietService = {
@@ -92,7 +99,9 @@ export const dietService = {
   stepJob: (jobId: string) =>
     // Gerar 1 dia via GPT-5 pode passar de 1 min — timeout bem acima do padrão.
     // Body {} explícito: POST com Content-Type json e body vazio é rejeitado pelo Fastify.
-    api.post<DietJobStatus>(`/diets/jobs/${jobId}/step`, {}, { timeout: 150000 }).then((r) => r.data),
+    api
+      .post<DietJobStatus>(`/diets/jobs/${jobId}/step`, {}, { timeout: 150000 })
+      .then((r) => r.data),
   getJob: (jobId: string) => api.get<DietJobStatus>(`/diets/jobs/${jobId}`).then((r) => r.data),
   /** Reabre um job failed — o /step continua do dia em que parou. */
   retryJob: (jobId: string) =>

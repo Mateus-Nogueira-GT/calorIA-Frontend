@@ -143,7 +143,11 @@ describe('processJobStep — guardrails do dia (O4)', () => {
     expect(calls.some((c) => c.sql.includes('INSERT INTO diet_meals'))).toBe(false)
     expect(calls.some((c) => c.sql.includes('INSERT INTO diet_items'))).toBe(false)
     const fail = calls.find(
-      (c) => c.sql.includes("status = 'failed'") && c.sql.includes('diet_jobs'),
+      (c) =>
+        c.sql.includes("status = 'failed'") &&
+        c.sql.includes('diet_jobs') &&
+        // a expiração STALE (spec B) também marca failed — não é o failJob
+        !c.sql.includes('WITH expired'),
     )
     expect(fail?.params).toContain('ALLERGEN_IN_OUTPUT')
   })
@@ -174,6 +178,8 @@ describe('processJobStep — guardrails do dia (O4)', () => {
         ['FROM diet_jobs WHERE id', [{ ...jobRow, conversation_id: CONV, days_completed: 6 }]],
         ['SET step_started_at', [{ step_token: LOCK_TOKEN }]],
         ['SET days_completed', [{ id: JOB }]],
+        // finalizeJob é condicional: só segue (marcador, post) se completou o job.
+        ["SET status = 'completed'", [{ id: JOB }]],
       ],
       {
         parse: async () => ({
@@ -251,7 +257,11 @@ describe('processJobStep — lock em voo (OP1)', () => {
       code: 'DIET_STEP_FAILED',
     })
     const fail = calls.find(
-      (c) => c.sql.includes("status = 'failed'") && c.sql.includes('diet_jobs'),
+      (c) =>
+        c.sql.includes("status = 'failed'") &&
+        c.sql.includes('diet_jobs') &&
+        // a expiração STALE (spec B) também marca failed — não é o failJob
+        !c.sql.includes('WITH expired'),
     )
     expect(fail?.sql).toContain('step_started_at = NULL')
     expect(fail?.sql).toContain('step_token = NULL')
@@ -287,7 +297,11 @@ describe('processJobStep — lock em voo (OP1)', () => {
     // deixado preso pelos 300s inteiros por um erro que não é o
     // CONCURRENT_STEP esperado.
     const fail = calls.find(
-      (c) => c.sql.includes("status = 'failed'") && c.sql.includes('diet_jobs'),
+      (c) =>
+        c.sql.includes("status = 'failed'") &&
+        c.sql.includes('diet_jobs') &&
+        // a expiração STALE (spec B) também marca failed — não é o failJob
+        !c.sql.includes('WITH expired'),
     )
     expect(fail).toBeDefined()
     expect(fail?.sql).toContain('step_started_at = NULL')

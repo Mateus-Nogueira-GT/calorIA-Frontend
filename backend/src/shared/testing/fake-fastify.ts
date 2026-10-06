@@ -6,8 +6,11 @@ import type { FastifyInstance } from 'fastify'
  * injetáveis. Não importa vitest — é um arquivo de src comum.
  */
 
-/** Rota: substring do SQL → linhas devolvidas, ou um Error para a query rejeitar. */
-export type DbRoute = [substring: string, rows: unknown[] | Error]
+/**
+ * Rota: substring do SQL → linhas devolvidas, um Error para a query rejeitar,
+ * ou uma função chamada a cada query (respostas diferentes por chamada).
+ */
+export type DbRoute = [substring: string, rows: unknown[] | Error | (() => unknown[])]
 
 export interface OpenAiHandlers {
   chatCreate?: (params: unknown) => Promise<unknown>
@@ -17,7 +20,12 @@ export interface OpenAiHandlers {
 export interface FakeFastify {
   fastify: FastifyInstance
   calls: { sql: string; params: unknown[] }[]
-  openaiCalls: { kind: 'chat' | 'parse'; params: Record<string, unknown> }[]
+  openaiCalls: {
+    kind: 'chat' | 'parse'
+    params: Record<string, unknown>
+    /** 2º argumento do SDK (RequestOptions: timeout, maxRetries...). */
+    options?: Record<string, unknown>
+  }[]
   logs: { level: string; msg: string }[]
 }
 
@@ -29,7 +37,8 @@ export function fakeFastify(routes: DbRoute[] = [], openai: OpenAiHandlers = {})
   const db = (strings: TemplateStringsArray, ...params: unknown[]) => {
     const sql = strings.join(' ? ')
     calls.push({ sql, params })
-    const rows = routes.find(([sub]) => sql.includes(sub))?.[1] ?? []
+    const route = routes.find(([sub]) => sql.includes(sub))?.[1] ?? []
+    const rows = typeof route === 'function' ? route() : route
     if (rows instanceof Error) return Promise.reject(rows)
     return Promise.resolve(Object.assign([...rows], { count: rows.length }))
   }
@@ -66,8 +75,8 @@ export function fakeFastify(routes: DbRoute[] = [], openai: OpenAiHandlers = {})
       beta: {
         chat: {
           completions: {
-            parse: (params: Record<string, unknown>) => {
-              openaiCalls.push({ kind: 'parse', params })
+            parse: (params: Record<string, unknown>, options?: Record<string, unknown>) => {
+              openaiCalls.push({ kind: 'parse', params, options })
               return parse(params)
             },
           },

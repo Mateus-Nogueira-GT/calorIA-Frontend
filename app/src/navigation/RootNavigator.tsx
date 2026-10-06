@@ -141,10 +141,10 @@ export function RootNavigator(): React.JSX.Element {
   useEffect(() => {
     if (!hasHydrated || !isAuthenticated) return;
     void (async () => {
+      // pending/running → religa o polling; failed (último job recuperável)
+      // → só mostra a falha com "Tentar novamente", sem polling.
       const job = await dietService.getActiveJob();
-      if (job && (job.status === 'pending' || job.status === 'running')) {
-        void useCoachStore.getState().runDietGeneration(job.jobId);
-      }
+      if (job) void useCoachStore.getState().resumeDietJob(job);
     })();
   }, [hasHydrated, isAuthenticated]);
 

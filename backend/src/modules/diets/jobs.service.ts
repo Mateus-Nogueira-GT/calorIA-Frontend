@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { FastifyInstance } from 'fastify'
+import { APIConnectionTimeoutError } from 'openai'
 import { zodResponseFormat } from 'openai/helpers/zod.js'
 import { buildModelsField, checkDailyQuota, logAiUsage } from '../../shared/ai-usage.js'
 import {
@@ -38,7 +39,49 @@ export interface JobStatus {
   daysCompleted: number
   totalDays: number
   dietId: string | null
+  /** Texto cru gravado em diet_jobs.error (mantido por compatibilidade). */
   error: string | null
+  /**
+   * Código da falha quando status = 'failed' (null caso contrário):
+   * AI_QUOTA_EXCEEDED | STALE | STEP_TIMEOUT | ALLERGEN_IN_OUTPUT |
+   * DAY_VALIDATION_FAILED | RECONCILE_FAILED | INVALID_JOB_INPUT |
+   * DIET_STEP_FAILED (genérico/legado).
+   */
+  errorCode: string | null
+  /** Mensagem amigável em pt-BR para mostrar ao usuário (null se não failed). */
+  errorMessage: string | null
+}
+
+// ─── Códigos de falha do job (spec B, 2026-10-05) ────────────────────────────
+//
+// Sem migration: o código vai na própria coluna diet_jobs.error (TEXT), como
+// prefixo — `CODE` ou `CODE: detalhe`. Os códigos dos guardrails já eram
+// gravados assim; o texto livre legado (String(err), 'invalid_input') é
+// traduzido na leitura.
+
+/** Job em voo sem progresso (updated_at) há mais que isso expira como STALE. */
+export const STALE_JOB_MS = 10 * 60 * 1000
+
+const GUARDRAIL_MESSAGE =
+  'A dieta gerada não passou nas verificações de segurança. Tente novamente.'
+const GENERIC_STEP_MESSAGE = 'Falha ao gerar um dia da dieta. Tente novamente.'
+const ERROR_MESSAGES: Record<string, string> = {
+  AI_QUOTA_EXCEEDED: 'Limite diário de IA atingido. Tente amanhã.',
+  STALE:
+    'A geração da dieta parou de responder. Toque em "Tentar novamente" para continuar de onde parou.',
+  STEP_TIMEOUT: 'A IA demorou demais para gerar este dia. Tente novamente.',
+  ALLERGEN_IN_OUTPUT: GUARDRAIL_MESSAGE,
+  DAY_VALIDATION_FAILED: GUARDRAIL_MESSAGE,
+  RECONCILE_FAILED: GUARDRAIL_MESSAGE,
+  INVALID_JOB_INPUT: 'Dados da geração inválidos. Refaça a conversa com o coach.',
+  DIET_STEP_FAILED: GENERIC_STEP_MESSAGE,
+}
+
+/** Extrai o código do texto gravado em diet_jobs.error. */
+export function errorCodeOf(error: string | null): string {
+  if (error === 'invalid_input') return 'INVALID_JOB_INPUT' // legado
+  const m = error ? /^([A-Z][A-Z0-9_]{2,})(?::|$)/.exec(error) : null
+  return m ? m[1] : 'DIET_STEP_FAILED'
 }
 
 interface DietTargets {
@@ -97,6 +140,8 @@ export async function getPendingJob(
   fastify: FastifyInstance,
   userId: string,
 ): Promise<{ id: string; diet_id: string } | null> {
+  // Job preso não pode bloquear o chat (tool escondida) nem uma geração nova.
+  await expireStaleJobs(fastify, userId)
   const [row] = await fastify.db<{ id: string; diet_id: string }[]>`
     SELECT id, diet_id
     FROM diet_jobs
@@ -280,6 +325,7 @@ interface JobRow {
 }
 
 function toStatus(job: JobRow): JobStatus {
+  const errorCode = job.status === 'failed' ? errorCodeOf(job.error) : null
   return {
     jobId: job.id,
     status: job.status,
@@ -287,6 +333,48 @@ function toStatus(job: JobRow): JobStatus {
     totalDays: job.total_days,
     dietId: job.diet_id,
     error: job.error,
+    errorCode,
+    errorMessage: errorCode ? (ERROR_MESSAGES[errorCode] ?? GENERIC_STEP_MESSAGE) : null,
+  }
+}
+
+/**
+ * Expira (failed 'STALE') os jobs em voo do usuário sem progresso há mais de
+ * STALE_JOB_MS — função morta pela Vercel no meio do step, 500 antes do lock:
+ * nada mais tiraria o job de 'running'. Sem job em background: roda no início
+ * de toda leitura (getJob, getActiveJob, getPendingJob, /step, /retry).
+ *
+ * Seguro sob concorrência: o UPDATE é condicional (Postgres reavalia o WHERE
+ * na versão mais nova da linha), então um step que acabou de persistir um dia
+ * (updated_at = NOW()) não é pego, e dois leitores simultâneos não brigam. Um
+ * lock vivo (step em andamento, < STEP_LOCK_EXPIRY_SECONDS) também protege o
+ * job. Limpa o lock e devolve a draft para 'failed' (o /retry a reabre).
+ *
+ * Devolve os jobs que ESTA chamada expirou. Falha aqui não derruba a leitura.
+ */
+async function expireStaleJobs(
+  fastify: FastifyInstance,
+  userId: string,
+): Promise<{ id: string; diet_id: string; created_at?: Date }[]> {
+  try {
+    return await fastify.db<{ id: string; diet_id: string; created_at?: Date }[]>`
+      WITH expired AS (
+        UPDATE diet_jobs
+        SET status = 'failed', error = 'STALE', step_started_at = NULL, step_token = NULL, updated_at = NOW()
+        WHERE user_id = ${userId} AND status IN ('pending', 'running')
+          AND updated_at < NOW() - make_interval(secs => ${STALE_JOB_MS / 1000})
+          AND (step_started_at IS NULL
+               OR step_started_at < NOW() - make_interval(secs => ${STEP_LOCK_EXPIRY_SECONDS}))
+        RETURNING id, diet_id, created_at
+      ), expired_drafts AS (
+        UPDATE diets SET status = 'failed', updated_at = NOW()
+        WHERE id IN (SELECT diet_id FROM expired) AND status = 'draft'
+      )
+      SELECT id, diet_id, created_at FROM expired
+    `
+  } catch (err) {
+    fastify.log.warn(err, 'Falha ao expirar jobs de dieta parados — seguindo com a leitura')
+    return []
   }
 }
 
@@ -304,6 +392,7 @@ export async function getJob(
   userId: string,
   jobId: string,
 ): Promise<JobStatus> {
+  await expireStaleJobs(fastify, userId)
   return toStatus(await loadJob(fastify, userId, jobId))
 }
 
@@ -317,21 +406,31 @@ export async function retryJob(
   userId: string,
   jobId: string,
 ): Promise<JobStatus> {
+  // Job preso em 'running' vira failed STALE aqui e já é reaberto abaixo.
+  await expireStaleJobs(fastify, userId)
   const job = await loadJob(fastify, userId, jobId)
   if (job.status !== 'failed') return toStatus(job)
 
-  await fastify.db.begin(async (sql) => {
-    await sql`
+  // Guard `AND status = 'failed'`: dois retries simultâneos (boot + aba Dieta)
+  // ou um step entre a leitura e o UPDATE não podem reabrir de novo nem
+  // devolver "running" sem ter reaberto nada.
+  const reopened = await fastify.db.begin(async (sql) => {
+    const rows = await sql`
       UPDATE diet_jobs SET status = 'running', error = NULL, updated_at = NOW()
-      WHERE id = ${jobId}
+      WHERE id = ${jobId} AND status = 'failed'
+      RETURNING id
     `
+    if (rows.length === 0) return false
     await sql`
       UPDATE diets SET status = 'draft', updated_at = NOW()
       WHERE id = ${job.diet_id} AND status = 'failed'
     `
+    return true
   })
 
-  return { ...toStatus(job), status: 'running', error: null }
+  // Perdeu a corrida: devolve o estado real em vez de afirmar "running".
+  if (!reopened) return toStatus(await loadJob(fastify, userId, jobId))
+  return toStatus({ ...job, status: 'running', error: null })
 }
 
 /**
@@ -340,6 +439,7 @@ export async function retryJob(
  * (app fechado no meio) — sem isso a dieta ficava parcial para sempre.
  */
 export async function getActiveJob(fastify: FastifyInstance, userId: string): Promise<JobStatus> {
+  await expireStaleJobs(fastify, userId)
   const [job] = await fastify.db<JobRow[]>`
     SELECT id, conversation_id, diet_id, status, input, total_days, days_completed, error
     FROM diet_jobs
@@ -347,12 +447,43 @@ export async function getActiveJob(fastify: FastifyInstance, userId: string): Pr
     ORDER BY created_at DESC
     LIMIT 1
   `
-  if (!job) throw new AppError(404, 'NO_ACTIVE_JOB', 'Nenhuma geração de dieta em andamento')
-  return toStatus(job)
+  if (job) return toStatus(job)
+
+  // Sem geração em voo: devolve o último job failed AINDA RECUPERÁVEL, para o
+  // boot do app mostrar a falha com "Tentar novamente". A expiração STALE pode
+  // ter acontecido numa leitura que o app nunca viu (getPendingJob no chat);
+  // sem isto o boot recebia 404 e a draft ficava failed para sempre.
+  // Recuperável = falhou nas últimas 24 h, a draft ainda é draft/failed (não
+  // virou active/replaced) e nenhum job mais novo do usuário a substituiu.
+  const [failed] = await fastify.db<JobRow[]>`
+    SELECT j.id, j.conversation_id, j.diet_id, j.status, j.input, j.total_days, j.days_completed, j.error
+    FROM diet_jobs j
+    JOIN diets d ON d.id = j.diet_id
+    WHERE j.user_id = ${userId} AND j.status = 'failed'
+      AND j.updated_at > NOW() - make_interval(hours => 24)
+      AND d.status IN ('draft', 'failed')
+      AND NOT EXISTS (
+        SELECT 1 FROM diet_jobs n
+        WHERE n.user_id = j.user_id AND n.created_at > j.created_at
+      )
+    ORDER BY j.created_at DESC
+    LIMIT 1
+  `
+  if (failed) return toStatus(failed)
+  throw new AppError(404, 'NO_ACTIVE_JOB', 'Nenhuma geração de dieta em andamento')
 }
 
 /** O4: uma regeneração com feedback; na segunda falha o job vai para failed. */
-const MAX_DAY_ATTEMPTS = 2
+export const MAX_DAY_ATTEMPTS = 2
+
+/**
+ * Orçamento de tempo do step (spec B): cada chamada de IA tem este timeout e
+ * NENHUM retry do SDK (maxRetries: 0 — o default 2 triplicava o pior caso).
+ * MAX_DAY_ATTEMPTS × timeout = 240 s < 270 s, abaixo do maxDuration de 300 s:
+ * o step estoura de forma tratável (failJob STEP_TIMEOUT) antes de a Vercel
+ * matar a function sem liberar o lock nem marcar o job.
+ */
+export const DAY_GENERATION_TIMEOUT_MS = 120_000
 
 // OP1: expira quando a function não pode mais existir — mesmo teto do
 // maxDuration (300s) do endpoint. Com MAX_DAY_ATTEMPTS=2 e timeout de 120s por
@@ -395,8 +526,8 @@ async function generateDay(
       // Reasoning baixo pra reduzir a latência por dia.
       reasoning_effort: 'low',
     },
-    // Timeout explícito abaixo do maxDuration (300s) pra falhar tratável.
-    { timeout: 120_000 },
+    // Orçamento: ver DAY_GENERATION_TIMEOUT_MS (sem retry do SDK).
+    { timeout: DAY_GENERATION_TIMEOUT_MS, maxRetries: 0 },
   )
   logAiUsage(fastify, {
     feature: 'diet_day',
@@ -449,19 +580,23 @@ export async function processJobStep(
   userId: string,
   jobId: string,
 ): Promise<JobStatus> {
+  await expireStaleJobs(fastify, userId)
   const job = await loadJob(fastify, userId, jobId)
   if (job.status === 'completed' || job.status === 'failed') return toStatus(job)
 
   const dayNumber = job.days_completed + 1
   if (dayNumber > job.total_days) {
-    await fastify.db`UPDATE diet_jobs SET status = 'completed', updated_at = NOW() WHERE id = ${jobId}`
-    return { ...toStatus(job), status: 'completed' }
+    // Todos os dias já persistidos, mas a finalização não rodou (function
+    // morta entre o último dia e a transação de conclusão): roda a MESMA
+    // finalização — sem isso a dieta ficava draft e a antiga continuava ativa.
+    await finalizeJob(fastify, userId, job)
+    return toStatus({ ...job, status: 'completed', error: null })
   }
 
   const userData = parseInput(job.input)
   if (!userData) {
     fastify.log.error({ jobId, input: job.input }, 'Dados do job inválidos/irrecuperáveis')
-    await fastify.db`UPDATE diet_jobs SET status = 'failed', error = 'invalid_input', updated_at = NOW() WHERE id = ${jobId}`
+    await fastify.db`UPDATE diet_jobs SET status = 'failed', error = 'INVALID_JOB_INPUT', updated_at = NOW() WHERE id = ${jobId}`
     throw new AppError(
       422,
       'INVALID_JOB_INPUT',
@@ -482,11 +617,6 @@ export async function processJobStep(
     ORDER BY dd.day_number
   `
   const previousDays = summarizePreviousDays(prevRows)
-
-  // OP2: teto diário de tokens ANTES de adquirir o lock (OP1) — quem estourou
-  // a cota não deve travar um lock que não vai poder usar, nem esperar
-  // STEP_LOCK_EXPIRY_SECONDS para ele expirar sozinho.
-  await checkDailyQuota(fastify, userId)
 
   // OP1: lock em voo. Sem ele, dois aparelhos (ou o app reaberto) pagavam duas
   // gerações do mesmo dia — o lock otimista lá embaixo só evitava persistir em
@@ -513,6 +643,24 @@ export async function processJobStep(
   // um chamador atrasado (lock já expirado e reassumido por outro) apague o
   // lock vivo de quem é dono agora (finding 3 da revisão da task 16).
   const lockToken = acquired[0].step_token
+
+  // OP2: teto diário de tokens. Fica DEPOIS do lock (spec B, 2026-10-05): o
+  // 429 antes do lock deixava o job 'running' para sempre e o app tentando
+  // de novo calado. Agora a cota estourada falha o job (liberando o lock na
+  // hora) e o /step responde 200 com status 'failed' + AI_QUOTA_EXCEEDED.
+  try {
+    await checkDailyQuota(fastify, userId)
+  } catch (err) {
+    if (err instanceof AppError && err.code === 'AI_QUOTA_EXCEEDED') {
+      await failJob(fastify, jobId, job.diet_id, 'AI_QUOTA_EXCEEDED', lockToken)
+      return toStatus({ ...job, status: 'failed', error: 'AI_QUOTA_EXCEEDED' })
+    }
+    await fastify.db`
+      UPDATE diet_jobs SET step_started_at = NULL, step_token = NULL
+      WHERE id = ${jobId} AND step_token = ${lockToken}
+    `
+    throw err
+  }
 
   // 1) Gera o dia (chamada longa — SEM segurar transação/lock) e passa pelos
   //    guardrails (O4): alérgeno, kcal, reconcile, estrutura. Uma regeneração
@@ -554,9 +702,14 @@ export async function processJobStep(
     aiDay = result.day
   } catch (err) {
     if (err instanceof AppError) throw err
+    if (isTimeoutError(err)) {
+      fastify.log.error({ err, jobId, dayNumber }, 'IA estourou o orçamento de tempo do dia')
+      await failJob(fastify, jobId, job.diet_id, 'STEP_TIMEOUT', lockToken)
+      throw new AppError(502, 'STEP_TIMEOUT', ERROR_MESSAGES.STEP_TIMEOUT)
+    }
     fastify.log.error({ err, jobId, dayNumber }, 'Falha ao gerar dia da dieta')
-    await failJob(fastify, jobId, job.diet_id, String(err), lockToken)
-    throw new AppError(502, 'DIET_STEP_FAILED', 'Falha ao gerar um dia da dieta. Tente novamente.')
+    await failJob(fastify, jobId, job.diet_id, `DIET_STEP_FAILED: ${String(err)}`, lockToken)
+    throw new AppError(502, 'DIET_STEP_FAILED', GENERIC_STEP_MESSAGE)
   }
 
   // 2) Persiste o dia + incrementa com concorrência otimista (tx curta).
@@ -626,7 +779,11 @@ export async function processJobStep(
         UPDATE diet_jobs
         SET days_completed = ${dayNumber}, status = 'running', step_started_at = NULL, step_token = NULL, updated_at = NOW()
         WHERE id = ${jobId} AND days_completed = ${dayNumber - 1}
+          AND step_token = ${lockToken} AND status IN ('pending', 'running')
       `
+      // 0 linhas: outra chamada avançou o dia, OU este step sobreviveu ao
+      // próprio lock (expirado/reassumido, ou job já failed STALE) — nos dois
+      // casos não persiste nem ressuscita o job (rollback da tx).
       if (res.count === 0) throw new Error('CONCURRENT_STEP')
     })
   } catch (err) {
@@ -643,63 +800,86 @@ export async function processJobStep(
     // conexão caiu, constraint, o que for — não pode deixar o lock preso nem
     // pular o failJob. Mesmo tratamento do bloco de geração acima.
     fastify.log.error({ err, jobId, dayNumber }, 'Falha ao persistir o dia da dieta')
-    await failJob(fastify, jobId, job.diet_id, String(err), lockToken)
-    throw new AppError(502, 'DIET_STEP_FAILED', 'Falha ao gerar um dia da dieta. Tente novamente.')
+    await failJob(fastify, jobId, job.diet_id, `DIET_STEP_FAILED: ${String(err)}`, lockToken)
+    throw new AppError(502, 'DIET_STEP_FAILED', GENERIC_STEP_MESSAGE)
   }
 
-  // 3) Finaliza se foi o último dia — SÓ AGORA a dieta nova substitui a antiga
-  // (transação curta: arquiva a ativa + promove a draft + completa o job).
+  // 3) Finaliza se foi o último dia — SÓ AGORA a dieta nova substitui a antiga.
   const done = dayNumber >= job.total_days
-  if (done) {
-    await fastify.db.begin(async (sql) => {
-      await sql`UPDATE diet_jobs SET status = 'completed', updated_at = NOW() WHERE id = ${jobId}`
-      await sql`
-        UPDATE diets SET status = 'replaced', updated_at = NOW()
-        WHERE user_id = ${userId} AND status = 'active' AND id <> ${job.diet_id}
-      `
-      await sql`
-        UPDATE diets SET status = 'active', updated_at = NOW()
-        WHERE id = ${job.diet_id} AND status IN ('draft', 'failed')
-      `
-    })
-    if (job.conversation_id) {
-      try {
-        // Concatena via JSONB (não lê+regrava o array): o job roda concorrente
-        // com o chat do usuário, e um read-modify-write aqui derrubaria
-        // mensagens enviadas enquanto o último dia gerava.
-        const marker = JSON.stringify([{ role: 'assistant', content: DIET_COMPLETED_MARKER }])
-        await fastify.db`
-          UPDATE chat_history
-          SET status = 'completed', diet_id = ${job.diet_id},
-              messages = messages || ${marker}::jsonb,
-              updated_at = NOW()
-          WHERE id = ${job.conversation_id}
-        `
-      } catch (err) {
-        fastify.log.warn(err, 'Falha ao marcar chat_history como completed')
-      }
-    }
+  if (done) await finalizeJob(fastify, userId, job)
+
+  return toStatus({
+    ...job,
+    status: done ? 'completed' : 'running',
+    days_completed: dayNumber,
+    error: null,
+  })
+}
+
+function isTimeoutError(err: unknown): boolean {
+  return (
+    err instanceof APIConnectionTimeoutError ||
+    (err instanceof Error && err.name === 'APIConnectionTimeoutError')
+  )
+}
+
+/**
+ * Conclui o job: transação curta que completa o job, arquiva a dieta ativa
+ * anterior e promove a draft — depois o marcador no chat e o post no feed.
+ *
+ * Condicional (`status IN ('pending','running')`): só quem efetivamente
+ * completou o job segue adiante — dois chamadores (o último /step e um
+ * /step atrasado no ramo dayNumber > total_days) não postam em dobro.
+ */
+async function finalizeJob(fastify: FastifyInstance, userId: string, job: JobRow): Promise<void> {
+  const jobId = job.id
+  let finished = false
+  await fastify.db.begin(async (sql) => {
+    const res = await sql`
+      UPDATE diet_jobs SET status = 'completed', updated_at = NOW()
+      WHERE id = ${jobId} AND status IN ('pending', 'running')
+      RETURNING id
+    `
+    if (res.count === 0) return
+    finished = true
+    await sql`
+      UPDATE diets SET status = 'replaced', updated_at = NOW()
+      WHERE user_id = ${userId} AND status = 'active' AND id <> ${job.diet_id}
+    `
+    await sql`
+      UPDATE diets SET status = 'active', updated_at = NOW()
+      WHERE id = ${job.diet_id} AND status IN ('draft', 'failed')
+    `
+  })
+  if (!finished) return
+  if (job.conversation_id) {
     try {
-      await createSystemPost(
-        fastify,
-        userId,
-        'diet_generated',
-        'Nova dieta gerada com o Coach IA! 🥗',
-        {
-          diet_id: job.diet_id,
-        },
-      )
+      // Concatena via JSONB (não lê+regrava o array): o job roda concorrente
+      // com o chat do usuário, e um read-modify-write aqui derrubaria
+      // mensagens enviadas enquanto o último dia gerava.
+      const marker = JSON.stringify([{ role: 'assistant', content: DIET_COMPLETED_MARKER }])
+      await fastify.db`
+        UPDATE chat_history
+        SET status = 'completed', diet_id = ${job.diet_id},
+            messages = messages || ${marker}::jsonb,
+            updated_at = NOW()
+        WHERE id = ${job.conversation_id}
+      `
     } catch (err) {
-      fastify.log.warn(err, 'Falha ao publicar post de dieta gerada')
+      fastify.log.warn(err, 'Falha ao marcar chat_history como completed')
     }
   }
-
-  return {
-    jobId,
-    status: done ? 'completed' : 'running',
-    daysCompleted: dayNumber,
-    totalDays: job.total_days,
-    dietId: job.diet_id,
-    error: job.error,
+  try {
+    await createSystemPost(
+      fastify,
+      userId,
+      'diet_generated',
+      'Nova dieta gerada com o Coach IA! 🥗',
+      {
+        diet_id: job.diet_id,
+      },
+    )
+  } catch (err) {
+    fastify.log.warn(err, 'Falha ao publicar post de dieta gerada')
   }
 }

@@ -3,13 +3,19 @@ import { render, waitFor } from '@testing-library/react-native';
 import { RootNavigator } from './RootNavigator';
 import { useAuthStore } from '@features/auth/store';
 import { profileService } from '@shared/services/profile.service';
+import { dietService } from '@shared/services/diet.service';
+import { useCoachStore } from '@features/coach/store';
 
 jest.mock('@shared/services/profile.service', () => ({
   ...jest.requireActual('@shared/services/profile.service'),
   profileService: { getMe: jest.fn() },
 }));
 jest.mock('@shared/services/diet.service', () => ({
-  dietService: { getActiveJob: jest.fn().mockResolvedValue(null) },
+  dietService: {
+    getActiveJob: jest.fn().mockResolvedValue(null),
+    stepJob: jest.fn(),
+    retryJob: jest.fn(),
+  },
 }));
 
 const mockGetMe = profileService.getMe as jest.MockedFunction<typeof profileService.getMe>;
@@ -79,5 +85,72 @@ describe('RootNavigator — gate de perfil incompleto (R6)', () => {
     render(<RootNavigator />);
     await waitFor(() => expect(useAuthStore.getState().profileComplete).toBe(true));
     expect(mockGetMe).not.toHaveBeenCalled();
+  });
+});
+
+describe('RootNavigator — retomada da geração no boot', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    useCoachStore.getState().resetDietGeneration();
+  });
+
+  it('job failed no boot mostra a falha com a mensagem e não liga o polling', async () => {
+    autenticado(true);
+    (dietService.getActiveJob as jest.Mock).mockResolvedValueOnce({
+      jobId: 'j1',
+      status: 'failed',
+      daysCompleted: 4,
+      totalDays: 7,
+      dietId: 'd1',
+      error: 'STEP_TIMEOUT',
+      errorCode: 'STEP_TIMEOUT',
+      errorMessage: 'A geração parou de responder.',
+    });
+    render(<RootNavigator />);
+    await waitFor(() =>
+      expect(useCoachStore.getState().dietJob).toMatchObject({
+        status: 'failed',
+        daysCompleted: 4,
+        errorMessage: 'A geração parou de responder.',
+      }),
+    );
+    expect(useCoachStore.getState().activeJobId).toBe('j1');
+    expect(dietService.stepJob).not.toHaveBeenCalled();
+    expect(dietService.retryJob).not.toHaveBeenCalled();
+  });
+
+  it('job failed STALE no boot (app ficou fechado) reabre sozinho e retoma a geração', async () => {
+    autenticado(true);
+    (dietService.getActiveJob as jest.Mock).mockResolvedValueOnce({
+      jobId: 'j1',
+      status: 'failed',
+      daysCompleted: 4,
+      totalDays: 7,
+      dietId: 'd1',
+      error: 'STALE',
+      errorCode: 'STALE',
+      errorMessage: 'A geração parou de responder.',
+    });
+    (dietService.retryJob as jest.Mock).mockResolvedValueOnce({
+      jobId: 'j1',
+      status: 'running',
+      daysCompleted: 4,
+      totalDays: 7,
+      dietId: 'd1',
+      error: null,
+    });
+    (dietService.stepJob as jest.Mock).mockResolvedValue({
+      jobId: 'j1',
+      status: 'completed',
+      daysCompleted: 7,
+      totalDays: 7,
+      dietId: 'd1',
+      error: null,
+    });
+    render(<RootNavigator />);
+    await waitFor(() => expect(useCoachStore.getState().dietJob?.status).toBe('completed'));
+    expect(dietService.retryJob).toHaveBeenCalledTimes(1);
+    expect(dietService.retryJob).toHaveBeenCalledWith('j1');
+    expect(dietService.stepJob).toHaveBeenCalledWith('j1');
   });
 });
