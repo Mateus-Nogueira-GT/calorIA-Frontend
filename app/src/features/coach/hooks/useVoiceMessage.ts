@@ -12,6 +12,8 @@ import {
 
 /** Teto da gravação: ao chegar nele, para e envia sozinho. */
 export const MAX_RECORDING_SECONDS = 60;
+/** Abaixo disso foi toque sem querer: descarta sem gastar uma transcrição. */
+export const MIN_RECORDING_MS = 1000;
 
 export type VoiceStatus = 'idle' | 'starting' | 'recording' | 'transcribing';
 
@@ -38,7 +40,7 @@ function showTranscribeError(e: unknown): void {
     ? (e.response?.data as { error?: string } | undefined)?.error
     : undefined;
 
-  if (status === 422) {
+  if (status === 422 || code === 'INVALID_AUDIO') {
     Alert.alert('Não entendi o áudio, tenta de novo', 'Fale perto do microfone e grave outra vez.');
   } else if (status === 503) {
     Alert.alert('Áudio indisponível no momento', 'Enquanto isso, escreva sua mensagem.');
@@ -53,6 +55,15 @@ function showTranscribeError(e: unknown): void {
   }
 }
 
+function showTooShort(): void {
+  Alert.alert('Áudio muito curto', 'Segure um pouco mais para gravar sua mensagem.');
+}
+
+/** Falha do aparelho (parar/ler a gravação), não da rede. */
+function showRecordingError(): void {
+  Alert.alert('Não foi possível gravar o áudio', 'Tente de novo.');
+}
+
 /**
  * Mensagem por voz para o coach: grava (até 60 s), transcreve no backend e
  * entrega o texto ao `onSend` — o usuário vê a própria fala como bolha.
@@ -62,6 +73,7 @@ export function useVoiceMessage({ onSend, disabled }: Options) {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const statusRef = useRef<VoiceStatus>('idle');
   const recordingRef = useRef<ActiveRecording | null>(null);
+  const startedAtRef = useRef(0);
   const mountedRef = useRef(true);
   const onSendRef = useRef(onSend);
   const disabledRef = useRef(disabled);
@@ -99,6 +111,7 @@ export function useVoiceMessage({ onSend, disabled }: Options) {
         return;
       }
       recordingRef.current = recording;
+      startedAtRef.current = Date.now();
       setElapsedSeconds(0);
       setStatus('recording');
     } catch {
@@ -111,10 +124,25 @@ export function useVoiceMessage({ onSend, disabled }: Options) {
     const recording = recordingRef.current;
     if (!recording) return;
     recordingRef.current = null;
+
+    if (Date.now() - startedAtRef.current < MIN_RECORDING_MS) {
+      setStatus('idle');
+      await recording.cancel().catch(() => undefined);
+      if (mountedRef.current) showTooShort();
+      return;
+    }
+
     setStatus('transcribing');
+    let audio: string;
+    try {
+      audio = await recording.stop();
+    } catch {
+      setStatus('idle');
+      if (mountedRef.current) showRecordingError();
+      return;
+    }
     let text: string;
     try {
-      const audio = await recording.stop();
       text = await coachService.transcribe(audio, VOICE_MIME_TYPE);
     } catch (e) {
       setStatus('idle');

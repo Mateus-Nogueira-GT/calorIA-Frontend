@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals
 import { act, renderHook } from '@testing-library/react-native';
 import { Alert } from 'react-native';
 import { AxiosError, AxiosHeaders } from 'axios';
-import { useVoiceMessage, MAX_RECORDING_SECONDS } from './useVoiceMessage';
+import { useVoiceMessage, MAX_RECORDING_SECONDS, MIN_RECORDING_MS } from './useVoiceMessage';
 
 const mockStop = jest.fn<() => Promise<string>>();
 const mockCancel = jest.fn<() => Promise<void>>();
@@ -57,6 +57,16 @@ describe('useVoiceMessage', () => {
     return renderHook(() => useVoiceMessage({ onSend, disabled }));
   }
 
+  /** Começa a gravar e "fala" por 1,5 s (acima do mínimo). */
+  async function startAndSpeak(result: { current: ReturnType<typeof useVoiceMessage> }) {
+    await act(async () => {
+      await result.current.start();
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(1500);
+    });
+  }
+
   it('começa parado e suportado', () => {
     const { result } = setup();
     expect(result.current.isSupported).toBe(true);
@@ -79,9 +89,7 @@ describe('useVoiceMessage', () => {
 
   it('stop → transcreve o base64 e chama onSend com o texto', async () => {
     const { result } = setup();
-    await act(async () => {
-      await result.current.start();
-    });
+    await startAndSpeak(result);
     await act(async () => {
       await result.current.stop();
     });
@@ -95,9 +103,7 @@ describe('useVoiceMessage', () => {
     let resolveTranscribe: (t: string) => void = () => {};
     mockTranscribe.mockReturnValue(new Promise<string>((r) => (resolveTranscribe = r)));
     const { result } = setup();
-    await act(async () => {
-      await result.current.start();
-    });
+    await startAndSpeak(result);
     let stopping: Promise<void> = Promise.resolve();
     await act(async () => {
       stopping = result.current.stop();
@@ -177,9 +183,7 @@ describe('useVoiceMessage', () => {
   async function stopWithError(err: unknown) {
     mockTranscribe.mockRejectedValue(err);
     const { result } = setup();
-    await act(async () => {
-      await result.current.start();
-    });
+    await startAndSpeak(result);
     await act(async () => {
       await result.current.stop();
     });
@@ -206,6 +210,46 @@ describe('useVoiceMessage', () => {
   it('erro genérico (rede/502) → alerta para tentar de novo', async () => {
     const [title, message] = await stopWithError(httpError(502, 'TRANSCRIBE_FAILED'));
     expect(`${title} ${message ?? ''}`).toMatch(/tente de novo/i);
+  });
+
+  it('422 INVALID_AUDIO (provedor recusou o áudio) → mesma mensagem do 422', async () => {
+    const [title] = await stopWithError(httpError(422, 'INVALID_AUDIO'));
+    expect(title).toBe('Não entendi o áudio, tenta de novo');
+  });
+
+  it(`gravação com menos de ${MIN_RECORDING_MS} ms → descarta sem enviar e pede para gravar mais`, async () => {
+    expect(MIN_RECORDING_MS).toBe(1000);
+    const { result } = setup();
+    await act(async () => {
+      await result.current.start();
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(400);
+    });
+    await act(async () => {
+      await result.current.stop();
+    });
+    expect(mockCancel).toHaveBeenCalled();
+    expect(mockStop).not.toHaveBeenCalled();
+    expect(mockTranscribe).not.toHaveBeenCalled();
+    expect(onSend).not.toHaveBeenCalled();
+    expect(result.current.status).toBe('idle');
+    const [title, message] = alertSpy.mock.calls[0];
+    expect(`${title} ${message ?? ''}`).toMatch(/um pouco mais/i);
+  });
+
+  it('falha local ao parar/ler a gravação → "Não foi possível gravar o áudio", sem rede', async () => {
+    mockStop.mockRejectedValue(new Error('RECORDING_STOP_FAILED'));
+    const { result } = setup();
+    await startAndSpeak(result);
+    await act(async () => {
+      await result.current.stop();
+    });
+    expect(mockTranscribe).not.toHaveBeenCalled();
+    expect(onSend).not.toHaveBeenCalled();
+    expect(result.current.status).toBe('idle');
+    const [title, message] = alertSpy.mock.calls[0];
+    expect(`${title} ${message ?? ''}`).toBe('Não foi possível gravar o áudio Tente de novo.');
   });
 
   it('desmontar no meio da gravação descarta o áudio', async () => {

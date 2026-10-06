@@ -50,9 +50,15 @@ describe('ChatInput', () => {
   });
 
   afterEach(() => {
-    alertSpy.mockRestore();
+    jest.restoreAllMocks();
     jest.useRealTimers();
   });
+
+  /** Simula 1,5 s de fala (o hook descarta gravações com menos de 1 s). */
+  function speakFor(ms = 1500) {
+    const realNow = Date.now.bind(Date);
+    jest.spyOn(Date, 'now').mockImplementation(() => realNow() + ms);
+  }
 
   it('chama onSend com o texto ao pressionar enviar', async () => {
     const onSend = jest.fn().mockResolvedValue(true);
@@ -129,6 +135,7 @@ describe('ChatInput', () => {
     await act(async () => {
       fireEvent.press(getByTestId('chat-mic-btn'));
     });
+    speakFor();
     await act(async () => {
       fireEvent.press(getByTestId('chat-mic-stop-btn'));
     });
@@ -162,6 +169,7 @@ describe('ChatInput', () => {
     await act(async () => {
       fireEvent.press(getByTestId('chat-mic-btn'));
     });
+    speakFor();
     await act(async () => {
       fireEvent.press(getByTestId('chat-mic-stop-btn'));
     });
@@ -193,6 +201,7 @@ describe('ChatInput', () => {
     await act(async () => {
       fireEvent.press(getByTestId('chat-mic-btn'));
     });
+    speakFor();
     await act(async () => {
       fireEvent.press(getByTestId('chat-mic-stop-btn'));
     });
@@ -207,6 +216,7 @@ describe('ChatInput', () => {
     await act(async () => {
       fireEvent.press(getByTestId('chat-mic-btn'));
     });
+    speakFor();
     await act(async () => {
       fireEvent.press(getByTestId('chat-mic-stop-btn'));
     });

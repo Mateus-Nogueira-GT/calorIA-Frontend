@@ -5,6 +5,13 @@ import type { TranscribeMimeType } from './coach.service';
 export const isVoiceSupported = false;
 export const VOICE_MIME_TYPE: TranscribeMimeType = 'audio/webm';
 
+export class VoiceRecordingError extends Error {
+  constructor(code: string, readonly details?: unknown) {
+    super(code);
+    this.name = 'VoiceRecordingError';
+  }
+}
+
 export interface ActiveRecording {
   stop(): Promise<string>;
   cancel(): Promise<void>;

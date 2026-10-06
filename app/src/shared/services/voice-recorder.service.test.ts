@@ -4,6 +4,7 @@ import {
   requestMicrophonePermission,
   startVoiceRecording,
   VOICE_MIME_TYPE,
+  VoiceRecordingError,
 } from './voice-recorder.service';
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -75,5 +76,60 @@ describe('voice-recorder.service (nativo)', () => {
     const file = fs.__files[0];
     expect(file.base64).not.toHaveBeenCalled();
     expect(file.delete).toHaveBeenCalled();
+  });
+
+  it('construtor do gravador falha → restaura o modo de áudio e propaga o erro', async () => {
+    const Original = audio.AudioModule.AudioRecorder;
+    audio.AudioModule.AudioRecorder = function Broken() {
+      throw new Error('native boom');
+    };
+    try {
+      await expect(startVoiceRecording()).rejects.toThrow('native boom');
+    } finally {
+      audio.AudioModule.AudioRecorder = Original;
+    }
+    expect(audio.setAudioModeAsync).toHaveBeenLastCalledWith(
+      expect.objectContaining({ allowsRecording: false }),
+    );
+  });
+
+  it('stop() do nativo falha → apaga o arquivo temporário, libera e lança VoiceRecordingError', async () => {
+    const recording = await startVoiceRecording();
+    const rec = lastRecorder();
+    rec.uri = 'file:///cache/recording.m4a';
+    rec.stop.mockRejectedValueOnce(new Error('stop failed'));
+
+    const err = await recording.stop().catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(VoiceRecordingError);
+    const file = fs.__files[0];
+    expect(file.delete).toHaveBeenCalled();
+    expect(file.base64).not.toHaveBeenCalled();
+    expect(rec.release).toHaveBeenCalled();
+    expect(audio.setAudioModeAsync).toHaveBeenLastCalledWith(
+      expect.objectContaining({ allowsRecording: false }),
+    );
+  });
+
+  it('sem arquivo depois do stop → VoiceRecordingError', async () => {
+    const recording = await startVoiceRecording();
+    const rec = lastRecorder();
+    rec.stop.mockImplementationOnce(() => Promise.resolve());
+
+    await expect(recording.stop()).rejects.toBeInstanceOf(VoiceRecordingError);
+    expect(rec.release).toHaveBeenCalled();
+  });
+
+  it('falha ao ler o base64 → VoiceRecordingError e o arquivo é apagado', async () => {
+    const recording = await startVoiceRecording();
+    // O mock devolve Promise.resolve(__nextBase64): uma promise rejeitada vira falha de leitura.
+    const failedRead = Promise.reject(new Error('read failed'));
+    failedRead.catch(() => undefined);
+    fs.File.__nextBase64 = failedRead;
+    try {
+      await expect(recording.stop()).rejects.toBeInstanceOf(VoiceRecordingError);
+    } finally {
+      fs.File.__nextBase64 = 'QUFBQQ==';
+    }
+    expect(fs.__files[0].delete).toHaveBeenCalled();
   });
 });
