@@ -3,23 +3,23 @@
   "data": [
     {
       "path": "assets/fonts/Inter-Bold.ttf",
-      "sha1": "52b1e81f24e78b67a0cbb2c0d6e04526d6c585f5"
+      "sha1": "8a615210b9b84dacd926d2b136393e00065d282f"
     },
     {
       "path": "assets/fonts/Inter-ExtraBold.ttf",
-      "sha1": "a50a4308519c0bbf00d48fd58bff0d9e8618ee05"
+      "sha1": "205f593e1c0493ddfed26def23675bef78ed6d63"
     },
     {
       "path": "assets/fonts/Inter-Medium.ttf",
-      "sha1": "172e10a21e91c2cbcd787e0a94f96c6943d0a0e4"
+      "sha1": "a7833879265a58ef72c7848c6ba7b7ce45aa6225"
     },
     {
       "path": "assets/fonts/Inter-Regular.ttf",
-      "sha1": "604498e238517d9fb7895f31d4a1ee9dac3a719b"
+      "sha1": "073721c4ea71f701a5cc79afe3a3b51feebf0d48"
     },
     {
       "path": "assets/fonts/Inter-SemiBold.ttf",
-      "sha1": "6b0053f3161ff637d43f9c48dca406f18e7d9d53"
+      "sha1": "339906ca1fe85f218b0c138de25fa0a67e37ae7d"
     }
   ]
 }

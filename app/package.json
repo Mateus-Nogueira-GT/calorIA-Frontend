@@ -12,7 +12,8 @@
     "type-check": "tsc --noEmit",
     "test": "jest",
     "prepare": "husky",
-    "eas-build-pre-install": "node scripts/eas-write-env.js"
+    "eas-build-pre-install": "node scripts/eas-write-env.js",
+    "verify:android-fonts": "node scripts/verify-android-fonts.js"
   },
   "dependencies": {
     "@invertase/react-native-apple-authentication": "^2.5.1",

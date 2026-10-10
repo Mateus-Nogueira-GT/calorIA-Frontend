@@ -28,6 +28,9 @@ jobs:
 
       - run: npm ci
 
+      - name: fontes Android válidas e sincronizadas
+        run: npm run verify:android-fonts
+
       # ── Gates que BARRAM o merge ───────────────────────────────────────────
       - name: type-check
         run: npm run type-check

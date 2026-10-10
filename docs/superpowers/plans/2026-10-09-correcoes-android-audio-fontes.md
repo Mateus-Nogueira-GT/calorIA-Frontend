@@ -58,13 +58,14 @@ Data: 2026-10-09 · Status: implementação executada em 2026-10-10; validação
 
 **Arquivos principais:** os cinco `.ttf` em `app/android/app/src/main/assets/fonts/`, `app/android/link-assets-manifest.json`; um script pequeno em `app/scripts/` a criar; `app/package.json` e `.github/workflows/ci.yml` para o gate. As fontes válidas em `app/assets/fonts/` são a origem existente.
 
-- [ ] Criar verificação de arquivos de fonte e igualdade de bytes/hash origem → Android, usando Node e validação de fonte suficiente para identificar os TTF esperados. Confirmar falha com as cópias HTML atuais.
-- [ ] Verificar a interface da ferramenta `react-native-asset` instalada para atualização apenas Android. Se não houver opção segura, copiar explicitamente os cinco arquivos e atualizar o manifest no formato existente. Conferir a licença e os nomes das famílias.
-- [ ] Executar a verificação novamente; validar os metadados/fontes com ferramenta disponível e conferir que o diff contém apenas assets/manifest/gate esperados. Preservar iOS e fontes web.
-- [ ] Integrar o script ao CI como passo bloqueante antes de bundling/build. Evitar gate que apenas lê as fontes de origem ou aceita HTML por ter extensão `.ttf`.
-- [ ] Criar PR separado depois do áudio, com os gates da etapa 4 e o gate de fontes aprovados. Mudança nativa e runtime devem aparecer na descrição.
+- [x] Criar verificação de arquivos de fonte e igualdade de bytes/hash origem → Android, usando Node e validação de fonte suficiente para identificar os TTF esperados. Confirmar falha com as cópias HTML atuais.
+- [x] Verificar a interface da ferramenta `react-native-asset` instalada para atualização apenas Android. Se não houver opção segura, copiar explicitamente os cinco arquivos e atualizar o manifest no formato existente. Conferir a licença e os nomes das famílias.
+- [x] Executar a verificação novamente; validar os metadados/fontes com ferramenta disponível e conferir que o diff contém apenas assets/manifest/gate esperados. Preservar iOS e fontes web.
+- [x] Integrar o script ao CI como passo bloqueante antes de bundling/build. Evitar gate que apenas lê as fontes de origem ou aceita HTML por ter extensão `.ttf`.
+- [x] Criar PR separado depois do áudio, com os gates da etapa 4 e o gate de fontes aprovados. Mudança nativa e runtime devem aparecer na descrição.
 
 **Concluído quando:** as cinco cópias correspondem às fontes válidas, a verificação falha no estado antigo e passa no novo, e o CI passa a detectar essa divergência.
+
 
 ## 6. Verificar artefato e distribuição Android
 
@@ -87,5 +88,9 @@ Ao executar cada etapa, atualizar os checkboxes e registrar commit, comandos/res
 - A1/A2 reproduzidos antes da correção, incluindo troca real de abas sem desmontar Coach. Fontes antigas reprovaram o gate por conter HTML.
 - Implementados invalidação por operação/sessão/foco/AppState, AbortSignal até o envio ao chat, serialização e falha explícita de cleanup. Refresh antigo também foi corrigido após teste reproduzir a perda da nova sessão.
 - Revisão encontrou captura tardia durante preparação nativa; guard dentro do serviço e teste controlado corrigiram o problema antes da entrega.
-- Os registros de validação e os limites estão em [validação de áudio](../../android-audio-validacao-2026-10-10.md); fontes são entregues em uma revisão separada.
+- Os registros de validação e os limites estão em [validação de áudio](../../android-audio-validacao-2026-10-10.md) e [validação de fontes](../../android-fontes-validacao-2026-10-10.md).
 - Não há aparelho conectado nem AVD configurado. Smoke nativo Android/iOS, EAS assinado, OTA e Play Console continuam pendentes. Este estado não significa correção distribuída em produção.
+
+- PR de áudio: [#61](https://github.com/Mateus-Nogueira-GT/calorIA-Frontend/pull/61), commit `d82e80d`, rascunho sem assets nativos.
+- PR de fontes: [#62](https://github.com/Mateus-Nogueira-GT/calorIA-Frontend/pull/62), baseado no PR de áudio. CI de app/backend e previews aprovados em ambos os PRs.
+- AAB Gradle release local unsigned gerado e inspecionado: fontes corretas, mapping R8 e alinhamento ELF 64-bit de 16 KB. Isto não encerra as etapas EAS/Play nem smoke em aparelho acima.
