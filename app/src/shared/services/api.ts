@@ -1,4 +1,4 @@
-import axios from 'axios';
+import axios, { InternalAxiosRequestConfig } from 'axios';
 import { Platform } from 'react-native';
 import { API_BASE_URL, API_TIMEOUT } from '@env';
 import { useAuthStore } from '@features/auth/store';
@@ -10,10 +10,7 @@ import { useAuthStore } from '@features/auth/store';
  * (fail-fast) — o fallback de dev só existe sob __DEV__.
  * (o ATS do iOS bloqueia http e o app ficaria inoperante).
  */
-export function resolveBaseUrl(
-  envUrl: string | undefined,
-  platform: string = Platform.OS,
-): string {
+export function resolveBaseUrl(envUrl: string | undefined, platform: string = Platform.OS): string {
   if (envUrl) return envUrl;
   if (typeof __DEV__ !== 'undefined' && __DEV__) {
     return platform === 'android' ? 'http://10.0.2.2:3000' : 'http://localhost:3000';
@@ -38,7 +35,8 @@ api.interceptors.request.use((config) => {
   // fallback, salvar o perfil exigiria autenticar ANTES de saber se o perfil
   // salvou — e o dashboard montava com o request ainda em voo.
   // O refresh (abaixo) já usava o mesmo fallback.
-  const { token, pendingAuth } = useAuthStore.getState();
+  const { token, pendingAuth, sessionGeneration } = useAuthStore.getState();
+  Object.assign(config, { _caloriaSessionGeneration: sessionGeneration });
   const accessToken = token ?? pendingAuth?.token ?? null;
   if (accessToken) {
     config.headers.Authorization = `Bearer ${accessToken}`;
@@ -51,9 +49,10 @@ api.interceptors.request.use((config) => {
  * rejeitado → desloga) de FALHA DE REDE (offline/timeout → NÃO desloga;
  * o request original falha e o usuário tenta de novo quando voltar a conexão).
  */
-type RefreshResult = { token: string } | { token: null; reason: 'auth' | 'network' };
+type RefreshResult = { token: string } | { token: null; reason: 'auth' | 'network' | 'session' };
 
 let refreshPromise: Promise<RefreshResult> | null = null;
+let refreshGeneration: number | null = null;
 
 type SessionUser = NonNullable<ReturnType<typeof useAuthStore.getState>['user']>;
 
@@ -80,10 +79,17 @@ export function applyRefreshedSession(
 }
 
 async function refreshAccessToken(): Promise<RefreshResult> {
-  const { refreshToken, user, pendingAuth } = useAuthStore.getState();
+  const { refreshToken, user, pendingAuth, sessionGeneration } = useAuthStore.getState();
   const currentRefreshToken = refreshToken ?? pendingAuth?.refreshToken ?? null;
   const currentUser = user ?? pendingAuth?.user ?? null;
   if (!currentRefreshToken || !currentUser) return { token: null, reason: 'auth' };
+  const isCurrentSession = () => {
+    const auth = useAuthStore.getState();
+    return (
+      auth.sessionGeneration === sessionGeneration &&
+      (auth.user ?? auth.pendingAuth?.user)?.id === currentUser.id
+    );
+  };
 
   try {
     const { data } = await axios.post(
@@ -91,9 +97,11 @@ async function refreshAccessToken(): Promise<RefreshResult> {
       { refresh_token: currentRefreshToken },
       { timeout: Number(API_TIMEOUT) || 10000 },
     );
+    if (!isCurrentSession()) return { token: null, reason: 'session' };
     applyRefreshedSession(data.access_token, data.refresh_token, currentUser);
     return { token: data.access_token as string };
   } catch (err) {
+    if (!isCurrentSession()) return { token: null, reason: 'session' };
     const isAuthRejection =
       axios.isAxiosError(err) &&
       err.response != null &&
@@ -106,15 +114,34 @@ async function refreshAccessToken(): Promise<RefreshResult> {
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
-    const config = error.config;
+    const config = error.config as
+      | (InternalAxiosRequestConfig & {
+          _retry?: boolean;
+          _caloriaSessionGeneration?: number;
+        })
+      | undefined;
+    if (
+      config &&
+      (config.signal?.aborted ||
+        (config._caloriaSessionGeneration !== undefined &&
+          config._caloriaSessionGeneration !== useAuthStore.getState().sessionGeneration))
+    ) {
+      return Promise.reject(new axios.CanceledError());
+    }
     if (error.response?.status === 401 && config && !config._retry) {
       config._retry = true;
-      if (!refreshPromise) {
-        refreshPromise = refreshAccessToken().finally(() => {
-          refreshPromise = null;
+      const generation = useAuthStore.getState().sessionGeneration;
+      if (!refreshPromise || refreshGeneration !== generation) {
+        refreshGeneration = generation;
+        const task = refreshAccessToken().finally(() => {
+          if (refreshPromise === task) refreshPromise = null;
         });
+        refreshPromise = task;
       }
       const result = await refreshPromise;
+      if (generation !== useAuthStore.getState().sessionGeneration || config.signal?.aborted) {
+        return Promise.reject(new axios.CanceledError());
+      }
       if (result.token != null) {
         config.headers.Authorization = `Bearer ${result.token}`;
         return api(config);

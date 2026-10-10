@@ -1,5 +1,12 @@
+import axios from 'axios';
 import api from './api';
 import { todayString, tzOffsetMinutes } from '@shared/utils/date';
+
+/** Guard and cancellation for one voice operation; text callers omit it. */
+export interface VoiceRequestContext {
+  signal: AbortSignal;
+  isValid: () => boolean;
+}
 
 export interface CoachMessage {
   id: string;
@@ -53,40 +60,46 @@ export const coachService = {
         })),
       })),
 
-  sendMessage: (content: string, conversationId: string | null) =>
-    api
-      // Chat com IA pode levar mais que os 10s padrão do axios.
-      // date/tzOffsetMinutes locais: o coach monta o contexto do dia correto.
-      .post<BackendChatResponse>(
-        '/chat/message',
-        {
-          message: content,
-          conversation_id: conversationId,
-          date: todayString(),
-          tzOffsetMinutes: tzOffsetMinutes(),
-        },
-        { timeout: 60000 },
-      )
-      .then((r) => ({
-        conversationId: r.data.conversation_id,
-        message: {
-          id: `${r.data.conversation_id}-${Date.now()}`,
-          role: 'coach' as const,
-          content: r.data.message.content,
-          timestamp: r.data.message.created_at,
-          dietGenerated: r.data.diet_generated,
-          dietId: r.data.diet_id,
-          dietJobId: r.data.diet_job_id,
-        },
-      })),
+  sendMessage: (content: string, conversationId: string | null, voice?: VoiceRequestContext) => {
+    if (voice && (!voice.isValid() || voice.signal.aborted)) {
+      return Promise.reject(new axios.CanceledError());
+    }
+    return (
+      api
+        // Chat com IA pode levar mais que os 10s padrão do axios.
+        // date/tzOffsetMinutes locais: o coach monta o contexto do dia correto.
+        .post<BackendChatResponse>(
+          '/chat/message',
+          {
+            message: content,
+            conversation_id: conversationId,
+            date: todayString(),
+            tzOffsetMinutes: tzOffsetMinutes(),
+          },
+          { timeout: 60000, ...(voice ? { signal: voice.signal } : {}) },
+        )
+        .then((r) => ({
+          conversationId: r.data.conversation_id,
+          message: {
+            id: `${r.data.conversation_id}-${Date.now()}`,
+            role: 'coach' as const,
+            content: r.data.message.content,
+            timestamp: r.data.message.created_at,
+            dietGenerated: r.data.diet_generated,
+            dietId: r.data.diet_id,
+            dietJobId: r.data.diet_job_id,
+          },
+        }))
+    );
+  },
 
   /** Áudio em base64 puro (sem prefixo data:) → texto transcrito. */
-  transcribe: (audioBase64: string, mimeType: TranscribeMimeType) =>
+  transcribe: (audioBase64: string, mimeType: TranscribeMimeType, signal?: AbortSignal) =>
     api
       .post<{ text: string }>(
         '/chat/transcribe',
         { audio: audioBase64, mimeType },
-        { timeout: TRANSCRIBE_TIMEOUT_MS },
+        { timeout: TRANSCRIBE_TIMEOUT_MS, ...(signal ? { signal } : {}) },
       )
       .then((r) => r.data.text),
 };

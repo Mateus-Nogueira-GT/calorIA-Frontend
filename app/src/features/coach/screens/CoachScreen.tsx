@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, View } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useIsFocused, useNavigation } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { TabParamList } from '@navigation/types';
@@ -23,6 +23,7 @@ const conversationSuggestions = [
 export function CoachScreen(): React.JSX.Element {
   const { messages, isLoading, error, hasLoadedHistory, loadHistory, sendMessage, retryLastAction } = useCoachStore();
   const nav = useNavigation<BottomTabNavigationProp<TabParamList>>();
+  const isFocused = useIsFocused();
   const insets = useSafeAreaInsets();
   const listRef = useRef<FlatList>(null);
   const [shouldStickToBottom, setShouldStickToBottom] = useState(true);
@@ -138,7 +139,7 @@ export function CoachScreen(): React.JSX.Element {
         </View>
       ) : null}
 
-      <ChatInput onSend={sendMessage} disabled={isLoading} />
+      <ChatInput onSend={sendMessage} disabled={isLoading} isFocused={isFocused} />
     </KeyboardAvoidingView>
   );
 }

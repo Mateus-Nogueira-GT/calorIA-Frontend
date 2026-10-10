@@ -730,3 +730,57 @@ describe('geração da dieta — STALE retoma automaticamente', () => {
     });
   });
 });
+
+describe('envio de voz vinculado à operação', () => {
+  const service = jest.requireMock('@shared/services/coach.service').coachService;
+  beforeEach(() => {
+    useCoachStore.getState().clear();
+  });
+
+  it('operação já cancelada não escreve mensagem nem chama a API', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const calls = service.sendMessage.mock.calls.length;
+    expect(
+      await useCoachStore.getState().sendMessage('voz antiga', {
+        signal: controller.signal,
+        isValid: () => false,
+      }),
+    ).toBe(false);
+    expect(useCoachStore.getState().messages).toEqual([]);
+    expect(service.sendMessage.mock.calls.length).toBe(calls);
+  });
+
+  it('resposta antiga após cancelamento não altera conversa nova nem inicia geração', async () => {
+    let resolve: (value: unknown) => void = () => {};
+    service.sendMessage.mockReturnValueOnce(
+      new Promise((r) => {
+        resolve = r;
+      }),
+    );
+    const controller = new AbortController();
+    const sending = useCoachStore.getState().sendMessage('voz antiga', {
+      signal: controller.signal,
+      isValid: () => !controller.signal.aborted,
+    });
+    controller.abort();
+    expect(useCoachStore.getState().isLoading).toBe(false);
+    useCoachStore.setState({ conversationId: 'new-session', messages: [], error: null });
+    const runJob = jest.spyOn(useCoachStore.getState(), 'runDietGeneration');
+    resolve({
+      conversationId: 'old-session',
+      message: {
+        id: 'old-msg',
+        role: 'coach',
+        content: 'antiga',
+        timestamp: '2026-10-10T00:00:00Z',
+        dietJobId: 'old-job',
+      },
+    });
+    expect(await sending).toBe(false);
+    expect(useCoachStore.getState().conversationId).toBe('new-session');
+    expect(useCoachStore.getState().messages).toEqual([]);
+    expect(runJob).not.toHaveBeenCalled();
+    runJob.mockRestore();
+  });
+});

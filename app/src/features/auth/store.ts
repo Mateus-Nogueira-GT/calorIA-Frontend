@@ -30,6 +30,8 @@ interface ProfilePreferences {
 }
 
 interface AuthState {
+  /** Transient identity: refresh preserves it; logout/login invalidates voice operations. */
+  sessionGeneration: number;
   token: string | null;
   refreshToken: string | null;
   user: User | null;
@@ -143,7 +145,8 @@ function clearPreviewQueryOnWeb(): void {
 
 export const useAuthStore = create<AuthState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
+      sessionGeneration: 0,
       token: null,
       refreshToken: null,
       user: null,
@@ -166,6 +169,9 @@ export const useAuthStore = create<AuthState>()(
           );
 
           return {
+            sessionGeneration:
+              state.sessionGeneration +
+              (state.isAuthenticated && state.user?.id === user.id ? 0 : 1),
             token,
             refreshToken: refreshToken ?? state.pendingAuth?.refreshToken ?? state.refreshToken,
             user,
@@ -228,6 +234,7 @@ export const useAuthStore = create<AuthState>()(
         // preferencesByUser NÃO é limpo: é o que faz as escolhas de onboarding
         // sobreviverem ao logout e ao restart do app.
         set({
+          sessionGeneration: get().sessionGeneration + 1,
           token: null,
           refreshToken: null,
           user: null,

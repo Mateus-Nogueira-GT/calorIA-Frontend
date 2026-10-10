@@ -1,20 +1,33 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, NativeSyntheticEvent, Platform, StyleSheet, Text, TextInput, TextInputKeyPressEventData, TouchableOpacity, View } from 'react-native';
+import {
+  ActivityIndicator,
+  NativeSyntheticEvent,
+  Platform,
+  StyleSheet,
+  Text,
+  TextInput,
+  TextInputKeyPressEventData,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import type { VoiceRequestContext } from '@shared/services/coach.service';
 import { screenShellStyle } from '@shared/components';
 import { colors, radius, spacing, typography } from '@theme';
 import { useVoiceMessage } from '../hooks/useVoiceMessage';
 
 interface Props {
-  onSend: (text: string) => Promise<boolean>;
+  onSend: (text: string, voice?: VoiceRequestContext) => Promise<boolean>;
+  isFocused?: boolean;
   disabled: boolean;
 }
 
-export function ChatInput({ onSend, disabled }: Props): React.JSX.Element {
+export function ChatInput({ onSend, disabled, isFocused = true }: Props): React.JSX.Element {
   const [text, setText] = useState('');
   const [keyboardInset, setKeyboardInset] = useState(0);
-  const voice = useVoiceMessage({ onSend, disabled });
+  const voice = useVoiceMessage({ onSend, disabled, isFocused });
   const isRecording = voice.status === 'recording';
   const isTranscribing = voice.status === 'transcribing';
+  const isCleaning = voice.status === 'cancelling';
   // Campo vazio + voz disponível → o botão de enviar vira microfone.
   const showMic = voice.isSupported && !text.trim();
 
@@ -49,7 +62,10 @@ export function ChatInput({ onSend, disabled }: Props): React.JSX.Element {
 
   function handleKeyPress(event: NativeSyntheticEvent<TextInputKeyPressEventData>) {
     if (Platform.OS !== 'web') return;
-    const nativeEvent = event.nativeEvent as TextInputKeyPressEventData & { shiftKey?: boolean; preventDefault?: () => void };
+    const nativeEvent = event.nativeEvent as TextInputKeyPressEventData & {
+      shiftKey?: boolean;
+      preventDefault?: () => void;
+    };
     if (nativeEvent.key === 'Enter' && !nativeEvent.shiftKey) {
       nativeEvent.preventDefault?.();
       void handleSend();
@@ -57,9 +73,13 @@ export function ChatInput({ onSend, disabled }: Props): React.JSX.Element {
   }
 
   function renderActionButton(): React.JSX.Element {
-    if (isTranscribing) {
+    if (isTranscribing || isCleaning) {
       return (
-        <View style={[styles.sendBtn, styles.sendBtnDisabled]} testID="chat-transcribing-indicator" accessibilityLabel="Transcrevendo áudio">
+        <View
+          style={[styles.sendBtn, styles.sendBtnDisabled]}
+          testID="chat-transcribing-indicator"
+          accessibilityLabel={isCleaning ? 'Liberando microfone' : 'Transcrevendo áudio'}
+        >
           <ActivityIndicator size="small" color={colors.brandAnchor} />
         </View>
       );
@@ -78,7 +98,8 @@ export function ChatInput({ onSend, disabled }: Props): React.JSX.Element {
       );
     }
     if (showMic) {
-      const micDisabled = disabled || voice.status === 'starting';
+      const micDisabled =
+        disabled || voice.status === 'starting' || voice.status === 'cleanupFailed';
       return (
         <TouchableOpacity
           style={[styles.sendBtn, micDisabled && styles.sendBtnDisabled]}
@@ -86,10 +107,18 @@ export function ChatInput({ onSend, disabled }: Props): React.JSX.Element {
           disabled={micDisabled}
           testID="chat-mic-btn"
           accessibilityRole="button"
-          accessibilityLabel="Gravar áudio para o Coach IA"
+          accessibilityLabel={
+            voice.status === 'cleanupFailed'
+              ? 'Microfone indisponível. Feche e reabra o aplicativo.'
+              : 'Gravar áudio para o Coach IA'
+          }
           accessibilityState={{ disabled: micDisabled }}
         >
-          {micDisabled ? <ActivityIndicator size="small" color={colors.brandAnchor} /> : <MicGlyph />}
+          {micDisabled && voice.status !== 'cleanupFailed' ? (
+            <ActivityIndicator size="small" color={colors.brandAnchor} />
+          ) : (
+            <MicGlyph />
+          )}
         </TouchableOpacity>
       );
     }
@@ -99,10 +128,14 @@ export function ChatInput({ onSend, disabled }: Props): React.JSX.Element {
         onPress={() => void handleSend()}
         disabled={!text.trim() || disabled}
         testID="chat-send-btn"
-        accessibilityRole='button'
-        accessibilityLabel='Enviar mensagem para o Coach IA'
+        accessibilityRole="button"
+        accessibilityLabel="Enviar mensagem para o Coach IA"
       >
-        {disabled ? <ActivityIndicator size='small' color={colors.brandAnchor} /> : <View style={styles.sendGlyph} />}
+        {disabled ? (
+          <ActivityIndicator size="small" color={colors.brandAnchor} />
+        ) : (
+          <View style={styles.sendGlyph} />
+        )}
       </TouchableOpacity>
     );
   }
@@ -140,8 +173,8 @@ export function ChatInput({ onSend, disabled }: Props): React.JSX.Element {
           maxLength={500}
           editable={!disabled && !isTranscribing}
           blurOnSubmit={false}
-          textAlignVertical='top'
-          accessibilityLabel='Campo de mensagem do Coach IA'
+          textAlignVertical="top"
+          accessibilityLabel="Campo de mensagem do Coach IA"
         />
       )}
       {renderActionButton()}

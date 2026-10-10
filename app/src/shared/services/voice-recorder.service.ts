@@ -17,7 +17,10 @@ export const VOICE_MIME_TYPE: TranscribeMimeType = 'audio/m4a';
  * arquivo) — distinta de falha de rede/backend na transcrição.
  */
 export class VoiceRecordingError extends Error {
-  constructor(code: string, readonly details?: unknown) {
+  constructor(
+    code: string,
+    readonly details?: unknown,
+  ) {
     super(code);
     this.name = 'VoiceRecordingError';
   }
@@ -61,27 +64,52 @@ export async function requestMicrophonePermission(): Promise<boolean> {
   return granted;
 }
 
+let recorderBusy = false;
+let cleanupFailed = false;
+
 async function restoreAudioMode(): Promise<void> {
   // No iOS, a sessão playAndRecord joga o som para o alto-falante de chamada.
-  await setAudioModeAsync({ allowsRecording: false }).catch(() => undefined);
+  await setAudioModeAsync({ allowsRecording: false });
 }
 
-export async function startVoiceRecording(): Promise<ActiveRecording> {
+async function releaseRecorder(
+  recorder: InstanceType<typeof AudioModule.AudioRecorder> | null,
+): Promise<void> {
+  let failure: unknown = null;
+  try {
+    recorder?.release();
+  } catch (e) {
+    failure = e;
+  }
+  try {
+    await restoreAudioMode();
+  } catch (e) {
+    failure = e;
+  }
+  cleanupFailed = failure !== null;
+  recorderBusy = cleanupFailed;
+  if (cleanupFailed) throw new VoiceRecordingError('RECORDING_CLEANUP_FAILED', failure);
+}
+
+export async function startVoiceRecording(
+  isValid: () => boolean = () => true,
+): Promise<ActiveRecording> {
+  if (cleanupFailed) throw new VoiceRecordingError('RECORDING_CLEANUP_FAILED');
+  if (recorderBusy) throw new VoiceRecordingError('VOICE_RECORDER_BUSY');
+  if (!isValid()) throw new VoiceRecordingError('VOICE_OPERATION_CANCELLED');
+  recorderBusy = true;
   // Tudo dentro do try (inclusive o construtor nativo): qualquer falha devolve
   // o modo de áudio normal em vez de deixar a sessão de gravação aberta.
   let recorder: InstanceType<typeof AudioModule.AudioRecorder> | null = null;
   try {
     await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+    if (!isValid()) throw new VoiceRecordingError('VOICE_OPERATION_CANCELLED');
     recorder = new AudioModule.AudioRecorder(recordingOptions());
     await recorder.prepareToRecordAsync();
+    if (!isValid()) throw new VoiceRecordingError('VOICE_OPERATION_CANCELLED');
     recorder.record();
   } catch (e) {
-    try {
-      recorder?.release();
-    } catch {
-      // já falhou; o importante é restaurar o modo de áudio
-    }
-    await restoreAudioMode();
+    await releaseRecorder(recorder);
     throw e;
   }
   const active = recorder;
@@ -89,11 +117,10 @@ export async function startVoiceRecording(): Promise<ActiveRecording> {
   // O arquivo já existe depois do prepare; guarda o caminho caso o nativo
   // não o exponha mais depois do stop.
   const startedUri = active.uri;
-  let finished = false;
+  let finishPromise: Promise<string> | null = null;
+  let discard = false;
 
-  async function finish(read: boolean): Promise<string> {
-    if (finished) throw new VoiceRecordingError('RECORDING_ALREADY_FINISHED');
-    finished = true;
+  async function finishOnce(): Promise<string> {
     try {
       let stopError: unknown = null;
       try {
@@ -107,7 +134,7 @@ export async function startVoiceRecording(): Promise<ActiveRecording> {
       try {
         if (stopError) throw new VoiceRecordingError('RECORDING_STOP_FAILED', stopError);
         if (!file) throw new VoiceRecordingError('RECORDING_WITHOUT_FILE');
-        if (!read) return '';
+        if (discard) return '';
         try {
           return await file.base64();
         } catch (e) {
@@ -121,13 +148,14 @@ export async function startVoiceRecording(): Promise<ActiveRecording> {
         }
       }
     } finally {
-      try {
-        active.release();
-      } catch {
-        // nada a fazer
-      }
-      await restoreAudioMode();
+      await releaseRecorder(active);
     }
+  }
+
+  function finish(read: boolean): Promise<string> {
+    if (!read) discard = true;
+    finishPromise ??= finishOnce();
+    return finishPromise;
   }
 
   return {
