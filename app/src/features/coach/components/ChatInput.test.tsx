@@ -1,5 +1,6 @@
+import { useAuthStore } from '@features/auth/store';
 import React from 'react';
-import { Alert } from 'react-native';
+import { Alert, AppState } from 'react-native';
 import { render, fireEvent, act, waitFor } from '@testing-library/react-native';
 import { AxiosError, AxiosHeaders } from 'axios';
 import { ChatInput } from './ChatInput';
@@ -39,6 +40,10 @@ describe('ChatInput', () => {
   let alertSpy: jest.SpyInstance;
 
   beforeEach(() => {
+    AppState.currentState = 'active';
+    useAuthStore
+      .getState()
+      .setToken('test-token', { id: 'voice-test', name: 'Maria', email: 'test@test.com' });
     jest.clearAllMocks();
     mockSupported = true;
     alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
@@ -140,7 +145,10 @@ describe('ChatInput', () => {
       fireEvent.press(getByTestId('chat-mic-stop-btn'));
     });
     expect(mockTranscribe).toHaveBeenCalledWith('QUFBQQ==', 'audio/m4a');
-    expect(onSend).toHaveBeenCalledWith('quanto de proteína hoje?');
+    expect(onSend).toHaveBeenCalledWith(
+      'quanto de proteína hoje?',
+      expect.objectContaining({ signal: expect.anything(), isValid: expect.any(Function) }),
+    );
     expect(getByTestId('chat-mic-btn')).toBeTruthy();
   });
 
@@ -179,7 +187,7 @@ describe('ChatInput', () => {
     await act(async () => {
       resolve('oi');
     });
-    await waitFor(() => expect(onSend).toHaveBeenCalledWith('oi'));
+    await waitFor(() => expect(onSend).toHaveBeenCalledWith('oi', expect.anything()));
   });
 
   it('permissão negada → alerta e nada gravado', async () => {

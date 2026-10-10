@@ -33,3 +33,27 @@ describe('coachService.transcribe', () => {
     expect(config.timeout).toBe(65000);
   });
 });
+
+describe('cancelamento do transporte de voz', () => {
+  it('propaga sinal sem mudar timeout e payload da transcrição', async () => {
+    api.post.mockClear();
+    api.post.mockResolvedValue({ data: { text: 'oi' } });
+    const controller = new AbortController();
+    await coachService.transcribe('QUFBQQ==', 'audio/m4a', controller.signal);
+    expect(api.post).toHaveBeenCalledWith(
+      '/chat/transcribe',
+      { audio: 'QUFBQQ==', mimeType: 'audio/m4a' },
+      { timeout: 65000, signal: controller.signal },
+    );
+  });
+  it('contexto invalidado não inicia chamada de mensagem', async () => {
+    api.post.mockClear();
+    await expect(
+      coachService.sendMessage('antiga', null, {
+        signal: new AbortController().signal,
+        isValid: () => false,
+      }),
+    ).rejects.toMatchObject({ code: 'ERR_CANCELED' });
+    expect(api.post).not.toHaveBeenCalled();
+  });
+});

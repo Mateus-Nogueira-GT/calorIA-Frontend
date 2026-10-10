@@ -81,11 +81,15 @@ describe('useAuthStore', () => {
       },
     });
 
-    useAuthStore.getState().setPendingAuth('tok', {
-      id: 'user-1',
-      name: 'Maria',
-      email: 'maria@test.com',
-    }, 'refresh-tok');
+    useAuthStore.getState().setPendingAuth(
+      'tok',
+      {
+        id: 'user-1',
+        name: 'Maria',
+        email: 'maria@test.com',
+      },
+      'refresh-tok',
+    );
     useAuthStore.getState().setProfilePreferences({
       goal: 'health',
       coachPersonality: 'empathetic',
@@ -206,5 +210,19 @@ describe('preferências por usuário sem localStorage (RN puro — L1)', () => {
     useAuthStore.getState().clearToken();
     expect(useCoachStore.getState().dietJob).toBeNull();
     expect(useCoachStore.getState().activeJobId).toBeNull();
+  });
+});
+
+describe('geração da sessão para operações de voz', () => {
+  const user = { id: 'voice-user', name: 'Maria', email: 'maria@test.com' };
+  it('refresh mantém geração, logout/login na mesma conta a troca', () => {
+    useAuthStore.getState().clearToken();
+    useAuthStore.getState().setToken('first', user, 'refresh');
+    const generation = useAuthStore.getState().sessionGeneration;
+    useAuthStore.getState().setToken('renewed', user, 'refresh-2');
+    expect(useAuthStore.getState().sessionGeneration).toBe(generation);
+    useAuthStore.getState().clearToken();
+    useAuthStore.getState().setToken('new-login', user, 'refresh-3');
+    expect(useAuthStore.getState().sessionGeneration).toBeGreaterThan(generation);
   });
 });

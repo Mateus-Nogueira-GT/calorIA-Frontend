@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
-import { coachService, CoachMessage } from '@shared/services/coach.service';
+import { coachService, CoachMessage, VoiceRequestContext } from '@shared/services/coach.service';
 import { dietService, DietJobStatus } from '@shared/services/diet.service';
 import { kvStorage } from '@shared/services/storage';
 import { useDietStore } from '@features/diet/store';
@@ -74,6 +74,7 @@ function retryErrorMessage(e: unknown): string {
 // nasceu e sai em silêncio depois de qualquer await se ela mudou — nenhum
 // /step a mais e nenhum banner do usuário anterior.
 let dietSession = 0;
+let messageRequestId = 0;
 
 // Single-flight por jobId: retry/retomada com o loop do mesmo job ainda vivo
 // reaproveitam a promise em vez de abrir um segundo loop (2 /step em voo =
@@ -117,7 +118,7 @@ interface CoachState {
   /** Job da geração corrente/última — necessário para o retry (B8). */
   activeJobId: string | null;
   loadHistory: () => Promise<void>;
-  sendMessage: (content: string) => Promise<boolean>;
+  sendMessage: (content: string, voice?: VoiceRequestContext) => Promise<boolean>;
   retryLastAction: () => Promise<void>;
   runDietGeneration: (jobId: string) => Promise<void>;
   retryDietGeneration: (explicitJobId?: string) => Promise<void>;
@@ -174,9 +175,12 @@ export const useCoachStore = create<CoachState>()(
         }
       },
 
-      sendMessage: async (content: string) => {
+      sendMessage: async (content: string, voice?: VoiceRequestContext) => {
         const trimmed = content.trim();
-        if (!trimmed) return false;
+        if (!trimmed || (voice && (!voice.isValid() || voice.signal.aborted))) return false;
+        const requestId = ++messageRequestId;
+        const isCurrent = () =>
+          !voice || (requestId === messageRequestId && voice.isValid() && !voice.signal.aborted);
 
         const userMsg: StoreMessage = {
           id: `user-${Date.now()}`,
@@ -185,11 +189,23 @@ export const useCoachStore = create<CoachState>()(
           timestamp: new Date(),
         };
         set({ messages: [...get().messages, userMsg], isLoading: true, error: null });
+        const onAbort = () => {
+          if (requestId !== messageRequestId) return;
+          set((state) => ({
+            messages: state.messages.filter((m) => m.id !== userMsg.id),
+            isLoading: false,
+            error: null,
+            lastFailedAction: null,
+          }));
+        };
+        voice?.signal.addEventListener('abort', onAbort, { once: true });
         try {
           const { conversationId, message } = await coachService.sendMessage(
             trimmed,
             get().conversationId,
+            ...(voice ? [voice] : []),
           );
+          if (!isCurrent()) return false;
           set((s) => ({
             conversationId,
             messages: [...s.messages, toStoreMessage(message)],
@@ -201,12 +217,15 @@ export const useCoachStore = create<CoachState>()(
           if (message.dietJobId) void get().runDietGeneration(message.dietJobId);
           return true;
         } catch (e) {
+          if (!isCurrent()) return false;
           set({
             isLoading: false,
             error: isQuotaExceeded(e) ? QUOTA_MESSAGE : SEND_ERROR_MESSAGE,
             lastFailedAction: 'send',
           });
           return false;
+        } finally {
+          voice?.signal.removeEventListener('abort', onAbort);
         }
       },
 
@@ -350,6 +369,7 @@ export const useCoachStore = create<CoachState>()(
       },
 
       clear: () => {
+        messageRequestId++;
         dietSession++;
         dietLoops.clear();
         dietRetries.clear();

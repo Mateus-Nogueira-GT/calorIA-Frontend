@@ -30,12 +30,15 @@ describe('voice-recorder.service (nativo)', () => {
 
   it('permissão: true quando concedida, false quando negada', async () => {
     expect(await requestMicrophonePermission()).toBe(true);
-    audio.requestRecordingPermissionsAsync.mockResolvedValueOnce({ granted: false, status: 'denied' });
+    audio.requestRecordingPermissionsAsync.mockResolvedValueOnce({
+      granted: false,
+      status: 'denied',
+    });
     expect(await requestMicrophonePermission()).toBe(false);
   });
 
   it('inicia: libera gravação no modo de áudio, prepara e grava em AAC mono', async () => {
-    await startVoiceRecording();
+    const recording = await startVoiceRecording();
 
     expect(audio.setAudioModeAsync).toHaveBeenCalledWith(
       expect.objectContaining({ allowsRecording: true, playsInSilentMode: true }),
@@ -48,6 +51,7 @@ describe('voice-recorder.service (nativo)', () => {
     // O preset LOW_QUALITY do expo-audio grava 3gp/AMR no Android — o backend
     // não aceita; aqui é sempre AAC em container MPEG-4.
     expect(rec.options.bitRate).toBeLessThanOrEqual(64000);
+    await recording.cancel();
   });
 
   it('parar: devolve o base64 do arquivo, apaga o arquivo e libera o gravador', async () => {
@@ -131,5 +135,61 @@ describe('voice-recorder.service (nativo)', () => {
       fs.File.__nextBase64 = 'QUFBQQ==';
     }
     expect(fs.__files[0].delete).toHaveBeenCalled();
+  });
+  it('não inicia captura quando a operação é invalidada durante a preparação', async () => {
+    let resolvePreparation!: () => void;
+    const preparation = new Promise<void>((resolve) => {
+      resolvePreparation = resolve;
+    });
+    const Original = audio.AudioModule.AudioRecorder;
+    audio.AudioModule.AudioRecorder = class extends Original {
+      constructor(options: unknown) {
+        super(options);
+        this.prepareToRecordAsync.mockImplementation(() => preparation);
+      }
+    };
+    let valid = true;
+    try {
+      const pending = startVoiceRecording(() => valid);
+      await Promise.resolve();
+      const recorder = lastRecorder();
+      valid = false;
+      resolvePreparation();
+      await expect(pending).rejects.toThrow('VOICE_OPERATION_CANCELLED');
+      expect(recorder.record).not.toHaveBeenCalled();
+      expect(recorder.release).toHaveBeenCalledTimes(1);
+      expect(audio.setAudioModeAsync).toHaveBeenLastCalledWith({ allowsRecording: false });
+    } finally {
+      audio.AudioModule.AudioRecorder = Original;
+    }
+    const next = await startVoiceRecording();
+    await next.cancel();
+  });
+
+  it('stop e cancel concorrentes finalizam o gravador uma única vez', async () => {
+    const recording = await startVoiceRecording();
+    const recorder = lastRecorder();
+    await Promise.all([recording.stop(), recording.cancel()]);
+    expect(recorder.stop).toHaveBeenCalledTimes(1);
+    expect(recorder.release).toHaveBeenCalledTimes(1);
+  });
+
+  it('liberação nativa falha explicitamente e impede abrir outro gravador', async () => {
+    await jest.isolateModulesAsync(async () => {
+      const isolated = jest.requireActual<typeof import('./voice-recorder.service')>(
+        './voice-recorder.service',
+      );
+      const isolatedAudio = jest.requireActual('expo-audio') as {
+        __recorders: { release: jest.Mock }[];
+      };
+      const recording = await isolated.startVoiceRecording();
+      const recorder = isolatedAudio.__recorders[isolatedAudio.__recorders.length - 1];
+      recorder.release.mockImplementationOnce(() => {
+        throw new Error('release failed');
+      });
+      await expect(recording.cancel()).rejects.toThrow('RECORDING_CLEANUP_FAILED');
+      await expect(isolated.startVoiceRecording()).rejects.toThrow('RECORDING_CLEANUP_FAILED');
+      expect(recorder.release).toHaveBeenCalledTimes(1);
+    });
   });
 });

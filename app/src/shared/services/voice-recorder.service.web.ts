@@ -6,7 +6,10 @@ export const isVoiceSupported = false;
 export const VOICE_MIME_TYPE: TranscribeMimeType = 'audio/webm';
 
 export class VoiceRecordingError extends Error {
-  constructor(code: string, readonly details?: unknown) {
+  constructor(
+    code: string,
+    readonly details?: unknown,
+  ) {
     super(code);
     this.name = 'VoiceRecordingError';
   }
@@ -21,6 +24,6 @@ export async function requestMicrophonePermission(): Promise<boolean> {
   return false;
 }
 
-export async function startVoiceRecording(): Promise<ActiveRecording> {
+export async function startVoiceRecording(_isValid?: () => boolean): Promise<ActiveRecording> {
   throw new Error('VOICE_NOT_SUPPORTED');
 }
