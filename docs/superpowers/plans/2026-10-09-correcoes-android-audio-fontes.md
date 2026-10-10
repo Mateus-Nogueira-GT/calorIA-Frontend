@@ -62,7 +62,7 @@ Data: 2026-10-09 · Status: implementação executada em 2026-10-10; validação
 - [x] Verificar a interface da ferramenta `react-native-asset` instalada para atualização apenas Android. Se não houver opção segura, copiar explicitamente os cinco arquivos e atualizar o manifest no formato existente. Conferir a licença e os nomes das famílias.
 - [x] Executar a verificação novamente; validar os metadados/fontes com ferramenta disponível e conferir que o diff contém apenas assets/manifest/gate esperados. Preservar iOS e fontes web.
 - [x] Integrar o script ao CI como passo bloqueante antes de bundling/build. Evitar gate que apenas lê as fontes de origem ou aceita HTML por ter extensão `.ttf`.
-- [ ] Criar PR separado depois do áudio, com os gates da etapa 4 e o gate de fontes aprovados. Mudança nativa e runtime devem aparecer na descrição.
+- [x] Criar PR separado depois do áudio, com os gates da etapa 4 e o gate de fontes aprovados. Mudança nativa e runtime devem aparecer na descrição.
 
 **Concluído quando:** as cinco cópias correspondem às fontes válidas, a verificação falha no estado antigo e passa no novo, e o CI passa a detectar essa divergência.
 
@@ -92,3 +92,5 @@ Ao executar cada etapa, atualizar os checkboxes e registrar commit, comandos/res
 - Não há aparelho conectado nem AVD configurado. Smoke nativo Android/iOS, EAS assinado, OTA e Play Console continuam pendentes. Este estado não significa correção distribuída em produção.
 
 - PR de áudio: [#61](https://github.com/Mateus-Nogueira-GT/calorIA-Frontend/pull/61), commit `d82e80d`, rascunho sem assets nativos.
+- PR de fontes: [#62](https://github.com/Mateus-Nogueira-GT/calorIA-Frontend/pull/62), baseado no PR de áudio. CI de app/backend e previews aprovados em ambos os PRs.
+- AAB Gradle release local unsigned gerado e inspecionado: fontes corretas, mapping R8 e alinhamento ELF 64-bit de 16 KB. Isto não encerra as etapas EAS/Play nem smoke em aparelho acima.
