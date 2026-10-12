@@ -60,4 +60,43 @@ describe('Text', () => {
       expect.arrayContaining([expect.objectContaining({ fontSize: 13 })]),
     );
   });
+
+  describe('altura de linha acompanha a fonte (texto cortado no tablet)', () => {
+    const flat = (el: { props: { style?: unknown } }) =>
+      StyleSheet.flatten(el.props.style as never) as { lineHeight?: number };
+
+    it('fonte maior que a linha herdada ganha lineHeight proporcional', () => {
+      const { getByText } = render(<Text style={{ fontSize: 48 }}>1234</Text>);
+      // body herda 24; 48 × 1,2 = 57,6 → 58
+      expect(flat(getByText('1234')).lineHeight).toBe(58);
+    });
+
+    it('fonte que já cabe na linha herdada não muda o layout', () => {
+      const { getByText } = render(<Text style={{ fontSize: 12 }}>pequeno</Text>);
+      expect(flat(getByText('pequeno')).lineHeight).toBe(24);
+    });
+
+    it('lineHeight explícito sempre vence', () => {
+      const { getByText } = render(
+        <Text variant="heading1" style={{ fontSize: 38, lineHeight: 46 }}>
+          logo
+        </Text>,
+      );
+      expect(flat(getByText('logo')).lineHeight).toBe(46);
+    });
+
+    it('estilo em array também é considerado', () => {
+      const { getByText } = render(<Text style={[{ fontSize: 30 }, { color: 'red' }]}>oi</Text>);
+      expect(flat(getByText('oi')).lineHeight).toBe(36);
+    });
+
+    it('variante sem lineHeight (label) não recebe um', () => {
+      const { getByText } = render(
+        <Text variant="label" style={{ fontSize: 40 }}>
+          rótulo
+        </Text>,
+      );
+      expect(flat(getByText('rótulo')).lineHeight).toBeUndefined();
+    });
+  });
 });
