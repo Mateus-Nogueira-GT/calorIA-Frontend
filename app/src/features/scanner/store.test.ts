@@ -7,7 +7,7 @@ jest.mock('@shared/utils/show-alert', () => ({ showAlert: jest.fn() }));
 const { showAlert } = require('@shared/utils/show-alert');
 
 jest.mock('@shared/services/scanner.service', () => ({
-  scannerService: { analyzePhoto: jest.fn() },
+  scannerService: { analyzePhoto: jest.fn(), analyzePhotoGuest: jest.fn() },
 }));
 jest.mock('@shared/services/food-log.service', () => ({
   foodLogService: { addMeal: jest.fn() },
@@ -31,6 +31,20 @@ describe('useScannerStore', () => {
     await act(() => result.current.analyze('data:image/jpeg;base64,AAA'));
     expect(result.current.items).toHaveLength(2);
     expect(result.current.isAnalyzing).toBe(false);
+  });
+
+  it('analyze em modo convidado usa o endpoint sem conta', async () => {
+    scannerService.analyzePhotoGuest.mockResolvedValue({ items: [item('1')] });
+    await useScannerStore.getState().analyze('data:image/jpeg;base64,AAA', { guest: true });
+    expect(scannerService.analyzePhotoGuest).toHaveBeenCalled();
+    expect(scannerService.analyzePhoto).not.toHaveBeenCalled();
+    expect(useScannerStore.getState().items).toHaveLength(1);
+  });
+
+  it('convidado no limite (429) recebe convite para criar conta', async () => {
+    scannerService.analyzePhotoGuest.mockRejectedValue({ response: { status: 429, data: { error: 'TOO_MANY_REQUESTS' } } });
+    await useScannerStore.getState().analyze('data:image/jpeg;base64,AAA', { guest: true });
+    expect(useScannerStore.getState().error).toContain('Crie uma conta');
   });
 
   it('updateItem edita campos', () => {

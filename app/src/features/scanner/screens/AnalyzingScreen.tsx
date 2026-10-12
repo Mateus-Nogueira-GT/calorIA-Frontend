@@ -5,6 +5,7 @@ import { colors, typography, spacing } from '@theme';
 import { Button } from '@shared/components/Button';
 import { AnalyzingAnimation } from '../components/AnalyzingAnimation';
 import { useScannerStore } from '../store';
+import { useIsGuestScanner } from '../mode';
 import type { ScannerStackScreenProps } from '@navigation/types';
 
 type Props = ScannerStackScreenProps<'Analyzing'>;
@@ -18,16 +19,17 @@ export function AnalyzingScreen({ navigation, route }: Props): React.JSX.Element
   const analyze = useScannerStore((s) => s.analyze);
   const isAnalyzing = useScannerStore((s) => s.isAnalyzing);
   const error = useScannerStore((s) => s.error);
+  const guest = useIsGuestScanner();
 
   useEffect(() => {
     let active = true;
-    analyze(route.params.image).then(() => {
+    analyze(route.params.image, { guest }).then(() => {
       if (active && !useScannerStore.getState().error) navigation.replace('ScanResult');
     });
     return () => {
       active = false;
     };
-  }, [analyze, navigation, route.params.image]);
+  }, [analyze, guest, navigation, route.params.image]);
 
   return (
     <SafeAreaView style={styles.safe}>

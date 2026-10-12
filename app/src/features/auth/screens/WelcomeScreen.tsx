@@ -7,6 +7,7 @@ import type { AuthStackScreenProps } from '@navigation/types';
 
 const createAccountLabel = 'Criar conta';
 const loginLabel = 'Já tenho conta';
+const guestScanLabel = 'Escanear um prato sem conta';
 
 export function WelcomeScreen({ navigation }: AuthStackScreenProps<'Welcome'>): React.JSX.Element {
   return (
@@ -63,6 +64,16 @@ export function WelcomeScreen({ navigation }: AuthStackScreenProps<'Welcome'>): 
             labelStyle={styles.secondaryButtonLabel}
           >
             {loginLabel}
+          </Button>
+          {/* App Store 5.1.1(v): o scanner funciona sem cadastro. */}
+          <Button
+            variant="ghost"
+            onPress={() => navigation.navigate('GuestScanner')}
+            size="lg"
+            style={styles.button}
+            labelStyle={styles.secondaryButtonLabel}
+          >
+            {guestScanLabel}
           </Button>
         </View>
         <Text style={styles.footnote}>Estimativas de IA. Você pode revisar os resultados antes de salvar.</Text>

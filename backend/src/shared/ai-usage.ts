@@ -13,7 +13,8 @@ export type AiFeature = 'chat' | 'diet_day' | 'vision' | 'transcribe'
 interface AiUsageParams {
   feature: AiFeature
   model: string
-  userId: string
+  /** null = scan de convidado (sem conta) — a coluna user_id aceita NULL. */
+  userId: string | null
   usage?: {
     prompt_tokens?: number
     completion_tokens?: number
@@ -87,26 +88,43 @@ export function logAiUsage(fastify: FastifyInstance, params: AiUsageParams): voi
  * OP2: teto diário por usuário. Rate limits por minuto existiam; por dia, não —
  * e ai_usage era gravada e nunca lida. Fail-open: se a tabela estiver fora,
  * libera com warn; telemetria não pode bloquear o produto.
+ *
+ * userId null = convidado (scanner sem conta, Guideline 5.1.1(v) da App Store).
+ * Convidados não têm identidade, então dividem UM teto global de visão: o rate
+ * limit por IP é em memória por instância e não segura quem troca de IP.
  */
-export async function checkDailyQuota(fastify: FastifyInstance, userId: string): Promise<void> {
+export async function checkDailyQuota(
+  fastify: FastifyInstance,
+  userId: string | null,
+): Promise<void> {
+  const cap = userId ? env.AI_DAILY_TOKEN_CAP : env.GUEST_VISION_DAILY_TOKEN_CAP
   let used = 0
   try {
-    const [row] = await fastify.db<{ used: number }[]>`
-      SELECT COALESCE(SUM(total_tokens), 0)::INT AS used
-      FROM ai_usage
-      WHERE user_id = ${userId} AND created_at >= NOW() - interval '24 hours'
-    `
+    const [row] = userId
+      ? await fastify.db<{ used: number }[]>`
+          SELECT COALESCE(SUM(total_tokens), 0)::INT AS used
+          FROM ai_usage
+          WHERE user_id = ${userId} AND created_at >= NOW() - interval '24 hours'
+        `
+      : await fastify.db<{ used: number }[]>`
+          SELECT COALESCE(SUM(total_tokens), 0)::INT AS used
+          FROM ai_usage
+          WHERE user_id IS NULL AND feature = 'vision'
+            AND created_at >= NOW() - interval '24 hours'
+        `
     used = row?.used ?? 0
   } catch (err) {
     fastify.log.warn(err, 'Falha ao consultar quota diária de IA — liberando (fail-open)')
     return
   }
-  if (used >= env.AI_DAILY_TOKEN_CAP) {
-    fastify.log.warn({ userId, used, cap: env.AI_DAILY_TOKEN_CAP }, 'Quota diária de IA excedida')
+  if (used >= cap) {
+    fastify.log.warn({ userId, used, cap }, 'Quota diária de IA excedida')
     throw new AppError(
       429,
       'AI_QUOTA_EXCEEDED',
-      'Você atingiu o limite diário de uso da IA. Tente novamente amanhã.',
+      userId
+        ? 'Você atingiu o limite diário de uso da IA. Tente novamente amanhã.'
+        : 'O limite de análises sem conta foi atingido hoje. Crie uma conta para continuar.',
     )
   }
 }

@@ -49,4 +49,10 @@ export const scannerService = {
   analyzePhoto: (image: string) =>
     // Visão via GPT-5 leva ~20s+ — timeout acima do padrão de 10s.
     api.post<unknown>('/scanner/analyze', { image }, { timeout: 75000 }).then((r) => normalize(r.data)),
+
+  /** Mesma análise sem conta (App Store 5.1.1(v)) — limitada por IP no backend. */
+  analyzePhotoGuest: (image: string) =>
+    api
+      .post<unknown>('/scanner/analyze-guest', { image }, { timeout: 75000 })
+      .then((r) => normalize(r.data)),
 };

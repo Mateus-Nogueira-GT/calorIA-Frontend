@@ -25,4 +25,10 @@ describe('scannerService.analyzePhoto', () => {
     expect(res.items[0].name).toBe('Banana');
     expect(res.items[0].id).toBeTruthy();
   });
+
+  it('analyzePhotoGuest chama o endpoint sem conta', async () => {
+    api.post.mockResolvedValue({ data: { items: [] } });
+    await scannerService.analyzePhotoGuest('data:image/jpeg;base64,AAA');
+    expect(api.post).toHaveBeenCalledWith('/scanner/analyze-guest', { image: 'data:image/jpeg;base64,AAA' }, expect.anything());
+  });
 });
