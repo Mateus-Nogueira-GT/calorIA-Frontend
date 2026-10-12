@@ -13,7 +13,7 @@ import { ProfileCoachPersonalityScreen } from '@features/profile/screens/Profile
 import { ProfileEditScreen } from '@features/profile/screens/ProfileEditScreen';
 import { EvolutionScreen } from '@features/evolution/screens/EvolutionScreen';
 import { BrandTabNavigator } from './BrandTabNavigator';
-import { ScannerNavigator } from './ScannerNavigator';
+import { GuestScannerNavigator, ScannerNavigator } from './ScannerNavigator';
 import { useAuthStore } from '@features/auth/store';
 import { useCoachStore } from '@features/coach/store';
 import { dietService } from '@shared/services/diet.service';
@@ -97,6 +97,12 @@ function AuthNavigator({ startAtProfileSetup = false }: { startAtProfileSetup?: 
       <AuthStack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
       <AuthStack.Screen name="ResetPassword" component={ResetPasswordScreen} />
       <AuthStack.Screen name="ProfileSetup" component={ProfileSetupScreen} />
+      {/* App Store 5.1.1(v): o scanner não pode exigir cadastro. */}
+      <AuthStack.Screen
+        name="GuestScanner"
+        component={GuestScannerNavigator}
+        options={{ presentation: 'modal', headerShown: false }}
+      />
     </AuthStack.Navigator>
   );
 }

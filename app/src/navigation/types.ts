@@ -11,6 +11,8 @@ export type AuthStackParamList = {
   /** Aberta pelo link do email de recuperação (web). */
   ResetPassword: undefined;
   ProfileSetup: undefined;
+  /** Scanner sem conta (App Store 5.1.1(v)); salvar no diário leva ao Register. */
+  GuestScanner: NavigatorScreenParams<ScannerStackParamList> | undefined;
 };
 
 // Community Stack

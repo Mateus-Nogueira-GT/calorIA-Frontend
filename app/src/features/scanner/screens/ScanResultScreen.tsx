@@ -5,6 +5,7 @@ import { colors, typography, spacing } from '@theme';
 import { Button, ErrorState, screenShellStyle } from '@shared/components';
 import { ScanResultList } from '../components/ScanResultList';
 import { useScannerStore } from '../store';
+import { useIsGuestScanner } from '../mode';
 import type { ScannerStackScreenProps } from '@navigation/types';
 
 type Props = ScannerStackScreenProps<'ScanResult'>;
@@ -17,6 +18,12 @@ export function ScanResultScreen({ navigation }: Props): React.JSX.Element {
   const addManualItem = useScannerStore((s) => s.addManualItem);
   const confirm = useScannerStore((s) => s.confirm);
   const [saving, setSaving] = useState(false);
+  const guest = useIsGuestScanner();
+
+  // Convidado vê o resultado completo; só salvar no diário é recurso de conta.
+  const onCreateAccount = () => {
+    navigation.getParent()?.navigate('Register');
+  };
 
   const onConfirm = async () => {
     setSaving(true);
@@ -56,9 +63,21 @@ export function ScanResultScreen({ navigation }: Props): React.JSX.Element {
         />
       </ScrollView>
       <View style={styles.footer}>
-        <Button onPress={onConfirm} loading={saving} disabled={items.length === 0}>
-          Confirmar e adicionar ao diário
-        </Button>
+        {guest ? (
+          <>
+            <Text style={styles.guestNote}>
+              Crie uma conta grátis para salvar esta refeição no seu diário.
+            </Text>
+            <Button onPress={onCreateAccount}>Criar conta para salvar</Button>
+            <Button variant="ghost" onPress={() => navigation.popToTop()}>
+              Escanear outro prato
+            </Button>
+          </>
+        ) : (
+          <Button onPress={onConfirm} loading={saving} disabled={items.length === 0}>
+            Confirmar e adicionar ao diário
+          </Button>
+        )}
       </View>
     </SafeAreaView>
   );
@@ -73,5 +92,15 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: spacing.md,
   },
-  footer: { padding: spacing.lg, borderTopWidth: 1, borderTopColor: colors.brandDivider },
+  footer: {
+    padding: spacing.lg,
+    gap: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.brandDivider,
+  },
+  guestNote: {
+    fontSize: typography.fontSize.sm,
+    color: colors.brandTextMuted,
+    textAlign: 'center',
+  },
 });

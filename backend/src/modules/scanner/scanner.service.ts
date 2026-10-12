@@ -64,11 +64,12 @@ function writeCache(fastify: FastifyInstance, hash: string, result: CacheResult)
 /**
  * Analisa a foto de um prato via OpenAI Vision e retorna a estimativa nutricional.
  * Recebe a imagem como data URL base64 (data:image/...;base64,...).
+ * userId null = convidado sem conta: cai no teto global de convidados.
  */
 export async function analyzePhoto(
   fastify: FastifyInstance,
   imageDataUrl: string,
-  userId: string,
+  userId: string | null,
 ): Promise<ScanResponse> {
   await checkDailyQuota(fastify, userId)
 

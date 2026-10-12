@@ -178,3 +178,21 @@ describe('checkDailyQuota (OP2)', () => {
     expect(logs.some((l) => l.level === 'warn')).toBe(true)
   })
 })
+
+describe('checkDailyQuota — convidado (userId null)', () => {
+  it('soma só a visão de convidados (user_id IS NULL)', async () => {
+    const { fastify, calls } = fakeFastify([['FROM ai_usage', [{ used: 0 }]]])
+    await checkDailyQuota(fastify, null)
+    expect(calls[0].sql).toContain('user_id IS NULL')
+    expect(calls[0].sql).toContain("feature = 'vision'")
+  })
+
+  it('teto global de convidados atingido: 429 pedindo conta', async () => {
+    const { fastify } = fakeFastify([['FROM ai_usage', [{ used: 1_000_000 }]]])
+    await expect(checkDailyQuota(fastify, null)).rejects.toMatchObject({
+      statusCode: 429,
+      code: 'AI_QUOTA_EXCEEDED',
+      message: expect.stringContaining('Crie uma conta'),
+    })
+  })
+})

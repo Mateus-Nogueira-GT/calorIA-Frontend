@@ -68,6 +68,12 @@ const envSchema = z
       (v) => (v === '' || v == null ? undefined : v),
       z.coerce.number().int().positive().default(200_000),
     ),
+    // Teto diário de tokens de visão somado entre TODOS os convidados (scanner
+    // sem conta). Um scan custa ~2-5k tokens; 1M ≈ 200-500 scans/dia.
+    GUEST_VISION_DAILY_TOKEN_CAP: z.preprocess(
+      (v) => (v === '' || v == null ? undefined : v),
+      z.coerce.number().int().positive().default(1_000_000),
+    ),
   })
   .transform((e) => ({
     ...e,

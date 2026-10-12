@@ -12,7 +12,7 @@ interface ScannerState {
   isAnalyzing: boolean;
   error: string | null;
 
-  analyze: (image: string) => Promise<void>;
+  analyze: (image: string, options?: { guest?: boolean }) => Promise<void>;
   updateItem: (id: string, patch: Partial<ScanItem>) => void;
   removeItem: (id: string) => void;
   addManualItem: () => void;
@@ -33,21 +33,27 @@ let manualSeq = 0;
 export const useScannerStore = create<ScannerState>((set, get) => ({
   ...initialState,
 
-  analyze: async (image) => {
+  analyze: async (image, options) => {
+    const guest = options?.guest === true;
     set({ image, isAnalyzing: true, error: null });
     try {
-      const res = await scannerService.analyzePhoto(image);
+      const res = guest
+        ? await scannerService.analyzePhotoGuest(image)
+        : await scannerService.analyzePhoto(image);
       set({ items: res.items, isAnalyzing: false });
     } catch (e) {
       // H5 da spec: 422 NOT_FOOD merece orientação, não erro genérico.
       const backendError = (e as { response?: { data?: { error?: string } } }).response?.data
         ?.error;
+      const status = (e as { response?: { status?: number } }).response?.status;
       set({
         isAnalyzing: false,
         error:
           backendError === 'NOT_FOOD'
             ? 'Não identificamos comida nesta foto — tente outro ângulo ou mais luz.'
-            : 'Não foi possível analisar a imagem.',
+            : guest && status === 429
+              ? 'Você atingiu o limite de análises sem conta. Crie uma conta para continuar.'
+              : 'Não foi possível analisar a imagem.',
       });
     }
   },
