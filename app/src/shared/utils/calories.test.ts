@@ -91,8 +91,8 @@ describe('fibra nos totais do dia', () => {
   });
 
   it('meta de fibra: soma do plano quando alguma refeição tem o dado; senão null', () => {
-    const meal = { fiber: 5 } as never;
-    expect(getDailyFiberGoal({ meals: [meal, { fiber: 3 } as never] } as never)).toBe(8);
+    const withFiber = { fiber: 5 } as never;
+    expect(getDailyFiberGoal({ meals: [withFiber, { fiber: 3 } as never] } as never)).toBe(8);
     expect(getDailyFiberGoal({ meals: [{ fiber: null } as never] } as never)).toBeNull();
     expect(getDailyFiberGoal(null)).toBeNull();
   });
