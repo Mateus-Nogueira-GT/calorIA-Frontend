@@ -1,7 +1,9 @@
 import type { FastifyInstance } from 'fastify'
+import type { TransactionSql } from 'postgres'
 import { AppError } from '../../shared/errors.js'
 import { isWithinDateWindow } from '../../shared/local-date.js'
-import type { AddMealBody, DaySummary, Meal } from './food-log.schemas.js'
+import type { AddMealBody, DaySummary, Meal, UpdateMealBody } from './food-log.schemas.js'
+import { hasMealFiberColumns } from './meal-fiber-columns.js'
 
 /**
  * Refeições do "diário livre" são modeladas como uma linha em `meals` com um
@@ -38,14 +40,17 @@ export async function listMeals(
       total_protein: string
       total_carbs: string
       total_fat: string
+      total_fiber: string | null
       logged_at: string
     }[]
   >`
     SELECT
       id, name, meal_type,
       total_calories, total_protein, total_carbs, total_fat,
+      -- to_jsonb: funciona com ou sem a coluna da migration 022 (null sem ela).
+      to_jsonb(m)->>'total_fiber' AS total_fiber,
       logged_at::TEXT AS logged_at
-    FROM meals
+    FROM meals m
     WHERE user_id = ${userId} AND meal_date = ${date}
     ORDER BY logged_at ASC
   `
@@ -57,9 +62,32 @@ export async function listMeals(
     protein: Number(row.total_protein),
     carbs: Number(row.total_carbs),
     fat: Number(row.total_fat),
+    fiber: row.total_fiber == null ? null : Number(row.total_fiber),
     loggedAt: row.logged_at,
     mealType: toApiMealType(row.meal_type),
   }))
+}
+
+type MealValues = Pick<AddMealBody, 'name' | 'calories' | 'protein' | 'carbs' | 'fat' | 'fiber'>
+
+/** Item único da refeição do diário livre; fibra só se a coluna existir. */
+async function insertMealItem(
+  sql: TransactionSql,
+  mealId: string,
+  data: MealValues,
+  withFiber: boolean,
+): Promise<void> {
+  if (withFiber) {
+    await sql`
+      INSERT INTO meal_items (meal_id, food_name, quantity_g, calories, protein_g, carbs_g, fat_g, fiber_g, source)
+      VALUES (${mealId}, ${data.name}, 100, ${data.calories}, ${data.protein}, ${data.carbs}, ${data.fat}, ${data.fiber ?? null}, 'manual')
+    `
+    return
+  }
+  await sql`
+    INSERT INTO meal_items (meal_id, food_name, quantity_g, calories, protein_g, carbs_g, fat_g, source)
+    VALUES (${mealId}, ${data.name}, 100, ${data.calories}, ${data.protein}, ${data.carbs}, ${data.fat}, 'manual')
+  `
 }
 
 export async function addMeal(
@@ -70,6 +98,7 @@ export async function addMeal(
   if (data.date && !isWithinDateWindow(data.date)) {
     throw new AppError(400, 'INVALID_DATE', 'Data fora da janela permitida')
   }
+  const withFiber = await hasMealFiberColumns(fastify)
 
   return fastify.db.begin(async (sql) => {
     // Data local do cliente quando presente; CURRENT_DATE (UTC) como fallback
@@ -80,10 +109,7 @@ export async function addMeal(
       RETURNING id, logged_at::TEXT AS logged_at
     `
 
-    await sql`
-      INSERT INTO meal_items (meal_id, food_name, quantity_g, calories, protein_g, carbs_g, fat_g, source)
-      VALUES (${meal.id}, ${data.name}, 100, ${data.calories}, ${data.protein}, ${data.carbs}, ${data.fat}, 'manual')
-    `
+    await insertMealItem(sql, meal.id, data, withFiber)
 
     return {
       id: meal.id,
@@ -92,8 +118,44 @@ export async function addMeal(
       protein: data.protein,
       carbs: data.carbs,
       fat: data.fat,
+      fiber: withFiber ? (data.fiber ?? null) : null,
       loggedAt: meal.logged_at,
       mealType: data.mealType,
+    }
+  })
+}
+
+export async function updateMeal(
+  fastify: FastifyInstance,
+  userId: string,
+  mealId: string,
+  data: UpdateMealBody,
+): Promise<Meal> {
+  const withFiber = await hasMealFiberColumns(fastify)
+  return fastify.db.begin(async (sql) => {
+    const [meal] = await sql<{ id: string; logged_at: string; meal_type: string }[]>`
+      UPDATE meals
+      SET name = ${data.name}, meal_type = ${toDbMealType(data.mealType)}, updated_at = NOW()
+      WHERE id = ${mealId} AND user_id = ${userId}
+      RETURNING id, logged_at::TEXT AS logged_at, meal_type
+    `
+    if (!meal) throw new AppError(404, 'MEAL_NOT_FOUND', 'Refeição não encontrada')
+
+    // Mesmo modelo do POST: um item com os valores informados; o trigger
+    // recalcula os totais da refeição.
+    await sql`DELETE FROM meal_items WHERE meal_id = ${mealId}`
+    await insertMealItem(sql, mealId, data, withFiber)
+
+    return {
+      id: meal.id,
+      name: data.name,
+      calories: data.calories,
+      protein: data.protein,
+      carbs: data.carbs,
+      fat: data.fat,
+      fiber: withFiber ? (data.fiber ?? null) : null,
+      loggedAt: meal.logged_at,
+      mealType: toApiMealType(meal.meal_type),
     }
   })
 }

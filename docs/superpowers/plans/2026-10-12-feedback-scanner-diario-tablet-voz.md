@@ -824,7 +824,10 @@ describe('updateMeal', () => {
     ])
     const meal = await updateMeal(fastify, USER, MEAL, { ...body, fiber: 4 })
     expect(meal.fiber).toBeNull()
-    expect(calls.some((c) => c.sql.includes('fiber_g'))).toBe(false)
+    // A checagem de colunas (information_schema) cita fiber_g no texto; o que
+    // importa é que nenhuma escrita toque na coluna.
+    const writes = calls.filter((c) => !c.sql.includes(COLS))
+    expect(writes.some((c) => c.sql.includes('fiber_g'))).toBe(false)
   })
 })
 ```
@@ -869,7 +872,7 @@ type MealValues = Pick<AddMealBody, 'name' | 'calories' | 'protein' | 'carbs' | 
 
 /** Item único da refeição do diário livre; fibra só se a coluna existir. */
 async function insertMealItem(
-  sql: FastifyInstance['db'],
+  sql: TransactionSql, // import type { TransactionSql } from 'postgres'
   mealId: string,
   data: MealValues,
   withFiber: boolean,

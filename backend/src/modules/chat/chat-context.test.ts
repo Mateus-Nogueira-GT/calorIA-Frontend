@@ -117,6 +117,7 @@ describe('formatUserContext (I1)', () => {
           protein: 0,
           carbs: 25,
           fat: 0,
+          fiber: null,
           loggedAt: '2026-07-24T16:00:00Z',
           mealType: 'snack',
         },

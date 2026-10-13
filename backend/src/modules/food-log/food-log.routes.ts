@@ -9,8 +9,9 @@ import {
   mealParamsSchema,
   mealSchema,
   summaryQuerySchema,
+  updateMealBodySchema,
 } from './food-log.schemas.js'
-import { addMeal, deleteMeal, getSummary, listMeals } from './food-log.service.js'
+import { addMeal, deleteMeal, getSummary, listMeals, updateMeal } from './food-log.service.js'
 
 const foodLogRoutes: FastifyPluginAsyncZod = async (fastify) => {
   // Todas as rotas deste módulo exigem autenticação via JWT
@@ -87,6 +88,28 @@ const foodLogRoutes: FastifyPluginAsyncZod = async (fastify) => {
       const { sub: userId } = request.user as JwtPayload
       const meal = await addMeal(fastify, userId, request.body)
       return reply.status(201).send(meal)
+    },
+  )
+
+  /**
+   * PATCH /food-log/:id
+   * Corrige uma refeição do diário livre (ex.: a IA errou a estimativa).
+   */
+  fastify.patch(
+    '/:id',
+    {
+      schema: {
+        tags: ['FoodLog'],
+        summary: 'Editar refeição do diário livre',
+        security: [{ bearerAuth: [] }],
+        params: mealParamsSchema,
+        body: updateMealBodySchema,
+        response: { 200: mealSchema, 401: errorSchema, 404: errorSchema },
+      },
+    },
+    async (request, reply) => {
+      const { sub: userId } = request.user as JwtPayload
+      return reply.send(await updateMeal(fastify, userId, request.params.id, request.body))
     },
   )
 
