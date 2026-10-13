@@ -78,4 +78,23 @@ describe('AddMealModal', () => {
     fireEvent.press(getByText('Salvar alterações'));
     expect(onSubmit).not.toHaveBeenCalled();
   });
+
+  it('refeição sem tipo (scanner) mantém o grupo em que aparecia no diário', async () => {
+    const onSubmit = jest.fn().mockResolvedValue(undefined);
+    // 20h local: o diário mostra em "Jantar" pelo horário.
+    const loggedAt = new Date(2026, 9, 12, 20, 0).toISOString();
+    const { getByText, getByTestId } = render(
+      <AddMealModal
+        visible
+        onClose={() => {}}
+        onSubmit={onSubmit}
+        initialMeal={{ ...existing, mealType: 'other', loggedAt }}
+      />,
+    );
+    fireEvent.changeText(getByTestId('meal-calories-input'), '300');
+    fireEvent.press(getByText('Salvar alterações'));
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ mealType: 'dinner' })),
+    );
+  });
 });

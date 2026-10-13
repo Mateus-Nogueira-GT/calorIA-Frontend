@@ -105,6 +105,13 @@ describe('ScanItemRow', () => {
     expect(onChange).toHaveBeenCalledWith('1', { protein: 2.5 });
   });
 
+  it('letras na fibra não apagam o valor existente', () => {
+    const onChange = jest.fn();
+    const { getByTestId } = renderEditing({ item: { ...item, fiber: 3 }, onChange });
+    fireEvent.changeText(getByTestId('scan-item-fiber'), 'abc');
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
   it('item manual (sem nome) já abre em edição', () => {
     const { getByTestId } = render(
       <ScanItemRow item={{ ...item, name: '' }} onChange={() => {}} onRemove={() => {}} />,

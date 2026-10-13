@@ -13,6 +13,7 @@ import { Text, Button, Input, screenShellStyle } from '@shared/components';
 import { colors, typography, spacing, radius } from '@theme';
 import { AddMealPayload, AppMealType, Meal } from '@shared/services/food-log.service';
 import { showAlert } from '@shared/utils/show-alert';
+import { getMealGroupFor } from '@shared/utils/date';
 
 interface Props {
   visible: boolean;
@@ -52,8 +53,24 @@ function parseFiber(raw: string): number | null | undefined {
 }
 
 const toField = (v: number | null | undefined) => (v == null ? '' : String(v));
-const initialType = (meal?: Meal): AppMealType =>
-  meal && meal.mealType !== 'other' ? meal.mealType : 'lunch';
+const GROUP_TO_TYPE: Record<string, AppMealType> = {
+  'Café da manhã': 'breakfast',
+  Almoço: 'lunch',
+  Lanche: 'snack',
+  Jantar: 'dinner',
+};
+
+/**
+ * Refeição sem tipo ('other' — tudo que vem do scanner e registros antigos)
+ * aparece no diário pelo horário. Na edição, o tipo pré-selecionado é esse
+ * mesmo grupo; com 'lunch' fixo, salvar só as calorias de um jantar o movia
+ * para "Almoço".
+ */
+function initialType(meal?: Meal): AppMealType {
+  if (!meal) return 'lunch';
+  if (meal.mealType !== 'other') return meal.mealType;
+  return GROUP_TO_TYPE[getMealGroupFor(meal.mealType, meal.loggedAt)] ?? 'lunch';
+}
 
 export function AddMealModal({ visible, onClose, onSubmit, initialMeal }: Props): React.JSX.Element {
   const [name, setName] = useState(initialMeal?.name ?? '');

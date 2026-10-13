@@ -42,8 +42,14 @@ export const addMealBodySchema = z.object({
   mealType: appMealTypeSchema.optional().default('other'),
 })
 
-/** PATCH: mesmo corpo do POST, sem a data (a refeição não muda de dia). */
-export const updateMealBodySchema = addMealBodySchema.omit({ date: true })
+/**
+ * PATCH: mesmo corpo do POST, sem a data (a refeição não muda de dia). O tipo é
+ * obrigatório: herdar o default 'other' do POST faria um PATCH sem tipo tirar a
+ * refeição do grupo escolhido.
+ */
+export const updateMealBodySchema = addMealBodySchema
+  .omit({ date: true })
+  .extend({ mealType: appMealTypeSchema })
 
 export const mealParamsSchema = z.object({
   id: z.string().uuid(),

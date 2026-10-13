@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { fakeFastify } from '../../shared/testing/fake-fastify.js'
+import { updateMealBodySchema } from './food-log.schemas.js'
 import { addMeal, listMeals, updateMeal } from './food-log.service.js'
 import { __resetMealFiberColumnsCache } from './meal-fiber-columns.js'
 
@@ -111,5 +112,13 @@ describe('updateMeal', () => {
     // importa é que nenhuma escrita toque na coluna.
     const writes = calls.filter((c) => !c.sql.includes(COLS))
     expect(writes.some((c) => c.sql.includes('fiber_g'))).toBe(false)
+  })
+})
+
+describe('updateMealBodySchema', () => {
+  it('exige mealType: um PATCH sem tipo não pode zerar o grupo da refeição', () => {
+    const { mealType: _omit, ...semTipo } = body
+    expect(updateMealBodySchema.safeParse(semTipo).success).toBe(false)
+    expect(updateMealBodySchema.safeParse(body).success).toBe(true)
   })
 })

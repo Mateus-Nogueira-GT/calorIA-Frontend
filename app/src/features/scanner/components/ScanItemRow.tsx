@@ -33,12 +33,14 @@ export function macroSummary(item: ScanItem): string {
 
 /**
  * Campo vazio: macros viram 0 (comportamento de sempre); fibra vira null —
- * "sem dado", não "0 g". Aceita vírgula decimal do teclado pt-BR.
+ * "sem dado", não "0 g". Aceita vírgula decimal do teclado pt-BR. Fibra com
+ * letras devolve undefined: não altera o valor (não vira "sem dado" calado).
  */
-function parseField(key: keyof ScanItem, raw: string): number | null {
+function parseField(key: keyof ScanItem, raw: string): number | null | undefined {
   const parsed = parseFloat(raw.replace(',', '.'));
   if (!isNaN(parsed)) return parsed;
-  return key === 'fiber' ? null : 0;
+  if (key !== 'fiber') return 0;
+  return raw.trim() === '' ? null : undefined;
 }
 
 export function ScanItemRow({ item, onChange, onRemove }: Props): React.JSX.Element {
@@ -93,7 +95,10 @@ export function ScanItemRow({ item, onChange, onRemove }: Props): React.JSX.Elem
                 keyboardType='numeric'
                 onChangeText={(v) => {
                   setDrafts((prev) => ({ ...prev, [f.key]: v }));
-                  onChange(item.id, { [f.key]: parseField(f.key, v) } as Partial<ScanItem>);
+                  const value = parseField(f.key, v);
+                  if (value !== undefined) {
+                    onChange(item.id, { [f.key]: value } as Partial<ScanItem>);
+                  }
                 }}
               />
             </View>
