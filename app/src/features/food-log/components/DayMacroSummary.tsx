@@ -13,8 +13,9 @@ export function DayMacroSummary({ meals }: Props): React.JSX.Element {
       protein: acc.protein + meal.protein,
       carbs: acc.carbs + meal.carbs,
       fat: acc.fat + meal.fat,
+      fiber: acc.fiber + (meal.fiber ?? 0),
     }),
-    { calories: 0, protein: 0, carbs: 0, fat: 0 },
+    { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 },
   );
 
   const items = [
@@ -22,6 +23,7 @@ export function DayMacroSummary({ meals }: Props): React.JSX.Element {
     { label: 'Proteínas', value: String(totals.protein), suffix: 'g', color: colors.brandPrimary },
     { label: 'Carboidratos', value: String(totals.carbs), suffix: 'g', color: colors.brandAnchor },
     { label: 'Gorduras', value: String(totals.fat), suffix: 'g', color: colors.brandSupport },
+    { label: 'Fibras', value: String(totals.fiber), suffix: 'g', color: colors.brandAnchor },
   ];
 
   return (

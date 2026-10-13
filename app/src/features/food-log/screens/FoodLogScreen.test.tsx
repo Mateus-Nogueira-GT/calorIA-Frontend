@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, act } from '@testing-library/react-native';
+import { render, act, fireEvent, waitFor } from '@testing-library/react-native';
 import { FoodLogScreen } from './FoodLogScreen';
 import { useFoodLogStore } from '../store';
 
@@ -10,6 +10,7 @@ jest.mock('@shared/services/food-log.service', () => ({
     ]),
     addMeal: jest.fn().mockResolvedValue({ id: 'm2', name: 'Novo', calories: 300, protein: 20, carbs: 30, fat: 5, loggedAt: new Date().toISOString() }),
     deleteMeal: jest.fn().mockResolvedValue({ deleted: true }),
+    updateMeal: jest.fn().mockResolvedValue({ id: 'm1', name: 'Frango grelhado', calories: 400, protein: 38, carbs: 52, fat: 8, fiber: 3, loggedAt: new Date().toISOString(), mealType: 'lunch' }),
   },
 }));
 
@@ -36,5 +37,23 @@ describe('FoodLogScreen', () => {
   it('exibe refeicoes apos carregamento', async () => {
     const { findByText } = render(<FoodLogScreen />);
     expect(await findByText('Frango')).toBeTruthy();
+  });
+
+  it('Editar abre o modal preenchido e salva pela rota de edição', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { foodLogService } = require('@shared/services/food-log.service');
+    const { findByTestId, getByText, getByTestId, findByText } = render(<FoodLogScreen />);
+    fireEvent.press(await findByTestId('edit-m1'));
+    expect(getByText('Editar refeição')).toBeTruthy();
+    fireEvent.changeText(getByTestId('meal-name-input'), 'Frango grelhado');
+    fireEvent.press(getByText('Salvar alterações'));
+    await waitFor(() =>
+      expect(foodLogService.updateMeal).toHaveBeenCalledWith(
+        'm1',
+        expect.objectContaining({ name: 'Frango grelhado', calories: 450 }),
+      ),
+    );
+    expect(foodLogService.updateMeal.mock.calls[0][1]).not.toHaveProperty('date');
+    expect(await findByText('Frango grelhado')).toBeTruthy();
   });
 });

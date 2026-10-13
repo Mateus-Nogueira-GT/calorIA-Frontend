@@ -5,7 +5,13 @@ import { colors, typography, spacing, radius } from '@theme';
 import { Meal } from '@shared/services/food-log.service';
 import { parseDbDate } from '@shared/utils/parse-db-date';
 
-interface Props { meal: Meal; onDelete: (id: string) => void | Promise<void>; hideBorder?: boolean }
+interface Props {
+  meal: Meal;
+  onDelete: (id: string) => void | Promise<void>;
+  /** Abre a edição (ex.: a IA errou a estimativa). */
+  onEdit?: (meal: Meal) => void;
+  hideBorder?: boolean;
+}
 
 function formatTime(loggedAt: string): string {
   const date = parseDbDate(loggedAt);
@@ -23,7 +29,10 @@ function DeleteGlyph(): React.JSX.Element {
   );
 }
 
-export function FoodLogItem({ meal, onDelete, hideBorder }: Props): React.JSX.Element {
+export function FoodLogItem({ meal, onDelete, onEdit, hideBorder }: Props): React.JSX.Element {
+  const macros =
+    `Proteínas ${meal.protein}g · Carboidratos ${meal.carbs}g · Gorduras ${meal.fat}g` +
+    (meal.fiber != null ? ` · Fibras ${meal.fiber}g` : '');
   return (
     <View style={[styles.container, hideBorder && styles.containerLast]}>
       <View style={styles.info}>
@@ -31,13 +40,26 @@ export function FoodLogItem({ meal, onDelete, hideBorder }: Props): React.JSX.El
           <Text style={styles.name}>{meal.name}</Text>
           <Text style={styles.time}>{formatTime(meal.loggedAt)}</Text>
         </View>
-        <Text style={styles.macros}>Proteínas {meal.protein}g · Carboidratos {meal.carbs}g · Gorduras {meal.fat}g</Text>
+        <Text style={styles.macros}>{macros}</Text>
       </View>
       <View style={styles.right}>
         <Text style={styles.calories}>{meal.calories} kcal</Text>
-        <TouchableOpacity onPress={() => onDelete(meal.id)} style={styles.deleteBtn} testID={`delete-${meal.id}`} accessibilityRole='button'>
-          <DeleteGlyph />
-        </TouchableOpacity>
+        <View style={styles.actions}>
+          {onEdit ? (
+            <TouchableOpacity
+              onPress={() => onEdit(meal)}
+              style={styles.editBtn}
+              testID={`edit-${meal.id}`}
+              accessibilityRole='button'
+              accessibilityLabel={`Editar ${meal.name}`}
+            >
+              <Text style={styles.editLabel}>Editar</Text>
+            </TouchableOpacity>
+          ) : null}
+          <TouchableOpacity onPress={() => onDelete(meal.id)} style={styles.deleteBtn} testID={`delete-${meal.id}`} accessibilityRole='button'>
+            <DeleteGlyph />
+          </TouchableOpacity>
+        </View>
       </View>
     </View>
   );
@@ -62,6 +84,20 @@ const styles = StyleSheet.create({
   macros: { fontSize: typography.fontSize.xs, color: colors.brandText, marginTop: 6 },
   right: { alignItems: 'flex-end', gap: spacing.sm },
   calories: { fontSize: typography.fontSize.sm, fontFamily: typography.fontFamily.bold, color: colors.brandPrimary },
+  actions: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  editBtn: {
+    height: 32,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.brandMutedSurface,
+  },
+  editLabel: {
+    fontSize: typography.fontSize.xs,
+    fontFamily: typography.fontFamily.semiBold,
+    color: colors.brandAnchor,
+  },
   deleteBtn: {
     width: 32,
     height: 32,

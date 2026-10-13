@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   DimensionValue,
   KeyboardAvoidingView,
@@ -11,16 +11,19 @@ import {
 } from 'react-native';
 import { Text, Button, Input, screenShellStyle } from '@shared/components';
 import { colors, typography, spacing, radius } from '@theme';
-import { AddMealPayload, AppMealType } from '@shared/services/food-log.service';
+import { AddMealPayload, AppMealType, Meal } from '@shared/services/food-log.service';
 import { showAlert } from '@shared/utils/show-alert';
 
 interface Props {
   visible: boolean;
   onClose: () => void;
   onSubmit: (data: AddMealPayload) => Promise<void>;
+  /** Modo edição: abre preenchido com esta refeição. */
+  initialMeal?: Meal;
 }
 
 const saveMealLabel = 'Salvar refeição';
+const saveChangesLabel = 'Salvar alterações';
 const sheetMaxHeight: DimensionValue = '80%';
 
 const MEAL_TYPES: { value: AppMealType; label: string }[] = [
@@ -41,13 +44,25 @@ function parseMacro(raw: string): number | null {
   return n;
 }
 
-export function AddMealModal({ visible, onClose, onSubmit }: Props): React.JSX.Element {
-  const [name, setName] = useState('');
-  const [mealType, setMealType] = useState<AppMealType>('lunch');
-  const [calories, setCalories] = useState('');
-  const [protein, setProtein] = useState('');
-  const [carbs, setCarbs] = useState('');
-  const [fat, setFat] = useState('');
+/** Fibra: campo vazio = sem dado (null), diferente dos macros (vazio = 0). */
+function parseFiber(raw: string): number | null | undefined {
+  if (raw.trim() === '') return null;
+  const n = Number(raw.replace(',', '.'));
+  return Number.isFinite(n) && n >= 0 ? n : undefined; // undefined = inválido
+}
+
+const toField = (v: number | null | undefined) => (v == null ? '' : String(v));
+const initialType = (meal?: Meal): AppMealType =>
+  meal && meal.mealType !== 'other' ? meal.mealType : 'lunch';
+
+export function AddMealModal({ visible, onClose, onSubmit, initialMeal }: Props): React.JSX.Element {
+  const [name, setName] = useState(initialMeal?.name ?? '');
+  const [mealType, setMealType] = useState<AppMealType>(initialType(initialMeal));
+  const [calories, setCalories] = useState(toField(initialMeal?.calories));
+  const [protein, setProtein] = useState(toField(initialMeal?.protein));
+  const [carbs, setCarbs] = useState(toField(initialMeal?.carbs));
+  const [fat, setFat] = useState(toField(initialMeal?.fat));
+  const [fiber, setFiber] = useState(toField(initialMeal?.fiber));
   const [fieldError, setFieldError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -57,7 +72,23 @@ export function AddMealModal({ visible, onClose, onSubmit }: Props): React.JSX.E
     carbs: parseMacro(carbs),
     fat: parseMacro(fat),
   };
-  const hasInvalidNumber = Object.values(parsed).some((v) => v === null);
+  const parsedFiber = parseFiber(fiber);
+  const hasInvalidNumber =
+    Object.values(parsed).some((v) => v === null) || parsedFiber === undefined;
+
+  // O mesmo modal serve para registrar e editar: ao abrir para outra refeição,
+  // os campos têm que refletir ESSA refeição, não o que ficou da anterior.
+  useEffect(() => {
+    if (!visible) return;
+    setName(initialMeal?.name ?? '');
+    setMealType(initialType(initialMeal));
+    setCalories(toField(initialMeal?.calories));
+    setProtein(toField(initialMeal?.protein));
+    setCarbs(toField(initialMeal?.carbs));
+    setFat(toField(initialMeal?.fat));
+    setFiber(toField(initialMeal?.fiber));
+    setFieldError('');
+  }, [visible, initialMeal]);
   const canSubmit =
     name.trim().length > 0 && calories.trim() !== '' && !hasInvalidNumber && !loading;
 
@@ -78,12 +109,14 @@ export function AddMealModal({ visible, onClose, onSubmit }: Props): React.JSX.E
         protein: parsed.protein ?? 0,
         carbs: parsed.carbs ?? 0,
         fat: parsed.fat ?? 0,
+        fiber: parsedFiber ?? null,
       });
       setName('');
       setCalories('');
       setProtein('');
       setCarbs('');
       setFat('');
+      setFiber('');
       setMealType('lunch');
       onClose();
     } catch {
@@ -103,7 +136,9 @@ export function AddMealModal({ visible, onClose, onSubmit }: Props): React.JSX.E
       >
         <View style={styles.sheet}>
           <View style={styles.header}>
-            <Text style={styles.headerTitle}>Registrar refeição</Text>
+            <Text style={styles.headerTitle}>
+              {initialMeal ? 'Editar refeição' : 'Registrar refeição'}
+            </Text>
             <TouchableOpacity onPress={onClose} style={styles.closeTarget} accessibilityRole="button" accessibilityLabel="Fechar registro de refeição">
               <Text style={styles.closeBtn}>✕</Text>
             </TouchableOpacity>
@@ -173,6 +208,15 @@ export function AddMealModal({ visible, onClose, onSubmit }: Props): React.JSX.E
               value={fat}
               onChangeText={setFat}
             />
+            <Input
+              label="Fibra (g)"
+              placeholder="Fibra (g) — opcional"
+              placeholderTextColor={colors.textDisabled}
+              keyboardType="numeric"
+              value={fiber}
+              onChangeText={setFiber}
+              testID="meal-fiber-input"
+            />
             {fieldError ? <Text style={styles.errorText}>{fieldError}</Text> : null}
             <Button
               onPress={handleSubmit}
@@ -181,7 +225,7 @@ export function AddMealModal({ visible, onClose, onSubmit }: Props): React.JSX.E
               style={styles.submitBtn}
               labelStyle={styles.submitBtnLabel}
             >
-              {saveMealLabel}
+              {initialMeal ? saveChangesLabel : saveMealLabel}
             </Button>
           </ScrollView>
         </View>

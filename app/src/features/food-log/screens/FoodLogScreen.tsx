@@ -11,6 +11,7 @@ import { CalorieProgressBar } from '../components/CalorieProgressBar';
 import { formatChipLabel, getMealGroupFor, last7Days, todayString } from '@shared/utils/date';
 import { getDailyCalorieGoal, getDayTotals } from '@shared/utils/calories';
 import { useDietStore } from '@features/diet/store';
+import type { AddMealPayload, Meal } from '@shared/services/food-log.service';
 
 const GROUPS = ['Café da manhã', 'Almoço', 'Lanche', 'Jantar'] as const;
 const addMealLabel = 'Adicionar refeição';
@@ -38,9 +39,20 @@ function DiaryEmptyIcon(): React.JSX.Element {
 }
 
 export function FoodLogScreen(): React.JSX.Element {
-  const { meals, isLoading, hasError, reload, selectedDate, setSelectedDate, handleAddMeal, handleDeleteMeal } = useFoodLog();
+  const { meals, isLoading, hasError, reload, selectedDate, setSelectedDate, handleAddMeal, handleDeleteMeal, handleUpdateMeal } = useFoodLog();
   const plan = useDietStore((s) => s.plan);
   const [modalVisible, setModalVisible] = useState(false);
+  const [editingMeal, setEditingMeal] = useState<Meal | null>(null);
+  const handleEditSubmit = useCallback(
+    async (data: AddMealPayload) => {
+      if (!editingMeal) return;
+      // A refeição não muda de dia ao ser editada: a data não vai no PATCH.
+      const changes: Omit<AddMealPayload, 'date'> = { ...data };
+      delete (changes as AddMealPayload).date;
+      await handleUpdateMeal(editingMeal.id, changes);
+    },
+    [editingMeal, handleUpdateMeal],
+  );
   const [refreshing, setRefreshing] = useState(false);
   const onRefresh = useCallback(() => {
     setRefreshing(true);
@@ -127,7 +139,7 @@ export function FoodLogScreen(): React.JSX.Element {
             ) : (
               <View style={styles.sections}>
                 {GROUPS.map((group) => (
-                  <MealSection key={group} title={group} meals={grouped[group] ?? []} onDelete={handleDeleteMeal} />
+                  <MealSection key={group} title={group} meals={grouped[group] ?? []} onDelete={handleDeleteMeal} onEdit={setEditingMeal} />
                 ))}
               </View>
             )}
@@ -136,6 +148,12 @@ export function FoodLogScreen(): React.JSX.Element {
       </View>
 
       <AddMealModal visible={modalVisible} onClose={() => setModalVisible(false)} onSubmit={handleAddMeal} />
+      <AddMealModal
+        visible={editingMeal !== null}
+        initialMeal={editingMeal ?? undefined}
+        onClose={() => setEditingMeal(null)}
+        onSubmit={handleEditSubmit}
+      />
     </View>
   );
 }

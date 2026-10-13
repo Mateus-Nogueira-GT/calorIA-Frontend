@@ -28,4 +28,54 @@ describe('AddMealModal', () => {
 
     alertSpy.mockRestore();
   });
+
+  const existing = {
+    id: 'm1', name: 'Frango', calories: 450, protein: 38, carbs: 52, fat: 8, fiber: 4,
+    loggedAt: '2026-10-12 12:00:00+00', mealType: 'dinner' as const,
+  };
+
+  it('modo edição: abre preenchido e envia os novos valores', async () => {
+    const onSubmit = jest.fn().mockResolvedValue(undefined);
+    const { getByText, getByTestId } = render(
+      <AddMealModal visible onClose={() => {}} onSubmit={onSubmit} initialMeal={existing} />,
+    );
+    expect(getByText('Editar refeição')).toBeTruthy();
+    expect(getByTestId('meal-name-input').props.value).toBe('Frango');
+    expect(getByTestId('meal-fiber-input').props.value).toBe('4');
+    fireEvent.changeText(getByTestId('meal-calories-input'), '400');
+    fireEvent.press(getByText('Salvar alterações'));
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'Frango', calories: 400, fiber: 4, mealType: 'dinner' }),
+      ),
+    );
+  });
+
+  it('fibra vazia é enviada como null (sem dado)', async () => {
+    const onSubmit = jest.fn().mockResolvedValue(undefined);
+    const { getByText, getByTestId } = render(
+      <AddMealModal visible onClose={() => {}} onSubmit={onSubmit} initialMeal={existing} />,
+    );
+    fireEvent.changeText(getByTestId('meal-fiber-input'), '');
+    fireEvent.press(getByText('Salvar alterações'));
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ fiber: null })),
+    );
+  });
+
+  it('registro novo continua com título e botão de registrar', () => {
+    const { getByText } = render(<AddMealModal visible onClose={() => {}} onSubmit={jest.fn()} />);
+    expect(getByText('Registrar refeição')).toBeTruthy();
+    expect(getByText('Salvar refeição')).toBeTruthy();
+  });
+
+  it('fibra com letras bloqueia o envio', async () => {
+    const onSubmit = jest.fn().mockResolvedValue(undefined);
+    const { getByText, getByTestId } = render(
+      <AddMealModal visible onClose={() => {}} onSubmit={onSubmit} initialMeal={existing} />,
+    );
+    fireEvent.changeText(getByTestId('meal-fiber-input'), 'abc');
+    fireEvent.press(getByText('Salvar alterações'));
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
 });
