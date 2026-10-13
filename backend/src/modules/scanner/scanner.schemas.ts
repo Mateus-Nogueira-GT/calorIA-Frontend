@@ -19,6 +19,8 @@ export const scanItemSchema = z.object({
   protein: z.number(),
   carbs: z.number(),
   fat: z.number(),
+  /** Fibra (g). null = sem dado (resultado em cache anterior à fibra). */
+  fiber: z.number().nullable(),
   /** Confiança da IA na estimativa, entre 0 e 1. */
   confidence: z.number().min(0).max(1),
   /** OP3: confiança < 0.5 — o app pede para conferir os valores. */
@@ -46,6 +48,7 @@ export const visionAnalysisSchema = z.object({
   protein: z.number(),
   carbs: z.number(),
   fat: z.number(),
+  fiber: z.number(),
   confidence: z.number(),
 })
 

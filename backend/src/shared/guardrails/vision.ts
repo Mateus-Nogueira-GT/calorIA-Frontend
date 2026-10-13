@@ -13,18 +13,21 @@ export function sanitizeVisionResult(a: {
   protein: number
   carbs: number
   fat: number
+  fiber?: number
   confidence: number
 }): {
   calories: number
   protein: number
   carbs: number
   fat: number
+  fiber: number | null
   confidence: number
   uncertain: boolean
 } {
   let protein = Math.max(0, Math.round(a.protein))
   let carbs = Math.max(0, Math.round(a.carbs))
   let fat = Math.max(0, Math.round(a.fat))
+  let fiber = a.fiber == null ? null : Math.max(0, Math.round(a.fiber))
   let calories = Math.max(0, Math.round(a.calories))
 
   const expected = kcalFromMacros(protein, carbs, fat)
@@ -39,6 +42,7 @@ export function sanitizeVisionResult(a: {
     protein = Math.round(protein * factor)
     carbs = Math.round(carbs * factor)
     fat = Math.round(fat * factor)
+    if (fiber != null) fiber = Math.round(fiber * factor)
     calories = VISION_MAX_KCAL
   }
 
@@ -48,6 +52,7 @@ export function sanitizeVisionResult(a: {
     protein,
     carbs,
     fat,
+    fiber,
     confidence,
     uncertain: confidence < VISION_UNCERTAIN_BELOW,
   }

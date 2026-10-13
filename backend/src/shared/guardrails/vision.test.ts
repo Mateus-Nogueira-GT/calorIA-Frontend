@@ -15,9 +15,45 @@ describe('sanitizeVisionResult (OP3)', () => {
       protein: 40,
       carbs: 70,
       fat: 18,
+      fiber: null,
       confidence: 0.82,
       uncertain: false,
     })
+  })
+
+  it('fibra: arredonda, negativa vira 0 e não entra nas kcal', () => {
+    const r = sanitizeVisionResult({
+      calories: 650,
+      protein: 40,
+      carbs: 70,
+      fat: 18,
+      fiber: 6.4,
+      confidence: 0.82,
+    })
+    expect(r.fiber).toBe(6)
+    expect(r.calories).toBe(650)
+    expect(
+      sanitizeVisionResult({
+        calories: 100,
+        protein: 5,
+        carbs: 15,
+        fat: 2,
+        fiber: -3,
+        confidence: 1,
+      }).fiber,
+    ).toBe(0)
+  })
+
+  it('acima de 3000 kcal: fibra escala junto com os macros', () => {
+    const r = sanitizeVisionResult({
+      calories: 40000,
+      protein: 2000,
+      carbs: 5000,
+      fat: 1333,
+      fiber: 400,
+      confidence: 0.9,
+    })
+    expect(r.fiber).toBe(30)
   })
 
   it('kcal incoerente com macros (>25%) é recalculada', () => {
