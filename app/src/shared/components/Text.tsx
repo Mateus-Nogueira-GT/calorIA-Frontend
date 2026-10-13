@@ -10,12 +10,31 @@ interface Props extends TextProps {
 }
 
 export function Text({ variant = 'body', color, style, ...rest }: Props): React.JSX.Element {
+  // label não define lineHeight; as demais variantes sim.
+  const base = styles[variant] as { lineHeight?: number } & TextProps['style'];
   return (
     <RNText
-      style={[styles[variant], color ? { color } : undefined, style]}
+      style={[base, color ? { color } : undefined, style, autoLineHeight(base.lineHeight, style)]}
       {...rest}
     />
   );
+}
+
+/**
+ * Texto cortado no tablet: a variante body impõe lineHeight 24, e um `style`
+ * com fontSize 48 (total de calorias do Dashboard) renderizava o glifo numa
+ * linha de 24 px — corte em cima e embaixo. Só age quando a fonte não cabe na
+ * linha herdada; quem já cabe não muda de layout e lineHeight explícito vence.
+ */
+function autoLineHeight(
+  inherited: number | undefined,
+  style: TextProps['style'],
+): { lineHeight: number } | undefined {
+  const flat = StyleSheet.flatten(style);
+  const fontSize = flat?.fontSize;
+  if (inherited == null || fontSize == null || flat?.lineHeight != null) return undefined;
+  const needed = fontSize * typography.lineHeight.tight;
+  return needed > inherited ? { lineHeight: Math.ceil(needed) } : undefined;
 }
 
 // O acesso é dinâmico (`styles[variant]`), coisa que a regra no-unused-styles

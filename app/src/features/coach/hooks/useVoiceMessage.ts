@@ -82,11 +82,33 @@ interface VoiceOperation {
   startedAt: number;
 }
 
+/**
+ * R3 (2026-10-12): depois da transcrição o áudio virou uma mensagem como outra
+ * qualquer. O envio ao coach leva 10–30 s; amarrá-lo ao foco/app ativo fazia a
+ * pergunta e a resposta sumirem em silêncio se a pessoa trocasse de aba ou a
+ * tela apagasse. Só troca de sessão (logout/outra conta) cancela daqui em diante.
+ */
+interface PendingSend {
+  controller: AbortController;
+  userId: string;
+  sessionGeneration: number;
+}
+
+function isSameSession(owner: { userId: string; sessionGeneration: number }): boolean {
+  const auth = useAuthStore.getState();
+  return (
+    auth.isAuthenticated &&
+    auth.user?.id === owner.userId &&
+    auth.sessionGeneration === owner.sessionGeneration
+  );
+}
+
 export function useVoiceMessage({ onSend, disabled, isFocused = true }: Options) {
   const [status, setStatusState] = useState<VoiceStatus>('idle');
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const statusRef = useRef<VoiceStatus>('idle');
   const operationRef = useRef<VoiceOperation | null>(null);
+  const sendRef = useRef<PendingSend | null>(null);
   const nativeTaskRef = useRef<Promise<unknown> | null>(null);
   const cleanupFailedRef = useRef(false);
   const permissionPendingRef = useRef(false);
@@ -171,6 +193,11 @@ export function useVoiceMessage({ onSend, disabled, isFocused = true }: Options)
   useEffect(() => {
     mountedRef.current = true;
     const unsubscribe = useAuthStore.subscribe((auth) => {
+      const send = sendRef.current;
+      if (send && !isSameSession(send)) {
+        sendRef.current = null;
+        send.controller.abort();
+      }
       const operation = operationRef.current;
       if (
         operation &&
@@ -304,24 +331,35 @@ export function useVoiceMessage({ onSend, disabled, isFocused = true }: Options)
       return;
     }
     if (!isValid(operation) || appStateRef.current !== 'active') return;
+    let text: string;
     try {
-      const text = await coachService.transcribe(
-        audio,
-        VOICE_MIME_TYPE,
-        operation.controller.signal,
-      );
-      if (!isValid(operation) || appStateRef.current !== 'active') return;
-      await onSendRef.current(text, {
-        signal: operation.controller.signal,
-        isValid: () => isValid(operation) && appStateRef.current === 'active',
-      });
+      text = await coachService.transcribe(audio, VOICE_MIME_TYPE, operation.controller.signal);
     } catch (e) {
-      if (isValid(operation) && !axios.isCancel(e)) showTranscribeError(e);
-    } finally {
       if (isValid(operation)) {
         operationRef.current = null;
         setStatus('idle');
+        if (!axios.isCancel(e)) showTranscribeError(e);
       }
+      return;
+    }
+    if (!isValid(operation) || appStateRef.current !== 'active') return;
+
+    // A operação de voz termina aqui; o envio fica preso só à sessão (R3).
+    operationRef.current = null;
+    setStatus('idle');
+    const send: PendingSend = {
+      controller: new AbortController(),
+      userId: operation.userId,
+      sessionGeneration: operation.sessionGeneration,
+    };
+    sendRef.current = send;
+    try {
+      await onSendRef.current(text, {
+        signal: send.controller.signal,
+        isValid: () => !send.controller.signal.aborted && isSameSession(send),
+      });
+    } finally {
+      if (sendRef.current === send) sendRef.current = null;
     }
   }, [isValid, runNative, setStatus]);
 

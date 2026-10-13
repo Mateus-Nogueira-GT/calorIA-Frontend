@@ -11,10 +11,10 @@ interface Props {
 }
 
 const NUM_FIELDS: { key: keyof ScanItem; label: string }[] = [
-  { key: 'calories', label: 'kcal' },
-  { key: 'protein', label: 'P' },
-  { key: 'carbs', label: 'C' },
-  { key: 'fat', label: 'G' },
+  { key: 'calories', label: 'Calorias (kcal)' },
+  { key: 'protein', label: 'Proteína (g)' },
+  { key: 'carbs', label: 'Carboidratos (g)' },
+  { key: 'fat', label: 'Gordura (g)' },
 ];
 
 type DraftState = Record<string, string>;
@@ -97,8 +97,8 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
   },
   remove: { fontSize: typography.fontSize.md, color: colors.brandTextMuted, paddingHorizontal: spacing.xs },
-  macrosRow: { flexDirection: 'row', gap: spacing.sm },
-  macroField: { flex: 1 },
+  macrosRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  macroField: { flexGrow: 1, flexBasis: '45%' },
   macroLabel: { fontSize: typography.fontSize.xs, color: colors.brandTextMuted, marginBottom: 2 },
   macroInput: {
     backgroundColor: colors.brandMutedSurface,

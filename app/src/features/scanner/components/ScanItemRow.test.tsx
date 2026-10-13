@@ -50,4 +50,15 @@ describe('ScanItemRow', () => {
     rerender(<ScanItemRow item={item} onChange={() => {}} onRemove={() => {}} />);
     expect(queryByText('Estimativa incerta — confira os valores')).toBeNull();
   });
+
+  it('rótulos por extenso, sem abreviação de uma letra', () => {
+    const { getByText, queryByText } = render(
+      <ScanItemRow item={item} onChange={() => {}} onRemove={() => {}} />,
+    );
+    expect(getByText('Calorias (kcal)')).toBeTruthy();
+    expect(getByText('Proteína (g)')).toBeTruthy();
+    expect(getByText('Carboidratos (g)')).toBeTruthy();
+    expect(getByText('Gordura (g)')).toBeTruthy();
+    expect(queryByText('P')).toBeNull();
+  });
 });

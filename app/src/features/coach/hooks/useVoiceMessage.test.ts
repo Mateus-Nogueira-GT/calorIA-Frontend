@@ -4,6 +4,7 @@ import { act, renderHook } from '@testing-library/react-native';
 import { Alert, AppState, AppStateStatus } from 'react-native';
 import { AxiosError, AxiosHeaders } from 'axios';
 import { useVoiceMessage, MAX_RECORDING_SECONDS, MIN_RECORDING_MS } from './useVoiceMessage';
+import type { VoiceRequestContext } from '@shared/services/coach.service';
 
 const mockStop = jest.fn<() => Promise<string>>();
 const mockCancel = jest.fn<() => Promise<void>>();
@@ -309,6 +310,125 @@ describe('useVoiceMessage', () => {
     });
     return { promise, resolve, reject };
   }
+
+  describe('envio ao coach depois da transcrição (R3)', () => {
+    const onSendCtx = jest.fn<(text: string, voice?: VoiceRequestContext) => Promise<boolean>>();
+    let ctx: VoiceRequestContext | undefined;
+    let pendingSend: ReturnType<typeof deferred<boolean>>;
+
+    beforeEach(() => {
+      ctx = undefined;
+      pendingSend = deferred<boolean>();
+      onSendCtx.mockReset();
+      onSendCtx.mockImplementation((_text, voice) => {
+        ctx = voice;
+        return pendingSend.promise;
+      });
+    });
+
+    function setupFocusable() {
+      return renderHook(
+        ({ isFocused }: { isFocused: boolean }) =>
+          useVoiceMessage({ onSend: onSendCtx, disabled: false, isFocused }),
+        { initialProps: { isFocused: true } },
+      );
+    }
+
+    /**
+     * Grava, "fala" e para; devolve o `stop()` embrulhado num objeto — se o
+     * helper devolvesse a promise direto, `await sendVoice(...)` a desembrulharia
+     * e o teste ficaria preso na resposta do coach antes de poder assertar.
+     */
+    async function sendVoice(result: {
+      current: ReturnType<typeof useVoiceMessage>;
+    }): Promise<{ stopping: Promise<void> }> {
+      await startAndSpeak(result);
+      let stopping: Promise<void> = Promise.resolve();
+      await act(async () => {
+        stopping = result.current.stop();
+      });
+      return { stopping };
+    }
+
+    it('microfone volta ao idle assim que o texto vai para o coach', async () => {
+      const { result } = setupFocusable();
+      const { stopping } = await sendVoice(result);
+      expect(onSendCtx).toHaveBeenCalledWith('quanto de proteína hoje?', expect.anything());
+      expect(result.current.status).toBe('idle');
+      await act(async () => {
+        pendingSend.resolve(true);
+        await stopping;
+      });
+    });
+
+    it('perder o foco enquanto o coach responde NÃO descarta o envio', async () => {
+      const { result, rerender } = setupFocusable();
+      const { stopping } = await sendVoice(result);
+      await act(async () => {
+        rerender({ isFocused: false });
+      });
+      expect(ctx?.signal.aborted).toBe(false);
+      expect(ctx?.isValid()).toBe(true);
+      await act(async () => {
+        pendingSend.resolve(true);
+        await stopping;
+      });
+    });
+
+    it('background enquanto o coach responde NÃO descarta o envio', async () => {
+      let change: (state: AppStateStatus) => void = () => {};
+      const listener = jest
+        .spyOn(AppState, 'addEventListener')
+        .mockImplementation((_event, callback) => {
+          change = callback;
+          return { remove: jest.fn() };
+        });
+      try {
+        const { result } = setupFocusable();
+        const { stopping } = await sendVoice(result);
+        await act(async () => {
+          change('background');
+        });
+        expect(ctx?.signal.aborted).toBe(false);
+        expect(ctx?.isValid()).toBe(true);
+        await act(async () => {
+          pendingSend.resolve(true);
+          await stopping;
+        });
+      } finally {
+        listener.mockRestore();
+      }
+    });
+
+    it('logout enquanto o coach responde aborta o envio', async () => {
+      const { result } = setupFocusable();
+      const { stopping } = await sendVoice(result);
+      await act(async () => {
+        useAuthStore.getState().clearToken();
+      });
+      expect(ctx?.signal.aborted).toBe(true);
+      expect(ctx?.isValid()).toBe(false);
+      await act(async () => {
+        pendingSend.resolve(false);
+        await stopping;
+      });
+    });
+
+    it('troca de conta enquanto o coach responde aborta o envio', async () => {
+      const { result } = setupFocusable();
+      const { stopping } = await sendVoice(result);
+      await act(async () => {
+        useAuthStore
+          .getState()
+          .setToken('other', { id: 'other', name: 'Outra', email: 'o@test.com' });
+      });
+      expect(ctx?.signal.aborted).toBe(true);
+      await act(async () => {
+        pendingSend.resolve(false);
+        await stopping;
+      });
+    });
+  });
 
   it.each(['logout', 'troca de conta', 'cancelar'])(
     '%s invalida uma transcrição e aborta seu transporte',
