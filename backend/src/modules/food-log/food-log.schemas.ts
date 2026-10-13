@@ -13,6 +13,8 @@ export const mealSchema = z.object({
   protein: z.number(),
   carbs: z.number(),
   fat: z.number(),
+  /** Fibra (g). null = sem dado (registro anterior à migration 022). */
+  fiber: z.number().nullable(),
   loggedAt: z.string(),
   mealType: appMealTypeSchema,
 })
@@ -29,6 +31,8 @@ export const addMealBodySchema = z.object({
   protein: z.number().min(0),
   carbs: z.number().min(0),
   fat: z.number().min(0),
+  /** Fibra (g). Ausente/null = sem dado. */
+  fiber: z.number().min(0).nullable().optional(),
   /**
    * Data local do cliente (Workstream A). Sem ela, CURRENT_DATE (UTC) — que
    * "vira o dia" às 21h BRT; o app SEMPRE deve enviar.
@@ -37,6 +41,15 @@ export const addMealBodySchema = z.object({
   /** Tipo da refeição (D4) — registros sem tipo continuam como 'other'. */
   mealType: appMealTypeSchema.optional().default('other'),
 })
+
+/**
+ * PATCH: mesmo corpo do POST, sem a data (a refeição não muda de dia). O tipo é
+ * obrigatório: herdar o default 'other' do POST faria um PATCH sem tipo tirar a
+ * refeição do grupo escolhido.
+ */
+export const updateMealBodySchema = addMealBodySchema
+  .omit({ date: true })
+  .extend({ mealType: appMealTypeSchema })
 
 export const mealParamsSchema = z.object({
   id: z.string().uuid(),
@@ -66,5 +79,6 @@ export const errorSchema = z.object({
 export type Meal = z.infer<typeof mealSchema>
 export type ListMealsQuery = z.infer<typeof listMealsQuerySchema>
 export type AddMealBody = z.infer<typeof addMealBodySchema>
+export type UpdateMealBody = z.infer<typeof updateMealBodySchema>
 export type SummaryQuery = z.infer<typeof summaryQuerySchema>
 export type DaySummary = z.infer<typeof daySummarySchema>

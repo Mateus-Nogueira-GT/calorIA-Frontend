@@ -10,6 +10,15 @@ beforeEach(() => {
 });
 
 describe('useFoodLogStore', () => {
+  it('updateMeal troca a refeição pelo id no dia', () => {
+    const meal = { id: 'm1', name: 'Arroz', calories: 200, protein: 4, carbs: 44, fat: 1, loggedAt: 'x', mealType: 'lunch' as const };
+    useFoodLogStore.getState().setMeals('2026-10-12', [meal]);
+    useFoodLogStore.getState().updateMeal('2026-10-12', { ...meal, calories: 150, fiber: 3 });
+    expect(useFoodLogStore.getState().mealsByDate['2026-10-12']).toEqual([
+      { ...meal, calories: 150, fiber: 3 },
+    ]);
+  });
+
   it('setMeals popula a data correta', () => {
     useFoodLogStore.getState().setMeals('2026-06-09', [meal1]);
     expect(useFoodLogStore.getState().mealsByDate['2026-06-09']).toHaveLength(1);

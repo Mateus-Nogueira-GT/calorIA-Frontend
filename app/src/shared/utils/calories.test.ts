@@ -1,5 +1,5 @@
 import { describe, it, expect } from '@jest/globals';
-import { getDailyCalorieGoal, sumCalories, getDayTotals } from './calories';
+import { getDailyCalorieGoal, getDailyFiberGoal, sumCalories, getDayTotals } from './calories';
 import type { DietPlan } from '@shared/services/diet.service';
 import type { Meal } from '@shared/services/food-log.service';
 
@@ -60,7 +60,7 @@ describe('getDayTotals (M6 — regra única de soma)', () => {
 
   it('soma os macros junto com as calorias', () => {
     const totals = getDayTotals({ planMeals: [planned(true, 600)], freeMeals: [free(200)] });
-    expect(totals).toEqual({ calories: 800, protein: 11, carbs: 22, fat: 8 });
+    expect(totals).toEqual({ calories: 800, protein: 11, carbs: 22, fat: 8, fiber: 0 });
   });
 
   it('dia vazio zera tudo', () => {
@@ -69,6 +69,31 @@ describe('getDayTotals (M6 — regra única de soma)', () => {
       protein: 0,
       carbs: 0,
       fat: 0,
+      fiber: 0,
     });
+  });
+});
+
+describe('fibra nos totais do dia', () => {
+  it('soma a fibra conhecida do plano concluído e do diário; ausente conta 0', () => {
+    const totals = getDayTotals({
+      planMeals: [
+        { completedToday: true, calories: 100, protein: 1, carbs: 1, fat: 1, fiber: 4 },
+        { completedToday: false, calories: 100, protein: 1, carbs: 1, fat: 1, fiber: 9 },
+      ],
+      freeMeals: [
+        { calories: 50, protein: 1, carbs: 1, fat: 1, fiber: 2.5 },
+        { calories: 50, protein: 1, carbs: 1, fat: 1, fiber: null },
+        { calories: 50, protein: 1, carbs: 1, fat: 1 },
+      ],
+    });
+    expect(totals.fiber).toBe(6.5);
+  });
+
+  it('meta de fibra: soma do plano quando alguma refeição tem o dado; senão null', () => {
+    const withFiber = { fiber: 5 } as never;
+    expect(getDailyFiberGoal({ meals: [withFiber, { fiber: 3 } as never] } as never)).toBe(8);
+    expect(getDailyFiberGoal({ meals: [{ fiber: null } as never] } as never)).toBeNull();
+    expect(getDailyFiberGoal(null)).toBeNull();
   });
 });

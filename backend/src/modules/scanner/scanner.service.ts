@@ -13,7 +13,7 @@ Receberá a foto de um prato/refeição e deve estimar os valores nutricionais d
 ## REGRAS
 - Identifique o prato com um nome curto em português (ex: "Arroz, feijão e frango grelhado").
 - Estime os totais da PORÇÃO INTEIRA visível na foto (não por 100g).
-- calories em kcal; protein, carbs e fat em gramas. Use números inteiros ou com 1 casa decimal.
+- calories em kcal; protein, carbs, fat e fiber (fibra alimentar) em gramas. Use números inteiros ou com 1 casa decimal.
 - confidence é a sua confiança na estimativa, entre 0 e 1 (ex: 0.82).
 - Se a imagem NÃO contiver comida (pessoa, paisagem, objeto, etc.), retorne is_food=false
   e zere os demais valores.
@@ -79,7 +79,8 @@ export async function analyzePhoto(
   if (cached) {
     if (cached.notFood)
       throw new AppError(422, 'NOT_FOOD', 'Não identificamos comida nesta imagem.')
-    return { items: [{ id: randomUUID(), ...cached.item }] }
+    // Cache anterior à fibra não tem o campo — "sem dado", não 0 g.
+    return { items: [{ id: randomUUID(), ...cached.item, fiber: cached.item.fiber ?? null }] }
   }
 
   let analysis: import('./scanner.schemas.js').VisionAnalysis

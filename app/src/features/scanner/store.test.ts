@@ -47,6 +47,13 @@ describe('useScannerStore', () => {
     expect(useScannerStore.getState().error).toContain('Crie uma conta');
   });
 
+  it('confirm envia a fibra do item ao diário', async () => {
+    foodLogService.addMeal.mockResolvedValue({ id: 'meal' });
+    useScannerStore.setState({ items: [{ ...item('1'), fiber: 6 }] });
+    await useScannerStore.getState().confirm();
+    expect(foodLogService.addMeal).toHaveBeenCalledWith(expect.objectContaining({ fiber: 6 }));
+  });
+
   it('updateItem edita campos', () => {
     useScannerStore.setState({ items: [item('1')] });
     useScannerStore.getState().updateItem('1', { calories: 250 });

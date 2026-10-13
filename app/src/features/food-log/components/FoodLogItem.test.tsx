@@ -17,4 +17,19 @@ describe('FoodLogItem', () => {
     fireEvent.press(getByTestId('delete-m1'));
     expect(onDelete).toHaveBeenCalledWith('m1');
   });
+
+  it('mostra fibra quando houver e chama onEdit com a refeição', () => {
+    const onEdit = jest.fn();
+    const { getByText, getByTestId } = render(
+      <FoodLogItem meal={{ ...meal, fiber: 4 }} onDelete={() => {}} onEdit={onEdit} />,
+    );
+    expect(getByText('Proteínas 38g · Carboidratos 52g · Gorduras 8g · Fibras 4g')).toBeTruthy();
+    fireEvent.press(getByTestId('edit-m1'));
+    expect(onEdit).toHaveBeenCalledWith({ ...meal, fiber: 4 });
+  });
+
+  it('sem fibra, a linha omite as fibras', () => {
+    const { getByText } = render(<FoodLogItem meal={{ ...meal, fiber: null }} onDelete={() => {}} />);
+    expect(getByText('Proteínas 38g · Carboidratos 52g · Gorduras 8g')).toBeTruthy();
+  });
 });

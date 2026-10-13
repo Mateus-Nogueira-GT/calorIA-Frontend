@@ -59,6 +59,15 @@ export function useFoodLog() {
     }
   }, [store.selectedDate]);
 
+  const handleUpdateMeal = useCallback(
+    async (id: string, data: Omit<AddMealPayload, 'date'>): Promise<void> => {
+      // Erro sobe para o modal, que já mostra "Não foi possível salvar".
+      const meal = await foodLogService.updateMeal(id, data);
+      store.updateMeal(store.selectedDate, meal);
+    },
+    [store.selectedDate],
+  );
+
   return {
     meals,
     isLoading,
@@ -68,5 +77,6 @@ export function useFoodLog() {
     setSelectedDate: store.setSelectedDate,
     handleAddMeal,
     handleDeleteMeal,
+    handleUpdateMeal,
   };
 }

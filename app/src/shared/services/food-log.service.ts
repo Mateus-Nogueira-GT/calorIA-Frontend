@@ -10,6 +10,8 @@ export interface Meal {
   protein: number;
   carbs: number;
   fat: number;
+  /** Fibra (g). null/ausente = sem dado. */
+  fiber?: number | null;
   loggedAt: string;
   mealType: AppMealType;
 }
@@ -20,6 +22,8 @@ export interface AddMealPayload {
   protein: number;
   carbs: number;
   fat: number;
+  /** Fibra (g). null/ausente = sem dado. */
+  fiber?: number | null;
   /** Data local do registro (YYYY-MM-DD). Default: hoje local. */
   date?: string;
   /** Tipo da refeição — 'other' cai no agrupamento por horário. */
@@ -44,6 +48,9 @@ export const foodLogService = {
   // que às 21h BRT já é "amanhã" e a refeição sumia da lista do dia.
   addMeal: (data: AddMealPayload) =>
     api.post<Meal>('/food-log', { ...data, date: data.date ?? todayString() }).then((r) => r.data),
+  /** Corrige uma refeição (ex.: a IA errou). A data não muda. */
+  updateMeal: (id: string, data: Omit<AddMealPayload, 'date'>) =>
+    api.patch<Meal>(`/food-log/${id}`, data).then((r) => r.data),
   deleteMeal: (id: string) =>
     api.delete(`/food-log/${id}`).then((r) => r.data),
 };

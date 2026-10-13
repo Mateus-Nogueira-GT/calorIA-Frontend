@@ -31,7 +31,9 @@ const styles = StyleSheet.create({
   container: {
     minWidth: 94,
     flex: 1,
-    flexBasis: 94,
+    // 4 cards (com Fibras): 140 dá 2×2 no telefone (~358 px úteis) e 4 lado a
+    // lado no tablet. Com 94, o 4º card caía sozinho numa linha inteira.
+    flexBasis: 140,
     backgroundColor: colors.brandSurface,
     borderRadius: radius.lg,
     borderWidth: 1,

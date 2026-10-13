@@ -7,6 +7,8 @@ export interface ScanItem {
   protein: number;
   carbs: number;
   fat: number;
+  /** Fibra (g). null/ausente = sem dado. */
+  fiber?: number | null;
   confidence: number;
   uncertain?: boolean;
 }
@@ -36,6 +38,7 @@ function normalize(data: unknown): ScanResponse {
           protein: d.protein ?? 0,
           carbs: d.carbs ?? 0,
           fat: d.fat ?? 0,
+          fiber: d.fiber ?? null,
           confidence: d.confidence ?? 1,
         },
       ],

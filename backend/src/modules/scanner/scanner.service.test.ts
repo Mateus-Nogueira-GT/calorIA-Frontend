@@ -11,6 +11,7 @@ const analysis = {
   protein: 20,
   carbs: 80,
   fat: 8,
+  fiber: 7,
   confidence: 0.4,
 }
 
@@ -92,5 +93,31 @@ describe('analyzePhoto — guardrails e cache (OP3)', () => {
     // src/shared/ai-usage.test.ts para logAiUsage.
     await new Promise((resolve) => setImmediate(resolve))
     expect(logs.some((l) => l.level === 'warn')).toBe(true)
+  })
+
+  it('devolve a fibra estimada pela IA', async () => {
+    const { fastify } = fakeFastify([], {
+      parse: async () => ({ choices: [{ message: { parsed: analysis } }], usage: null }),
+    })
+    const r = await analyzePhoto(fastify, IMG, USER)
+    expect(r.items[0].fiber).toBe(7)
+  })
+
+  it('cache gravado antes da fibra devolve fiber: null', async () => {
+    const cached = {
+      notFood: false,
+      item: {
+        name: 'Banana',
+        calories: 90,
+        protein: 1,
+        carbs: 23,
+        fat: 0,
+        confidence: 0.9,
+        uncertain: false,
+      },
+    }
+    const { fastify } = fakeFastify([['FROM scan_cache', [{ result: cached }]]])
+    const r = await analyzePhoto(fastify, IMG, USER)
+    expect(r.items[0].fiber).toBeNull()
   })
 })

@@ -74,6 +74,7 @@ export const useScannerStore = create<ScannerState>((set, get) => ({
           protein: 0,
           carbs: 0,
           fat: 0,
+          fiber: null,
           confidence: 1,
         },
       ],
@@ -102,6 +103,7 @@ export const useScannerStore = create<ScannerState>((set, get) => ({
             protein: i.protein,
             carbs: i.carbs,
             fat: i.fat,
+            fiber: i.fiber ?? null,
           })
           .then((meal) => ({ scanItemId: i.id, meal })),
       ),

@@ -5,9 +5,14 @@ import { colors, typography, spacing, radius } from '@theme';
 import { Meal } from '@shared/services/food-log.service';
 import { FoodLogItem } from './FoodLogItem';
 
-interface Props { title: string; meals: Meal[]; onDelete: (id: string) => void | Promise<void> }
+interface Props {
+  title: string;
+  meals: Meal[];
+  onDelete: (id: string) => void | Promise<void>;
+  onEdit?: (meal: Meal) => void;
+}
 
-export function MealSection({ title, meals, onDelete }: Props): React.JSX.Element | null {
+export function MealSection({ title, meals, onDelete, onEdit }: Props): React.JSX.Element | null {
   if (meals.length === 0) return null;
 
   return (
@@ -18,7 +23,7 @@ export function MealSection({ title, meals, onDelete }: Props): React.JSX.Elemen
       </View>
       <View style={styles.card}>
         {meals.map((meal, index) => (
-          <FoodLogItem key={meal.id} meal={meal} onDelete={onDelete} hideBorder={index === meals.length - 1} />
+          <FoodLogItem key={meal.id} meal={meal} onDelete={onDelete} onEdit={onEdit} hideBorder={index === meals.length - 1} />
         ))}
       </View>
     </View>

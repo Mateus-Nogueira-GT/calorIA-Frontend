@@ -9,7 +9,7 @@ import { useFoodLogStore } from '@features/food-log/store';
 import { foodLogService } from '@shared/services/food-log.service';
 import { useDietStore } from '@features/diet/store';
 import { todayString } from '@shared/utils/date';
-import { getDailyCalorieGoal, getDayTotals } from '@shared/utils/calories';
+import { getDailyCalorieGoal, getDailyFiberGoal, getDayTotals } from '@shared/utils/calories';
 import { CalorieRing } from '../components/CalorieRing';
 import { MacroCard } from '../components/MacroCard';
 import { MealListItem } from '../components/MealListItem';
@@ -116,6 +116,7 @@ export function DashboardScreen(): React.JSX.Element {
   const proteinGoal = plan?.totalProtein ?? null;
   const carbsGoal = plan?.totalCarbs ?? null;
   const fatGoal = plan?.totalFat ?? null;
+  const fiberGoal = getDailyFiberGoal(plan);
   const hasGoals = calorieGoal !== null;
   const greetingLabel = user?.name ? `Olá, ${user.name}` : 'Seu resumo de hoje';
   const percentLabel =
@@ -195,6 +196,12 @@ export function DashboardScreen(): React.JSX.Element {
             current={totals.fat}
             goal={fatGoal}
             color={colors.brandFat}
+          />
+          <MacroCard
+            label="Fibras"
+            current={totals.fiber}
+            goal={fiberGoal}
+            color={colors.brandAnchor}
           />
         </View>
 

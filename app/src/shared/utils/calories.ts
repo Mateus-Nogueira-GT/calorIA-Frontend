@@ -24,9 +24,13 @@ export interface DayTotals {
   protein: number;
   carbs: number;
   fat: number;
+  /** Soma da fibra conhecida (registro sem dado conta 0). */
+  fiber: number;
 }
 
-type MacroSource = Pick<DayTotals, 'calories' | 'protein' | 'carbs' | 'fat'>;
+type MacroSource = Pick<DayTotals, 'calories' | 'protein' | 'carbs' | 'fat'> & {
+  fiber?: number | null;
+};
 
 function sumMacros(items: MacroSource[]): DayTotals {
   return items.reduce<DayTotals>(
@@ -35,8 +39,9 @@ function sumMacros(items: MacroSource[]): DayTotals {
       protein: acc.protein + m.protein,
       carbs: acc.carbs + m.carbs,
       fat: acc.fat + m.fat,
+      fiber: acc.fiber + (m.fiber ?? 0),
     }),
-    { calories: 0, protein: 0, carbs: 0, fat: 0 },
+    { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 },
   );
 }
 
@@ -50,7 +55,7 @@ function sumMacros(items: MacroSource[]): DayTotals {
  * então em dias passados o chamador passa apenas o diário livre.
  */
 export function getDayTotals(params: {
-  planMeals?: { completedToday: boolean; calories: number; protein: number; carbs: number; fat: number }[];
+  planMeals?: (MacroSource & { completedToday: boolean })[];
   freeMeals: MacroSource[];
 }): DayTotals {
   const completedPlanned = (params.planMeals ?? []).filter((m) => m.completedToday);
@@ -61,5 +66,13 @@ export function getDayTotals(params: {
     protein: planned.protein + free.protein,
     carbs: planned.carbs + free.carbs,
     fat: planned.fat + free.fat,
+    fiber: planned.fiber + free.fiber,
   };
+}
+
+/** Meta de fibra = soma do plano de hoje; null se nenhuma refeição tiver o dado (dieta antiga). */
+export function getDailyFiberGoal(plan: DietPlan | null | undefined): number | null {
+  const known = (plan?.meals ?? []).filter((m) => m.fiber != null);
+  if (known.length === 0) return null;
+  return Math.round(known.reduce((acc, m) => acc + (m.fiber ?? 0), 0));
 }

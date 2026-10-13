@@ -23,8 +23,8 @@ describe('ScanResultScreen', () => {
   });
 
   it('renderiza os itens detectados', () => {
-    const { getByDisplayValue } = render(<ScanResultScreen navigation={navigation} route={{ key: 'k', name: 'ScanResult' } as never} />);
-    expect(getByDisplayValue('Arroz')).toBeTruthy();
+    const { getByText } = render(<ScanResultScreen navigation={navigation} route={{ key: 'k', name: 'ScanResult' } as never} />);
+    expect(getByText('Arroz')).toBeTruthy();
   });
 
   it('confirmar adiciona ao diário', async () => {
@@ -51,8 +51,8 @@ describe('ScanResultScreen', () => {
       );
 
     it('mostra o resultado e leva ao cadastro para salvar, sem gravar no diário', () => {
-      const { getByDisplayValue, getByText, queryByText } = renderGuest();
-      expect(getByDisplayValue('Arroz')).toBeTruthy();
+      const { getByText, queryByText } = renderGuest();
+      expect(getByText('Arroz')).toBeTruthy();
       expect(queryByText('Confirmar e adicionar ao diário')).toBeNull();
 
       fireEvent.press(getByText('Criar conta para salvar'));
