@@ -17,6 +17,7 @@ interface FoodLogState {
   setMeals: (date: string, meals: Meal[]) => void;
   addMeal: (date: string, meal: Meal) => void;
   removeMeal: (date: string, id: string) => void;
+  updateMeal: (date: string, meal: Meal) => void;
   setLoading: (date: string, loading: boolean) => void;
   clear: () => void;
 }
@@ -44,6 +45,13 @@ export const useFoodLogStore = create<FoodLogState>((set) => ({
       mealsByDate: {
         ...s.mealsByDate,
         [date]: (s.mealsByDate[date] ?? []).filter((m) => m.id !== id),
+      },
+    })),
+  updateMeal: (date, meal) =>
+    set((s) => ({
+      mealsByDate: {
+        ...s.mealsByDate,
+        [date]: (s.mealsByDate[date] ?? []).map((m) => (m.id === meal.id ? meal : m)),
       },
     })),
   setLoading: (date, loading) =>
