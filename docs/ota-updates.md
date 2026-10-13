@@ -47,6 +47,33 @@ npx expo-updates fingerprint:generate --platform android
 
 Compare com o fingerprint do último build no painel do EAS (Builds → detalhes).
 
+## Usuários em builds antigos (runtimes legados)
+
+O `runtimeVersion` é `fingerprint`: o `eas update` só chega a builds com o
+fingerprint **atual**. Se a loja ainda distribui um build anterior (ex.: Android
+27 / iOS 18 enquanto o 28 / 19 não estão publicados), esses usuários ficam sem
+nenhuma atualização — foi o que aconteceu em 13/10/2026.
+
+O workflow resolve isso com um segundo passo, `scripts/publish-legacy-ota.js`,
+que republica o mesmo JS para cada runtime de `app/ota-legacy-runtimes.json`.
+
+- `legacy`: fingerprints dos builds de loja antigos que devem receber OTA.
+- `verifiedAgainst`: o fingerprint atual em que se conferiu que o JS novo roda
+  no nativo antigo. **Se o nativo mudar** (lib nativa nova, permissão, `android/`
+  ou `ios/`, ou até um script novo no `package.json`), o fingerprint atual muda e
+  o passo é **pulado com aviso** no Actions — publicar JS que chama código nativo
+  inexistente quebraria o app nos aparelhos antigos.
+
+Ao mudar algo nativo: confira se o JS ainda roda nos builds de `legacy` (se o
+código novo usar um módulo nativo que eles não têm, **remova** o runtime da
+lista — esses usuários só atualizam pela loja) e então atualize
+`verifiedAgainst` com o novo fingerprint
+(`npx expo-updates runtimeversion:resolve --platform android|ios`). Quando um
+build antigo deixar de ter usuários, remova-o de `legacy`.
+
+Para descobrir o fingerprint de um build: `eas build:view <id> --json` (campo
+`runtime.version`).
+
 ## Voltar atrás (rollback)
 
 Se um OTA der problema:

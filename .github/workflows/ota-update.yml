@@ -72,3 +72,12 @@ jobs:
           eas update --channel production --environment production
           --message "$(printf '%s' "$MESSAGE" | head -n 1 | cut -c1-200)"
           --non-interactive
+
+      # Usuários retroativos: o mesmo JS para os builds de loja antigos listados
+      # em app/ota-legacy-runtimes.json (o `eas update` acima só alcança o
+      # fingerprint atual). Pula sozinho, com aviso, se o nativo tiver mudado
+      # desde a última conferência de compatibilidade.
+      - name: Publica para builds antigos (runtimes legados)
+        env:
+          MESSAGE: ${{ github.event.inputs.message || github.event.workflow_run.head_commit.message || github.sha }}
+        run: node scripts/publish-legacy-ota.js
