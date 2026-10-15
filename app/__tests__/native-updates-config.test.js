@@ -26,6 +26,10 @@ describe('expo-updates: canal fixo no nativo', () => {
     );
   });
 
+  it('config Expo preserva o canal na sincronização do EAS', () => {
+    expect(JSON.parse(read('app.json')).updates.requestHeaders).toEqual({ 'expo-channel-name': 'production' });
+  });
+
   it('runtime continua vindo do fingerprint nas duas plataformas', () => {
     expect(read('android/app/src/main/res/values/strings.xml')).toContain('file:fingerprint');
     expect(read('ios/calorIA/Supporting/Expo.plist')).toContain('<string>file:fingerprint</string>');

@@ -10,6 +10,9 @@
     "policy": "fingerprint"
   },
   "updates": {
-    "url": "https://u.expo.dev/1d3b8a79-cfe3-47f3-bfe0-f16214fec824"
+    "url": "https://u.expo.dev/1d3b8a79-cfe3-47f3-bfe0-f16214fec824",
+    "requestHeaders": {
+      "expo-channel-name": "production"
+    }
   }
 }
