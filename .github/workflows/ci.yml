@@ -31,6 +31,9 @@ jobs:
       - name: fontes Android válidas e sincronizadas
         run: npm run verify:android-fonts
 
+      - name: fontes iOS válidas e no projeto Xcode
+        run: node scripts/verify-ios-fonts.js
+
       # ── Gates que BARRAM o merge ───────────────────────────────────────────
       - name: type-check
         run: npm run type-check
