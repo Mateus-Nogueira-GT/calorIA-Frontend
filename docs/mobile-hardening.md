@@ -108,7 +108,8 @@ Depende de ter um domínio próprio apontado para o deploy (o
   sucedida com a chave do EAS; depois podem sair.
 - **`versionCode` precisa ser incrementado a cada upload**. O registro histórico
   era 23; o versionCode ativo em Produção e o rollout ainda precisam ser
-  confirmados no Play Console pelo responsável. O build EAS 29 está em preparação;
+  confirmados no Play Console pelo responsável. O build EAS 29 foi gerado e auditado em 14/10/2026
+  (ID `a2ff636a-a135-4a97-9590-13e1449fa85f`);
   isso não comprova publicação na loja. Ver o
   [registro de verificação](ota-android-paridade-ios-2026-10-14.md).
 - **AAB de produção sai só pelo EAS**, com perfil `production`, canal e assinatura

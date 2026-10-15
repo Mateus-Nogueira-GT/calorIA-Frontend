@@ -231,7 +231,7 @@ git commit -m "ci(ota): Android 28 e iOS 19 passam a runtimes legados"
 Run: `cd app && npx eas-cli@latest build --platform android --profile production --non-interactive --no-wait`
 Expected: link do build; anotar o ID. Acompanhar com `npx eas-cli@latest build:view <ID> --json` até `FINISHED`.
 
-- [ ] **Step 2: Baixar e extrair**
+- [x] **Step 2: Baixar e extrair**
 
 ```bash
 SP=<scratchpad>/aab29 && mkdir -p $SP && cd $SP
@@ -239,12 +239,12 @@ curl -sL -o app.aab "$(cd <repo>/app && npx eas-cli@latest build:view <ID> --jso
 unzip -q -o app.aab 'base/assets/*' 'base/lib/*' 'base/manifest/*' BundleConfig.pb
 ```
 
-- [ ] **Step 3: Conferir fingerprint e canal**
+- [x] **Step 3: Conferir fingerprint e canal**
 
 Run: `cat base/assets/fingerprint; strings -n 6 base/manifest/AndroidManifest.xml | grep -A1 REQUEST_HEADERS`
 Expected: o `<ANDROID_NOVO>` da Task 1; `{"expo-channel-name":"production"}`. Se o fingerprint divergir, **parar**: atualizar `verifiedAgainst.android` para o valor do AAB (é o que os aparelhos terão) e reexecutar a Task 2, Step 4.
 
-- [ ] **Step 4: Conferir 16 KB**
+- [x] **Step 4: Conferir 16 KB**
 
 ```bash
 python3 - <<'EOF'
@@ -262,12 +262,12 @@ xxd BundleConfig.pb | head -2   # procurar "1204 0801 1002": uncompress_native_l
 ```
 Expected: `nenhuma`; os bytes `12 04 08 01 10 02` presentes.
 
-- [ ] **Step 5: Conferir fontes**
+- [x] **Step 5: Conferir fontes**
 
 Run: `cd <repo>/app && node scripts/verify-android-fonts.js <scratchpad>/aab29/base/assets/fonts`
 Expected: sucesso (5 TTF válidos e idênticos à origem).
 
-- [ ] **Step 6: Entregar o AAB**
+- [x] **Step 6: Entregar o AAB**
 
 Run: `cp <scratchpad>/aab29/app.aab ~/Desktop/caloria-v29-production.aab && shasum -a 256 ~/Desktop/caloria-v29-production.aab`
 Registrar ID do build, versionCode, fingerprint e SHA-256 no PR.
@@ -442,7 +442,7 @@ git commit -m "ci(ios): gate de fontes do iOS (paridade com o Android)"
 
 ### Task 6: PR, merge e prova de entrega do OTA
 
-- [ ] **Step 1:** `cd app && npx jest && npx tsc --noEmit` — tudo verde. Push e PR com: diagnóstico (tabela de `update:insights`), fingerprints novos, ID/SHA do AAB 29, risco do Review Focus 1.
+- [x] **Step 1:** `cd app && npx jest && npx tsc --noEmit` — tudo verde. Push e PR com: diagnóstico (tabela de `update:insights`), fingerprints novos, ID/SHA do AAB 29, risco do Review Focus 1.
 - [ ] **Step 2:** Merge (com aprovação do usuário). Acompanhar `ota-update.yml` até `success` e conferir no log do passo legado: 4 publicações (`[legado 3db37149]`, `[legado 04578930]`, `[legado 53c1cf8b]`, `[legado a0e3c5c6]`), nenhum `::warning::`.
 - [ ] **Step 3:** Depois que o AAB 29 estiver no Play e alguém abrir o app duas vezes: `npx eas-cli@latest update:insights <grupo do runtime Android novo> --platform android --days 2 --json` → `installs > 0`. Registrar no PR.
 
@@ -462,4 +462,4 @@ Build 19 (App Store), depois de abrir o app **duas vezes** (o OTA aplica na segu
 
 ## Registro de execução
 
-Tasks 1, 2 e 5 implementadas e validadas. O EAS remove o cabeçalho nativo ao sincronizar quando `updates.requestHeaders` não está em `app.json`; foi necessário declarar o canal também ali e recalcular ambos os fingerprints. Evidências, artefato e pendências: [relatório de execução](../../ota-android-paridade-ios-2026-10-14.md).
+Tasks 1, 2, 3 e 5 concluídas e validadas; Task 6 Step 1 concluído no PR #67. Task 4 aguarda dados/publicação do usuário, Task 6 Step 2 aprovação do merge, e Task 7 testes em aparelhos. O EAS remove o cabeçalho nativo ao sincronizar quando `updates.requestHeaders` não está em `app.json`; foi necessário declarar o canal também ali e recalcular ambos os fingerprints. Evidências, artefato e pendências: [relatório de execução](../../ota-android-paridade-ios-2026-10-14.md).

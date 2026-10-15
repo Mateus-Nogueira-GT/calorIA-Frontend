@@ -73,7 +73,17 @@ inspeção de um novo binário preview. Esse risco deve continuar visível no PR
 - Commit de origem: `a42b3187a60eb23ca52190d34e461b2794d04b5b`.
 - Perfil: production; versionCode remoto: 29.
 - Fingerprint informado pelo EAS: `9a9173edf9fb0664f7f177227c1728169caaeb0b`.
-- AAB final, canal embutido, fontes e alinhamento 16 KB: aguardando conclusão.
+- Status EAS: **FINISHED**. Manifest protobuf confirma package `br.com.caloriaoficial.app`, versionCode **29**, versão 1.0.
+- `base/assets/fingerprint`: `9a9173edf9fb0664f7f177227c1728169caaeb0b`, igual ao local e ao EAS/Linux.
+- Manifest empacotado contém `UPDATES_CONFIGURATION_REQUEST_HEADERS_KEY` com `{"expo-channel-name":"production"}`.
+- **32 bibliotecas de 64 bits** (arm64-v8a/x86_64), todos os segmentos PT_LOAD com `p_align >= 16384`.
+- BundleConfig.pb contém `12 04 08 01 10 02`: uncompress native libraries + PAGE_ALIGNMENT_16K.
+- Cinco fontes Inter extraídas: válidas e byte a byte idênticas à origem (`verify-android-fonts.js`).
+- Arquivo entregue em `~/Desktop/caloria-v29-production.aab`.
+- SHA-256: `b9e6c6c802e65e2588322b9a0b08bb57177c91b637a972ba40df932159384a33`.
+- [PR #67](https://github.com/Mateus-Nogueira-GT/calorIA-Frontend/pull/67): CI remoto de app e backend passou. Merge aguarda aprovação.
+
+A auditoria do artefato não substitui aceite do Play, smoke em Android ou instalações reais de OTA.
 
 ## Pendências de entrega
 
