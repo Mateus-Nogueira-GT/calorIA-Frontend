@@ -106,7 +106,15 @@ Depende de ter um domínio próprio apontado para o deploy (o
   `caloria-upload-novo.keystore` (set/2026) não assinam mais nada. A senha do
   de setembro nunca foi encontrada. Guardar até a primeira publicação bem
   sucedida com a chave do EAS; depois podem sair.
-- **`versionCode` precisa ser incrementado a cada upload** (atual: 23).
+- **`versionCode` precisa ser incrementado a cada upload**. O registro histórico
+  era 23; o versionCode ativo em Produção e o rollout ainda precisam ser
+  confirmados no Play Console pelo responsável. O build EAS 29 está em preparação;
+  isso não comprova publicação na loja. Ver o
+  [registro de verificação](ota-android-paridade-ios-2026-10-14.md).
+- **AAB de produção sai só pelo EAS**, com perfil `production`, canal e assinatura
+  verificados no artefato. Não usar `./gradlew bundleRelease` para upload no Play.
+  O canal também está fixado no nativo e em `app.json` para preservar a configuração
+  durante a sincronização do EAS.
 - **Toolchain local:** JDK 17 (`/opt/homebrew/opt/openjdk@17`), Android SDK em
   `~/Library/Android/sdk` (platform 35, build-tools 35.0.0, NDK 26.1.10909125).
 - **`@react-native-community/cli` é obrigatório** como devDependency: o Gradle
