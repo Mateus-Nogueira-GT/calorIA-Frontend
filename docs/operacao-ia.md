@@ -6,9 +6,9 @@ Referência rápida para quem opera o backend. Spec: `docs/superpowers/specs/202
 
 | Var | Default | Efeito |
 |---|---|---|
-| `OPENAI_MODEL` | `openai/gpt-5` | chat do coach |
+| `OPENAI_MODEL` | `openai/gpt-6.1-sol` | chat do coach |
 | `OPENAI_DIET_MODEL` | = `OPENAI_MODEL` | geração de dias (7 chamadas/dieta) |
-| `OPENAI_VISION_MODEL` | `openai/gpt-5` | scanner |
+| `OPENAI_VISION_MODEL` | `openai/gpt-6.1-sol` | scanner |
 | `OPENAI_FALLBACK_MODELS` | vazio | fallbacks do OpenRouter (CSV) |
 | `AI_DAILY_TOKEN_CAP` | `200000` | teto diário de tokens por usuário → 429 `AI_QUOTA_EXCEEDED` |
 | `RUN_AI_EVALS` | vazio (desligado) | opt-in do eval `src/evals/coach-tool-decision.eval.test.ts` — chama o modelo de verdade para checar a decisão de tool call; sem a variável o arquivo aparece como skipped. Nunca liga sozinho no CI nem no `npm test` normal |
@@ -80,3 +80,18 @@ DELETE FROM scan_cache WHERE created_at < NOW() - interval '7 days';
 
 `017_diet_jobs_step_lock.sql` (obrigatória antes do deploy), `018_scan_cache.sql`,
 `019_ai_usage_context.sql`.
+
+## Canário de troca de modelo
+
+O GPT-6.1 Sol usa o ID `openai/gpt-6.1-sol` na OpenRouter. O chat mantém
+`reasoning_effort: low` também no retry: esse modelo não aceita `minimal`.
+A integração depende da interface normalizada de tools da OpenRouter; a API
+OpenAI direta tem requisitos diferentes. Verificar o canário antes de promover.
+
+`backend/scripts/smoke-openrouter-model.mjs` faz três chamadas reais com dados
+fictícios: chat com contexto/tools do app, tool forçada (sem executá-la) e scanner
+com o ícone público do aplicativo. Usa banco fake, sem consultar/gravar dados.
+Executar depois do build do backend, com ambiente carregado e `AI_MODEL_SMOKE=1`.
+A flag de build da Vercel ativa esse canário e barra o deploy se falhar. Sem a flag,
+nenhuma chamada extra é feita no build. O script exige o modelo alvo nas variáveis
+`OPENAI_MODEL` e `OPENAI_VISION_MODEL`.

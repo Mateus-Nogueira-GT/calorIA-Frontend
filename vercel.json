@@ -1,5 +1,5 @@
 {
-  "buildCommand": "cd backend && npm ci && npm run build && cd ../app && npm ci && node -e \"require('fs').writeFileSync('.env', 'API_BASE_URL=/api\\nAPI_TIMEOUT=10000\\n')\" && npm run build:web",
+  "buildCommand": "cd backend && npm ci && npm run build && if [ \"$AI_MODEL_SMOKE\" = \"1\" ]; then node scripts/smoke-openrouter-model.mjs; fi && cd ../app && npm ci && node -e \"require('fs').writeFileSync('.env', 'API_BASE_URL=/api\\nAPI_TIMEOUT=10000\\n')\" && npm run build:web",
   "outputDirectory": "app/web/dist",
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/handler" },

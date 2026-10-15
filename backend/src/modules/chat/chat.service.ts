@@ -122,13 +122,11 @@ const OPENAI_TIMEOUT_MS = 50_000
 const CHAT_MAX_TOKENS = 2000
 const CHAT_RETRY_MAX_TOKENS = 4000
 
-/**
- * C3: no retry por `length`, reasoning mínimo — sobra orçamento para o texto.
- * O tipo ReasoningEffort do SDK 4.104 é 'low'|'medium'|'high'|null e ainda não
- * conhece 'minimal'; a API aceita. Spread de Record não dispara o excess-property
- * check (mesmo truque de buildModelsField para `models`).
- */
-const MINIMAL_REASONING = { reasoning_effort: 'minimal' } as Record<string, unknown>
+/** Menor esforço aceito pelo modelo no retry de resposta truncada. */
+export function chatRetryReasoningEffort(model: string): 'low' | 'minimal' {
+  // GPT-6.1 Sol não suporta minimal, inclusive nos snapshots datados.
+  return /^openai\/gpt-6\.1-sol(?:$|[-:])/.test(model) ? 'low' : 'minimal'
+}
 
 /**
  * G6 da spec: só as últimas N mensagens vão para o modelo — sem janela, o
@@ -297,7 +295,7 @@ export async function sendChatMessage(
     ...buildModelsField(env.OPENAI_MODEL, env.OPENAI_FALLBACK_MODELS),
     messages: [{ role: 'system' as const, content: systemPrompt }, ...windowedHistory(history)],
     ...toolParams,
-    // GPT-5 é reasoning model: não aceita temperature custom (só o default) e
+    // O modelo é reasoning: não aceita temperature custom (só o default) e
     // gasta "reasoning tokens" do orçamento — por isso um limite mais folgado.
     max_tokens: CHAT_MAX_TOKENS,
     // Reasoning baixo: coletar dados / decidir a tool não precisa de raciocínio
@@ -333,12 +331,15 @@ export async function sendChatMessage(
   if (completion.choices[0]?.finish_reason === 'length') {
     fastify.log.warn(
       { userId, conversationId },
-      'Chat truncado (length) — repetindo com reasoning mínimo',
+      'Chat truncado (length) — repetindo com o menor reasoning suportado',
     )
     completion = await callChat({
       ...baseParams,
       max_tokens: CHAT_RETRY_MAX_TOKENS,
-      ...MINIMAL_REASONING,
+      ...({ reasoning_effort: chatRetryReasoningEffort(env.OPENAI_MODEL) } as Record<
+        string,
+        unknown
+      >),
     })
     logAiUsage(fastify, {
       feature: 'chat',
