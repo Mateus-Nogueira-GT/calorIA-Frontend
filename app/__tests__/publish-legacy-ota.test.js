@@ -43,6 +43,35 @@ describe('planLegacyPublishes', () => {
 });
 
 describe('ota-legacy-runtimes.json', () => {
+  it('cobre os builds de loja atuais e antigos com OTA (Android 28/27, iOS 19/18)', () => {
+    expect(real.legacy.android).toEqual(
+      expect.arrayContaining([
+        '3db37149985ade909c1330d0e4335da12676399b',
+        '0457893087a8537c05f9545b55dd20050aed780b',
+      ]),
+    );
+    expect(real.legacy.ios).toEqual(
+      expect.arrayContaining([
+        '53c1cf8b180ac12f82360b6c4a4f272ba46bacf5',
+        'a0e3c5c63b023d266f778b9d260cbb79fc093abd',
+      ]),
+    );
+  });
+
+  it('verifiedAgainst não é nenhum runtime legado (é o nativo atual)', () => {
+    for (const p of ['android', 'ios']) {
+      expect(real.legacy[p]).not.toContain(real.verifiedAgainst[p]);
+    }
+  });
+
+  it('merge antes do build novo estar na loja: legados continuam no plano', () => {
+    const plan = planLegacyPublishes(real, real.verifiedAgainst);
+    expect(plan.publish.map((x) => x.runtime)).toEqual(
+      expect.arrayContaining(['3db37149985ade909c1330d0e4335da12676399b', '53c1cf8b180ac12f82360b6c4a4f272ba46bacf5']),
+    );
+    expect(plan.skipped).toEqual([]);
+  });
+
   it('tem o formato esperado e runtimes de 40 caracteres hex', () => {
     for (const platform of ['android', 'ios']) {
       expect(real.verifiedAgainst[platform]).toMatch(/^[0-9a-f]{40}$/);

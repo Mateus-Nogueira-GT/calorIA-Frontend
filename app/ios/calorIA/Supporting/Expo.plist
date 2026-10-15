@@ -14,5 +14,10 @@
     <true/>
     <key>EXUpdatesRuntimeVersion</key>
     <string>file:fingerprint</string>
+    <key>EXUpdatesRequestHeaders</key>
+    <dict>
+      <key>expo-channel-name</key>
+      <string>production</string>
+    </dict>
   </dict>
 </plist>
