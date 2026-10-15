@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { fakeFastify, textCompletion, toolCompletion } from '../../shared/testing/fake-fastify.js'
-import { sendChatMessage } from './chat.service.js'
+import { chatRetryReasoningEffort, sendChatMessage } from './chat.service.js'
 
 const USER = '11111111-1111-1111-1111-111111111111'
 const CONV = '22222222-2222-2222-2222-222222222222'
 
 describe('sendChatMessage — finish_reason (C3)', () => {
-  it('length → repete UMA vez com reasoning minimal e max_tokens 4000; persiste a 2ª', async () => {
+  it('length → repete UMA vez com reasoning low no GPT-6.1 Sol e max_tokens 4000; persiste a 2ª', async () => {
     const respostas = [textCompletion('', 'length'), textCompletion('Qual seu peso?', 'stop')]
     const { fastify, openaiCalls, calls } = fakeFastify([], {
       chatCreate: async () => respostas.shift(),
@@ -17,7 +17,7 @@ describe('sendChatMessage — finish_reason (C3)', () => {
     expect(openaiCalls).toHaveLength(2)
     expect(openaiCalls[0].params.max_tokens).toBe(2000)
     expect(openaiCalls[1].params.max_tokens).toBe(4000)
-    expect(openaiCalls[1].params.reasoning_effort).toBe('minimal')
+    expect(openaiCalls[1].params.reasoning_effort).toBe('low')
     expect(r.message.content).toBe('Qual seu peso?')
     expect(calls.some((c) => c.sql.includes('INSERT INTO chat_history'))).toBe(true)
   })
@@ -86,5 +86,15 @@ describe('sendChatMessage — finish_reason (C3)', () => {
       statusCode: 500,
       code: 'HISTORY_WRITE_FAILED',
     })
+  })
+})
+
+// GPT-6.1 Sol não aceita minimal, mas os modelos antigos continuam suportados.
+describe('chatRetryReasoningEffort', () => {
+  it.each(['openai/gpt-6.1-sol', 'openai/gpt-6.1-sol-20260929'])('%s usa low no retry', (model) => {
+    expect(chatRetryReasoningEffort(model)).toBe('low')
+  })
+  it('preserva minimal para o GPT-5', () => {
+    expect(chatRetryReasoningEffort('openai/gpt-5')).toBe('minimal')
   })
 })

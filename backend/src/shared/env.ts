@@ -27,7 +27,7 @@ const envSchema = z
 
     // IA via OpenRouter (API compatível com a OpenAI). OPENAI_API_KEY é a key do
     // OpenRouter; OPENAI_BASE_URL aponta para o endpoint do OpenRouter. Os modelos
-    // vêm prefixados (ex: openai/gpt-5).
+    // vêm prefixados (ex: openai/gpt-6.1-sol).
     OPENAI_API_KEY: z.string(),
     // preprocess: env var em branco na Vercel vira string vazia (não undefined),
     // o que puraria o default. Tratamos '' como ausente para o default valer.
@@ -37,11 +37,11 @@ const envSchema = z
     ),
     OPENAI_MODEL: z.preprocess(
       (v) => (v === '' || v == null ? undefined : v),
-      z.string().default('openai/gpt-5'),
+      z.string().default('openai/gpt-6.1-sol'),
     ),
     OPENAI_VISION_MODEL: z.preprocess(
       (v) => (v === '' || v == null ? undefined : v),
-      z.string().default('openai/gpt-5'),
+      z.string().default('openai/gpt-6.1-sol'),
     ),
     // Modelo de transcrição de áudio do coach (endpoint /audio/transcriptions do
     // OpenRouter). Default resolvido no service: openai/whisper-1.
