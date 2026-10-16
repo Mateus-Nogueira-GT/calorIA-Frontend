@@ -29,13 +29,16 @@ export function ProfileHeader({ name, email, avatarUri }: ProfileHeaderProps): R
             style={styles.avatarImage}
           />
         ) : (
-          <View style={styles.avatar} accessibilityLabel={name ? `Avatar de ${name}` : 'Avatar do usuário'}>
+          <View
+            style={styles.avatar}
+            accessibilityLabel={name ? `Avatar de ${name}` : 'Avatar do usuário'}
+          >
             <Text style={styles.avatarInitials}>{initials}</Text>
           </View>
         )}
         <View style={styles.copy}>
-          <Text numberOfLines={2} style={styles.name}>{name || 'Sua conta'}</Text>
-          <Text numberOfLines={1} style={styles.email}>{showSecondary}</Text>
+          <Text style={styles.name}>{name || 'Sua conta'}</Text>
+          <Text style={styles.email}>{showSecondary}</Text>
         </View>
       </View>
     </View>
@@ -60,7 +63,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     flexShrink: 0,
   },
-  avatarImage: { width: 72, height: 72, borderRadius: 36, backgroundColor: colors.brandMutedSurface },
+  avatarImage: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: colors.brandMutedSurface,
+  },
   avatarInitials: {
     fontSize: typography.fontSize.xl,
     fontFamily: typography.fontFamily.extraBold,

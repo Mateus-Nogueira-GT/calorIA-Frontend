@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { RefreshControl, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { ErrorState, Text, screenShellStyle } from '@shared/components';
 import { colors, typography, spacing, radius } from '@theme';
 import { useFoodLog } from '../hooks/useFoodLog';
@@ -39,7 +40,17 @@ function DiaryEmptyIcon(): React.JSX.Element {
 }
 
 export function FoodLogScreen(): React.JSX.Element {
-  const { meals, isLoading, hasError, reload, selectedDate, setSelectedDate, handleAddMeal, handleDeleteMeal, handleUpdateMeal } = useFoodLog();
+  const {
+    meals,
+    isLoading,
+    hasError,
+    reload,
+    selectedDate,
+    setSelectedDate,
+    handleAddMeal,
+    handleDeleteMeal,
+    handleUpdateMeal,
+  } = useFoodLog();
   const plan = useDietStore((s) => s.plan);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingMeal, setEditingMeal] = useState<Meal | null>(null);
@@ -86,11 +97,16 @@ export function FoodLogScreen(): React.JSX.Element {
   }
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={styles.container}>
       <View style={styles.shell}>
         <View style={styles.header}>
           <Text style={styles.title}>Diário alimentar</Text>
-          <TouchableOpacity onPress={openAddMealFlow} style={styles.addBtn} accessibilityRole='button' testID='food-log-add-button'>
+          <TouchableOpacity
+            onPress={openAddMealFlow}
+            style={styles.addBtn}
+            accessibilityRole="button"
+            testID="food-log-add-button"
+          >
             <AddMealGlyph />
             <Text style={styles.addBtnText}>{addMealLabel}</Text>
           </TouchableOpacity>
@@ -131,7 +147,11 @@ export function FoodLogScreen(): React.JSX.Element {
                 <DiaryEmptyIcon />
                 <Text style={styles.emptyTitle}>{emptyTitle}</Text>
                 <Text style={styles.emptySubtitle}>{emptySubtitle}</Text>
-                <TouchableOpacity onPress={openAddMealFlow} style={styles.emptyCta} accessibilityRole='button'>
+                <TouchableOpacity
+                  onPress={openAddMealFlow}
+                  style={styles.emptyCta}
+                  accessibilityRole="button"
+                >
                   <AddMealGlyph />
                   <Text style={styles.emptyCtaText}>{addMealLabel}</Text>
                 </TouchableOpacity>
@@ -139,7 +159,13 @@ export function FoodLogScreen(): React.JSX.Element {
             ) : (
               <View style={styles.sections}>
                 {GROUPS.map((group) => (
-                  <MealSection key={group} title={group} meals={grouped[group] ?? []} onDelete={handleDeleteMeal} onEdit={setEditingMeal} />
+                  <MealSection
+                    key={group}
+                    title={group}
+                    meals={grouped[group] ?? []}
+                    onDelete={handleDeleteMeal}
+                    onEdit={setEditingMeal}
+                  />
                 ))}
               </View>
             )}
@@ -147,19 +173,23 @@ export function FoodLogScreen(): React.JSX.Element {
         )}
       </View>
 
-      <AddMealModal visible={modalVisible} onClose={() => setModalVisible(false)} onSubmit={handleAddMeal} />
+      <AddMealModal
+        visible={modalVisible}
+        onClose={() => setModalVisible(false)}
+        onSubmit={handleAddMeal}
+      />
       <AddMealModal
         visible={editingMeal !== null}
         initialMeal={editingMeal ?? undefined}
         onClose={() => setEditingMeal(null)}
         onSubmit={handleEditSubmit}
       />
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.brandBackground, paddingTop: 56 },
+  container: { flex: 1, backgroundColor: colors.brandBackground, paddingTop: spacing.lg },
   shell: { ...screenShellStyle, flex: 1 },
   header: {
     flexDirection: 'row',
@@ -210,7 +240,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     backgroundColor: colors.brandAnchor,
   },
-  chips: { maxHeight: 58 },
+  chips: { flexGrow: 0, flexShrink: 0 },
   chipsContent: { paddingHorizontal: spacing.lg, paddingVertical: spacing.xs },
   scroll: { flex: 1 },
   scrollContent: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: 110 },

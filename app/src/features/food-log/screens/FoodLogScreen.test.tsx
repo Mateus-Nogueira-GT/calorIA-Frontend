@@ -1,4 +1,5 @@
 import React from 'react';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { render, act, fireEvent, waitFor } from '@testing-library/react-native';
 import { FoodLogScreen } from './FoodLogScreen';
 import { useFoodLogStore } from '../store';
@@ -6,11 +7,37 @@ import { useFoodLogStore } from '../store';
 jest.mock('@shared/services/food-log.service', () => ({
   foodLogService: {
     getMeals: jest.fn().mockResolvedValue([
-      { id: 'm1', name: 'Frango', calories: 450, protein: 38, carbs: 52, fat: 8, loggedAt: new Date().toISOString() },
+      {
+        id: 'm1',
+        name: 'Frango',
+        calories: 450,
+        protein: 38,
+        carbs: 52,
+        fat: 8,
+        loggedAt: new Date().toISOString(),
+      },
     ]),
-    addMeal: jest.fn().mockResolvedValue({ id: 'm2', name: 'Novo', calories: 300, protein: 20, carbs: 30, fat: 5, loggedAt: new Date().toISOString() }),
+    addMeal: jest.fn().mockResolvedValue({
+      id: 'm2',
+      name: 'Novo',
+      calories: 300,
+      protein: 20,
+      carbs: 30,
+      fat: 5,
+      loggedAt: new Date().toISOString(),
+    }),
     deleteMeal: jest.fn().mockResolvedValue({ deleted: true }),
-    updateMeal: jest.fn().mockResolvedValue({ id: 'm1', name: 'Frango grelhado', calories: 400, protein: 38, carbs: 52, fat: 8, fiber: 3, loggedAt: new Date().toISOString(), mealType: 'lunch' }),
+    updateMeal: jest.fn().mockResolvedValue({
+      id: 'm1',
+      name: 'Frango grelhado',
+      calories: 400,
+      protein: 38,
+      carbs: 52,
+      fat: 8,
+      fiber: 3,
+      loggedAt: new Date().toISOString(),
+      mealType: 'lunch',
+    }),
   },
 }));
 
@@ -18,7 +45,14 @@ jest.mock('@features/diet/store', () => ({
   useDietStore: (selector: (s: { plan: null }) => unknown) => selector({ plan: null }),
 }));
 
-beforeEach(() => useFoodLogStore.setState({ mealsByDate: {}, syncedDates: {}, loadingByDate: {}, selectedDate: '2026-06-09' }));
+beforeEach(() =>
+  useFoodLogStore.setState({
+    mealsByDate: {},
+    syncedDates: {},
+    loadingByDate: {},
+    selectedDate: '2026-06-09',
+  }),
+);
 
 describe('FoodLogScreen', () => {
   it('renderiza o titulo e o CTA principal', async () => {
@@ -56,4 +90,10 @@ describe('FoodLogScreen', () => {
     expect(foodLogService.updateMeal.mock.calls[0][1]).not.toHaveProperty('date');
     expect(await findByText('Frango grelhado')).toBeTruthy();
   });
+});
+
+it('FoodLog: protege topo e laterais sem inset inferior duplicado', async () => {
+  const { UNSAFE_getByType } = render(<FoodLogScreen />);
+  expect(UNSAFE_getByType(SafeAreaView).props.edges).toEqual(['top', 'left', 'right']);
+  await waitFor(() => expect(UNSAFE_getByType(SafeAreaView)).toBeTruthy());
 });

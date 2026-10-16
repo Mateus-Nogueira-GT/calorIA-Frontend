@@ -1,4 +1,5 @@
 import React from 'react';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import { ProfileScreen } from './ProfileScreen';
 import { useAuthStore } from '@features/auth/store';
@@ -138,4 +139,12 @@ describe('ProfileScreen', () => {
     );
     alertSpy.mockRestore();
   });
+});
+
+it('Profile: protege topo e laterais sem inset inferior duplicado', async () => {
+  const { UNSAFE_getByType } = render(
+    <ProfileScreen navigation={{ navigate: jest.fn() } as never} route={{} as never} />,
+  );
+  expect(UNSAFE_getByType(SafeAreaView).props.edges).toEqual(['top', 'left', 'right']);
+  await waitFor(() => expect(UNSAFE_getByType(SafeAreaView)).toBeTruthy());
 });
