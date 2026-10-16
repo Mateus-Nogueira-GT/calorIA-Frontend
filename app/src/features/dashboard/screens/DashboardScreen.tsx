@@ -133,7 +133,8 @@ export function DashboardScreen(): React.JSX.Element {
       : '--';
 
   // Keep the full calorie value readable instead of shrinking Dynamic Type.
-  const stackSummary = width / fontScale < 360 || String(totals.calories).length >= 5;
+  // Cinco dígitos inteiros: o total pode ter decimal ("450.5" tem 5 caracteres).
+  const stackSummary = width / fontScale < 360 || Math.round(totals.calories) >= 10000;
 
   return (
     <SafeAreaView edges={['top', 'left', 'right']} style={styles.container}>

@@ -78,6 +78,7 @@ export function CalorieRing({ current, goal, size = 120 }: Props): React.JSX.Ele
   const rawPercent = hasGoal ? current / goal : 0;
   const percent = hasGoal ? Math.min(Math.max(rawPercent, 0), 1) : 0;
   const displayPercent = hasGoal ? Math.round(Math.max(rawPercent, 0) * 100) : 0;
+  const pctLabel = !hasGoal ? '--' : displayPercent > 999 ? '999%+' : `${displayPercent}%`;
   const angle = Math.round(percent * 360);
   const strokeWidth = Math.round(size * 0.085);
   const innerSize = size - strokeWidth * 2;
@@ -132,17 +133,20 @@ export function CalorieRing({ current, goal, size = 120 }: Props): React.JSX.Ele
         >
           {!labelsOutside && (
             <View style={styles.inner}>
-              <Text style={styles.pct}>
-                {!hasGoal ? '--' : displayPercent > 999 ? '999%+' : `${displayPercent}%`}
-              </Text>
+              <Text style={styles.pct}>{pctLabel}</Text>
               <Text style={styles.caption}>{hasGoal ? 'atingido' : 'sem meta'}</Text>
             </View>
           )}
         </View>
       </View>
       {labelsOutside && (
-        <View testID="ring-labels-outside" style={styles.outsideLabels}>
-          <Text style={styles.pct}>{!hasGoal ? '--' : `${displayPercent}%`}</Text>
+        <View
+          testID="ring-labels-outside"
+          // O anel é absoluto e passa strokeWidth da base do contêiner (que só
+          // tem o tamanho do círculo interno): a folga começa depois da borda.
+          style={[styles.outsideLabels, { marginTop: OUTSIDE_LABEL_GAP + strokeWidth }]}
+        >
+          <Text style={styles.pct}>{pctLabel}</Text>
           <Text style={styles.caption}>{hasGoal ? 'atingido' : 'sem meta'}</Text>
         </View>
       )}
@@ -150,10 +154,12 @@ export function CalorieRing({ current, goal, size = 120 }: Props): React.JSX.Ele
   );
 }
 
+const OUTSIDE_LABEL_GAP = 8;
+
 const styles = StyleSheet.create({
   wrapper: { alignItems: 'center', justifyContent: 'center' },
   graphic: { alignItems: 'center', justifyContent: 'center' },
-  outsideLabels: { alignItems: 'center', alignSelf: 'stretch', marginTop: 8 },
+  outsideLabels: { alignItems: 'center', alignSelf: 'stretch' },
   outer: { position: 'absolute' },
   nativeTrack: { backgroundColor: colors.brandTrack, overflow: 'hidden' },
   halfRotation: { position: 'absolute' },
