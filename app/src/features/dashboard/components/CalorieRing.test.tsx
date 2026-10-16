@@ -1,4 +1,5 @@
 import React from 'react';
+import { Dimensions } from 'react-native';
 import { render } from '@testing-library/react-native';
 import { CalorieRing, halfDegrees } from './CalorieRing';
 
@@ -75,4 +76,19 @@ describe('halfDegrees — ângulo dos semicírculos (L2)', () => {
     expect(halfDegrees(1, 'right')).toBe(0);
     expect(halfDegrees(1, 'left')).toBe(0);
   });
+});
+
+it('fonte ampliada move rótulos para fora do círculo fixo', () => {
+  const dimensions = jest
+    .spyOn(Dimensions, 'get')
+    .mockReturnValue({ width: 390, height: 844, scale: 3, fontScale: 2 });
+  try {
+    const { getByTestId, getByText } = render(
+      <CalorieRing current={2468} goal={2000} size={108} />,
+    );
+    expect(getByTestId('ring-labels-outside')).toBeTruthy();
+    expect(getByText('123%')).toBeTruthy();
+  } finally {
+    dimensions.mockRestore();
+  }
 });

@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, ScrollView, StyleSheet, Alert, Linking } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { screenShellStyle } from '@shared/components';
 import { colors, radius, spacing } from '@theme';
 import type { TabScreenProps } from '@navigation/types';
@@ -31,7 +32,8 @@ const coachPersonalityLabels = {
 } as const;
 
 export function ProfileScreen({ navigation }: TabScreenProps<'Profile'>): React.JSX.Element {
-  const { user, weeklyData, streak, loading, handleLogout, handleDeleteAccount } = useProfile();
+  const { user, weeklyData, streak, loading, handleLogout, handleDeleteAccount } =
+    useProfile();
   const profilePreferences = useAuthStore((state) => state.profilePreferences);
 
   function confirmLogout() {
@@ -48,12 +50,13 @@ export function ProfileScreen({ navigation }: TabScreenProps<'Profile'>): React.
       // AP1: a conta de demonstração da App Review é protegida no servidor
       // (403 DEMO_ACCOUNT_PROTECTED). Sem tratar aqui, o revisor veria
       // "tente novamente em instantes" e tentaria de novo, para sempre.
-      const e = error as { response?: { status?: number; data?: { error?: string; message?: string } } };
+      const e = error as {
+        response?: { status?: number; data?: { error?: string; message?: string } };
+      };
       if (e?.response?.status === 403 && e.response.data?.error === 'DEMO_ACCOUNT_PROTECTED') {
         Alert.alert(
           'Conta de demonstração',
-          e.response.data.message ??
-            'Esta é uma conta de demonstração e não pode ser excluída.',
+          e.response.data.message ?? 'Esta é uma conta de demonstração e não pode ser excluída.',
         );
         return;
       }
@@ -96,59 +99,81 @@ export function ProfileScreen({ navigation }: TabScreenProps<'Profile'>): React.
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <ProfileHeader name={user?.name ?? ''} email={user?.email ?? ''} avatarUri={user?.avatarUrl ?? undefined} />
-      {streak > 0 && <StreakBadge days={streak} />}
-      <View style={styles.section}>
-        {!loading && weeklyData.length > 0 && <WeeklyCalorieChart data={weeklyData} />}
-      </View>
-      <View style={styles.menuCard}>
-        <ProfileMenuItem
-          label="Editar perfil"
-          description="Altere seu nome e foto de perfil"
-          onPress={() => navigation.navigate('ProfileEdit')}
-          testID="profile-edit-btn"
+    <SafeAreaView edges={['top', 'left', 'right']} style={styles.container}>
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
+        <ProfileHeader
+          name={user?.name ?? ''}
+          email={user?.email ?? ''}
+          avatarUri={user?.avatarUrl ?? undefined}
         />
-        <ProfileMenuItem
-          label="Metas e objetivos"
-          description={profilePreferences.goal ? goalLabels[profilePreferences.goal] : 'Defina o foco principal do seu plano'}
-          onPress={() => navigation.navigate('ProfileGoals')}
-          testID="profile-goals-btn"
-        />
-        <ProfileMenuItem
-          label="Personalidade do Coach"
-          description={profilePreferences.coachPersonality ? coachPersonalityLabels[profilePreferences.coachPersonality] : 'Escolha como seu coach deve falar com você'}
-          onPress={() => navigation.navigate('ProfileCoachPersonality')}
-          testID="profile-coach-personality-btn"
-        />
-        <ProfileMenuItem
-          label="Evolução"
-          description="Acompanhe seu peso e o histórico de calorias"
-          onPress={() => navigation.navigate('Evolution')}
-          testID="profile-evolution-btn"
-        />
-        <ProfileMenuItem
-          label="Política de privacidade"
-          description="Como seus dados são coletados e usados"
-          onPress={openPrivacyPolicy}
-          testID="privacy-policy-btn"
-        />
-        <ProfileMenuItem label="Sair" onPress={confirmLogout} destructive testID="logout-btn" />
-        <ProfileMenuItem
-          label="Excluir conta"
-          description="Apaga permanentemente sua conta e todos os seus dados"
-          onPress={confirmDeleteAccount}
-          destructive
-          testID="delete-account-btn"
-        />
-      </View>
-    </ScrollView>
+        {streak > 0 && <StreakBadge days={streak} />}
+        <View style={styles.section}>
+          {!loading && weeklyData.length > 0 && <WeeklyCalorieChart data={weeklyData} />}
+        </View>
+        <View style={styles.menuCard}>
+          <ProfileMenuItem
+            label="Editar perfil"
+            description="Altere seu nome e foto de perfil"
+            onPress={() => navigation.navigate('ProfileEdit')}
+            testID="profile-edit-btn"
+          />
+          <ProfileMenuItem
+            label="Metas e objetivos"
+            description={
+              profilePreferences.goal
+                ? goalLabels[profilePreferences.goal]
+                : 'Defina o foco principal do seu plano'
+            }
+            onPress={() => navigation.navigate('ProfileGoals')}
+            testID="profile-goals-btn"
+          />
+          <ProfileMenuItem
+            label="Personalidade do Coach"
+            description={
+              profilePreferences.coachPersonality
+                ? coachPersonalityLabels[profilePreferences.coachPersonality]
+                : 'Escolha como seu coach deve falar com você'
+            }
+            onPress={() => navigation.navigate('ProfileCoachPersonality')}
+            testID="profile-coach-personality-btn"
+          />
+          <ProfileMenuItem
+            label="Evolução"
+            description="Acompanhe seu peso e o histórico de calorias"
+            onPress={() => navigation.navigate('Evolution')}
+            testID="profile-evolution-btn"
+          />
+          <ProfileMenuItem
+            label="Política de privacidade"
+            description="Como seus dados são coletados e usados"
+            onPress={openPrivacyPolicy}
+            testID="privacy-policy-btn"
+          />
+          <ProfileMenuItem label="Sair" onPress={confirmLogout} destructive testID="logout-btn" />
+          <ProfileMenuItem
+            label="Excluir conta"
+            description="Apaga permanentemente sua conta e todos os seus dados"
+            onPress={confirmDeleteAccount}
+            destructive
+            testID="delete-account-btn"
+          />
+        </View>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background, paddingTop: 56 },
+  container: { flex: 1, backgroundColor: colors.background, paddingTop: spacing.lg },
+  scroll: { flex: 1 },
   content: { ...screenShellStyle, padding: spacing.lg },
   section: { marginTop: spacing.xl, marginBottom: spacing.sm },
-  menuCard: { marginTop: spacing.lg, backgroundColor: colors.white, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, overflow: 'hidden' },
+  menuCard: {
+    marginTop: spacing.lg,
+    backgroundColor: colors.white,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    overflow: 'hidden',
+  },
 });

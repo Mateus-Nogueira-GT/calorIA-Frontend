@@ -1,5 +1,13 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
+import {
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  View,
+  useWindowDimensions,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { TabScreenProps } from '@navigation/types';
 import { ErrorState, Text, screenShellStyle } from '@shared/components';
@@ -58,7 +66,7 @@ function DashboardMealSkeleton(): React.JSX.Element {
 
 export function DashboardScreen(): React.JSX.Element {
   const navigation = useNavigation<TabScreenProps<'Dashboard'>['navigation']>();
-  const { width } = useWindowDimensions();
+  const { width, fontScale } = useWindowDimensions();
   const compact = width < 420;
   const user = useAuthStore((s) => s.user);
   const today = todayString();
@@ -124,126 +132,155 @@ export function DashboardScreen(): React.JSX.Element {
       ? `${Math.round((totals.calories / calorieGoal) * 100)}%`
       : '--';
 
+  // Keep the full calorie value readable instead of shrinking Dynamic Type.
+  const stackSummary = width / fontScale < 360 || String(totals.calories).length >= 5;
+
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-    >
-      <View style={styles.shell}>
-        <View style={styles.headerRow}>
-          <Text style={styles.date}>{todayLabel()}</Text>
-          <Text accessibilityRole="header" style={styles.greeting}>{greetingLabel}</Text>
-          <Text style={styles.headerHint}>Calorias, macros e o que ainda falta no seu dia.</Text>
-        </View>
-
-        <View style={[styles.ringCard, compact && styles.ringCardCompact]}>
-          <View style={styles.ringSummary}>
-            <View style={styles.badge}>
-              <Text style={styles.badgeText}>Resumo calórico</Text>
-            </View>
-            <Text style={styles.kcalValue}>{totals.calories}</Text>
-            <Text style={styles.kcalGoal}>
-              {hasGoals ? `de ${calorieGoal} kcal` : 'kcal hoje'}
+    <SafeAreaView edges={['top', 'left', 'right']} style={styles.container}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      >
+        <View style={styles.shell}>
+          <View style={styles.headerRow}>
+            <Text style={styles.date}>{todayLabel()}</Text>
+            <Text accessibilityRole="header" style={styles.greeting}>
+              {greetingLabel}
             </Text>
-            <View style={styles.progressMeta}>
-              <Text style={styles.progressMetaLabel}>
-                {hasGoals ? 'Meta diária' : 'Sem meta ainda'}
+            <Text style={styles.headerHint}>Calorias, macros e o que ainda falta no seu dia.</Text>
+          </View>
+          <View
+            testID="dashboard-calorie-summary"
+            style={[
+              styles.ringCard,
+              compact && styles.ringCardCompact,
+              stackSummary && styles.ringCardStacked,
+            ]}
+          >
+            <View style={[styles.ringSummary, stackSummary && styles.ringSummaryStacked]}>
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>Resumo calórico</Text>
+              </View>
+              <Text style={styles.kcalValue}>{totals.calories}</Text>
+              <Text style={styles.kcalGoal}>
+                {hasGoals ? `de ${calorieGoal} kcal` : 'kcal hoje'}
               </Text>
-              <Text style={styles.progressMetaValue}>{percentLabel}</Text>
+              <View style={styles.progressMeta}>
+                <Text style={styles.progressMetaLabel}>
+                  {hasGoals ? 'Meta diária' : 'Sem meta ainda'}
+                </Text>
+                <Text style={styles.progressMetaValue}>{percentLabel}</Text>
+              </View>
             </View>
+            <CalorieRing current={totals.calories} goal={calorieGoal} size={compact ? 108 : 144} />
           </View>
-          <CalorieRing current={totals.calories} goal={calorieGoal} size={compact ? 108 : 144} />
-        </View>
 
-        <View style={styles.quickActions}>
-          <Pressable accessibilityRole="button" accessibilityLabel="Escanear refeição" onPress={() => navigation.navigate('Scanner')}
-            style={({ pressed }) => [styles.scanAction, pressed && styles.actionPressed]}>
-            <Text style={[styles.actionTitle, compact && styles.actionTitleCompact]}>Escanear refeição</Text>
-            <Text style={[styles.actionCopy, compact && styles.actionCopyCompact]}>Uma foto do seu prato</Text>
-          </Pressable>
-          <Pressable accessibilityRole="button" onPress={() => navigation.navigate('FoodLog')}
-            style={({ pressed }) => [styles.diaryAction, pressed && styles.actionPressed]}>
-            <Text style={[styles.actionTitle, compact && styles.actionTitleCompact]}>Abrir diário</Text>
-            <Text style={[styles.actionCopy, compact && styles.actionCopyCompact]}>Registrar e revisar</Text>
-          </Pressable>
-        </View>
-
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Macronutrientes</Text>
-          <Text style={styles.sectionSubtitle}>
-            {hasGoals
-              ? 'Distribuição consumida em relação à meta atual.'
-              : 'Suas metas aparecem aqui assim que sua dieta for gerada.'}
-          </Text>
-        </View>
-
-        <View style={styles.macroGrid}>
-          <MacroCard
-            label="Proteína"
-            current={totals.protein}
-            goal={proteinGoal}
-            color={colors.brandProtein}
-          />
-          <MacroCard
-            label="Carboidratos"
-            current={totals.carbs}
-            goal={carbsGoal}
-            color={colors.brandCarbs}
-          />
-          <MacroCard
-            label="Gordura"
-            current={totals.fat}
-            goal={fatGoal}
-            color={colors.brandFat}
-          />
-          <MacroCard
-            label="Fibras"
-            current={totals.fiber}
-            goal={fiberGoal}
-            color={colors.brandAnchor}
-          />
-        </View>
-
-        <DietPlanSection />
-
-        <View style={[styles.sectionHeader, styles.freeDiaryHeader]}>
-          <Text style={styles.sectionTitle}>Diário alimentar</Text>
-          <Text style={styles.sectionSubtitle}>Registros adicionados fora do plano do dia.</Text>
-        </View>
-
-        {isFoodLogLoading ? (
-          <DashboardMealSkeleton />
-        ) : foodLogError ? (
-          <ErrorState
-            title="Não foi possível carregar o diário livre"
-            onRetry={() => void loadFoodLog(true)}
-          />
-        ) : foodLogMeals.length > 0 ? (
-          <View style={styles.sectionCard}>
-            {foodLogMeals.map((meal, index) => (
-              <MealListItem
-                key={meal.id}
-                meal={meal}
-                hideBorder={index === foodLogMeals.length - 1}
-              />
-            ))}
+          <View style={styles.quickActions}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Escanear refeição"
+              onPress={() => navigation.navigate('Scanner')}
+              style={({ pressed }) => [styles.scanAction, pressed && styles.actionPressed]}
+            >
+              <Text style={[styles.actionTitle, compact && styles.actionTitleCompact]}>
+                Escanear refeição
+              </Text>
+              <Text style={[styles.actionCopy, compact && styles.actionCopyCompact]}>
+                Uma foto do seu prato
+              </Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => navigation.navigate('FoodLog')}
+              style={({ pressed }) => [styles.diaryAction, pressed && styles.actionPressed]}
+            >
+              <Text style={[styles.actionTitle, compact && styles.actionTitleCompact]}>
+                Abrir diário
+              </Text>
+              <Text style={[styles.actionCopy, compact && styles.actionCopyCompact]}>
+                Registrar e revisar
+              </Text>
+            </Pressable>
           </View>
-        ) : (
-          <View style={styles.feedbackCard}>
-            <Text style={styles.feedbackTitle}>Nada registrado por aqui ainda</Text>
-            <Text style={styles.feedbackText}>
-              Fotografe seu prato ou abra o diário para adicionar sua primeira refeição.
+
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Macronutrientes</Text>
+            <Text style={styles.sectionSubtitle}>
+              {hasGoals
+                ? 'Distribuição consumida em relação à meta atual.'
+                : 'Suas metas aparecem aqui assim que sua dieta for gerada.'}
             </Text>
           </View>
-        )}
-      </View>
-    </ScrollView>
+
+          <View style={styles.macroGrid}>
+            <MacroCard
+              label="Proteína"
+              current={totals.protein}
+              goal={proteinGoal}
+              color={colors.brandProtein}
+            />
+            <MacroCard
+              label="Carboidratos"
+              current={totals.carbs}
+              goal={carbsGoal}
+              color={colors.brandCarbs}
+            />
+            <MacroCard
+              label="Gordura"
+              current={totals.fat}
+              goal={fatGoal}
+              color={colors.brandFat}
+            />
+            <MacroCard
+              label="Fibras"
+              current={totals.fiber}
+              goal={fiberGoal}
+              color={colors.brandAnchor}
+            />
+          </View>
+
+          <DietPlanSection />
+
+          <View style={[styles.sectionHeader, styles.freeDiaryHeader]}>
+            <Text style={styles.sectionTitle}>Diário alimentar</Text>
+            <Text style={styles.sectionSubtitle}>Registros adicionados fora do plano do dia.</Text>
+          </View>
+
+          {isFoodLogLoading ? (
+            <DashboardMealSkeleton />
+          ) : foodLogError ? (
+            <ErrorState
+              title="Não foi possível carregar o diário livre"
+              onRetry={() => void loadFoodLog(true)}
+            />
+          ) : foodLogMeals.length > 0 ? (
+            <View style={styles.sectionCard}>
+              {foodLogMeals.map((meal, index) => (
+                <MealListItem
+                  key={meal.id}
+                  meal={meal}
+                  hideBorder={index === foodLogMeals.length - 1}
+                />
+              ))}
+            </View>
+          ) : (
+            <View style={styles.feedbackCard}>
+              <Text style={styles.feedbackTitle}>Nada registrado por aqui ainda</Text>
+              <Text style={styles.feedbackText}>
+                Fotografe seu prato ou abra o diário para adicionar sua primeira refeição.
+              </Text>
+            </View>
+          )}
+        </View>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.brandBackground, paddingTop: 56 },
+  container: { flex: 1, backgroundColor: colors.brandBackground, paddingTop: spacing.lg },
+  scroll: { flex: 1 },
   content: { paddingHorizontal: spacing.lg, paddingBottom: 40 },
   shell: screenShellStyle,
   headerRow: { marginBottom: spacing.xxl },
@@ -271,15 +308,48 @@ const styles = StyleSheet.create({
     padding: 24,
     marginBottom: spacing.xl,
   },
+  ringCardStacked: { flexDirection: 'column', alignItems: 'stretch' },
+  ringSummaryStacked: { flex: 0 },
   ringCardCompact: { padding: spacing.lg, gap: spacing.md },
   actionTitleCompact: { fontSize: typography.fontSize.sm },
   actionCopyCompact: { fontSize: typography.fontSize.xs },
-  quickActions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md, marginBottom: spacing.xxxl },
-  scanAction: { flex: 1, minWidth: 140, minHeight: 76, backgroundColor: colors.brandPrimary, borderRadius: radius.lg, padding: spacing.lg, justifyContent: 'center' },
-  diaryAction: { flex: 1, minWidth: 140, minHeight: 76, backgroundColor: colors.brandSurface, borderWidth: 1, borderColor: colors.brandDividerStrong, borderRadius: radius.lg, padding: spacing.lg, justifyContent: 'center' },
+  quickActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.md,
+    marginBottom: spacing.xxxl,
+  },
+  scanAction: {
+    flex: 1,
+    minWidth: 140,
+    minHeight: 76,
+    backgroundColor: colors.brandPrimary,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    justifyContent: 'center',
+  },
+  diaryAction: {
+    flex: 1,
+    minWidth: 140,
+    minHeight: 76,
+    backgroundColor: colors.brandSurface,
+    borderWidth: 1,
+    borderColor: colors.brandDividerStrong,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    justifyContent: 'center',
+  },
   actionPressed: { opacity: 0.8 },
-  actionTitle: { color: colors.brandAnchor, fontFamily: typography.fontFamily.bold, fontSize: typography.fontSize.base },
-  actionCopy: { color: colors.brandAnchor, fontSize: typography.fontSize.sm, marginTop: spacing.xs },
+  actionTitle: {
+    color: colors.brandAnchor,
+    fontFamily: typography.fontFamily.bold,
+    fontSize: typography.fontSize.base,
+  },
+  actionCopy: {
+    color: colors.brandAnchor,
+    fontSize: typography.fontSize.sm,
+    marginTop: spacing.xs,
+  },
   ringSummary: { flex: 1, minWidth: 0 },
   badge: {
     alignSelf: 'flex-start',
@@ -306,6 +376,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: spacing.md,
+    flexWrap: 'wrap',
   },
   progressMetaLabel: { fontSize: typography.fontSize.sm, color: colors.brandTextMuted },
   progressMetaValue: {
