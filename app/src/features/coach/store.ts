@@ -1,4 +1,6 @@
 import axios from 'axios';
+import { useAuthStore } from '@features/auth/store';
+import { creditErrorMessage } from '@shared/services/credits.service';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import { coachService, CoachMessage, VoiceRequestContext } from '@shared/services/coach.service';
@@ -154,6 +156,7 @@ export const useCoachStore = create<CoachState>()(
 
       loadHistory: async () => {
         const { conversationId } = get();
+        const generation = useAuthStore.getState().sessionGeneration;
         if (!conversationId) {
           set({ hasLoadedHistory: true, error: null });
           return;
@@ -161,12 +164,22 @@ export const useCoachStore = create<CoachState>()(
         set({ error: null, hasLoadedHistory: false });
         try {
           const history = await coachService.getHistory(conversationId);
+          if (
+            generation !== useAuthStore.getState().sessionGeneration ||
+            conversationId !== get().conversationId
+          )
+            return;
           set({
             messages: history.messages.map(toStoreMessage),
             hasLoadedHistory: true,
             lastFailedAction: null,
           });
         } catch {
+          if (
+            generation !== useAuthStore.getState().sessionGeneration ||
+            conversationId !== get().conversationId
+          )
+            return;
           set({
             error: 'Não foi possível carregar sua conversa agora.',
             hasLoadedHistory: true,
@@ -177,10 +190,16 @@ export const useCoachStore = create<CoachState>()(
 
       sendMessage: async (content: string, voice?: VoiceRequestContext) => {
         const trimmed = content.trim();
-        if (!trimmed || (voice && (!voice.isValid() || voice.signal.aborted))) return false;
+        if (get().isLoading || !trimmed || (voice && (!voice.isValid() || voice.signal.aborted)))
+          return false;
         const requestId = ++messageRequestId;
+        const session = dietSession;
+        const generation = useAuthStore.getState().sessionGeneration;
         const isCurrent = () =>
-          !voice || (requestId === messageRequestId && voice.isValid() && !voice.signal.aborted);
+          session === dietSession &&
+          generation === useAuthStore.getState().sessionGeneration &&
+          requestId === messageRequestId &&
+          (!voice || (voice.isValid() && !voice.signal.aborted));
 
         const userMsg: StoreMessage = {
           id: `user-${Date.now()}`,
@@ -220,7 +239,8 @@ export const useCoachStore = create<CoachState>()(
           if (!isCurrent()) return false;
           set({
             isLoading: false,
-            error: isQuotaExceeded(e) ? QUOTA_MESSAGE : SEND_ERROR_MESSAGE,
+            error:
+              creditErrorMessage(e) ?? (isQuotaExceeded(e) ? QUOTA_MESSAGE : SEND_ERROR_MESSAGE),
             lastFailedAction: 'send',
           });
           return false;
@@ -238,6 +258,8 @@ export const useCoachStore = create<CoachState>()(
         }
 
         if (lastFailedAction === 'send') {
+          if (get().isLoading) return;
+          const session = dietSession;
           const lastUserMessage = [...messages]
             .reverse()
             .find((message) => message.role === 'user');
@@ -249,6 +271,7 @@ export const useCoachStore = create<CoachState>()(
               lastUserMessage.content,
               conversationId,
             );
+            if (session !== dietSession) return;
             set((state) => ({
               conversationId: nextConversationId,
               messages: [...state.messages, toStoreMessage(message)],
@@ -258,9 +281,11 @@ export const useCoachStore = create<CoachState>()(
             }));
             if (message.dietJobId) void get().runDietGeneration(message.dietJobId);
           } catch (e) {
+            if (session !== dietSession) return;
             set({
               isLoading: false,
-              error: isQuotaExceeded(e) ? QUOTA_MESSAGE : SEND_ERROR_MESSAGE,
+              error:
+                creditErrorMessage(e) ?? (isQuotaExceeded(e) ? QUOTA_MESSAGE : SEND_ERROR_MESSAGE),
               lastFailedAction: 'send',
             });
           }

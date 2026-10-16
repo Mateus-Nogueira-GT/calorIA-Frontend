@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, AppState, Linking } from 'react-native';
 import axios from 'axios';
+import { creditErrorMessage } from '@shared/services/credits.service';
 import { useAuthStore } from '@features/auth/store';
 import { coachService, VoiceRequestContext } from '@shared/services/coach.service';
 import {
@@ -38,6 +39,11 @@ function showPermissionDenied(): void {
 }
 
 function showTranscribeError(e: unknown): void {
+  const creditError = creditErrorMessage(e);
+  if (creditError) {
+    Alert.alert('Créditos', creditError);
+    return;
+  }
   const status = axios.isAxiosError(e) ? e.response?.status : undefined;
   const code = axios.isAxiosError(e)
     ? (e.response?.data as { error?: string } | undefined)?.error

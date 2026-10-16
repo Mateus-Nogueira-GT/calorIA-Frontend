@@ -3,6 +3,8 @@ import api from './api';
 /** Perfil como o backend retorna (snake_case). Apenas os campos usados no app. */
 export interface BackendProfile {
   id: string;
+  /** Read-only permission; server revalidates every admin request. */
+  is_admin?: boolean;
   username: string | null;
   full_name: string | null;
   avatar_url: string | null;
@@ -42,9 +44,7 @@ export const profileService = {
     // perfil. Os 10s do API_TIMEOUT estouravam no aparelho e o usuário via
     // "Não foi possível enviar a foto". O scanner já tinha subido para 75s
     // pelo mesmo motivo; o avatar tinha ficado para trás.
-    api
-      .post<BackendProfile>('/users/me/avatar', { image }, { timeout: 75000 })
-      .then((r) => r.data),
+    api.post<BackendProfile>('/users/me/avatar', { image }, { timeout: 75000 }).then((r) => r.data),
 
   /**
    * Exclui a conta permanentemente. Irreversível: o backend remove o usuário e,

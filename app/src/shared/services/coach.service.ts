@@ -1,5 +1,13 @@
 import axios from 'axios';
 import api from './api';
+import { notifyCreditChange } from './credits.service';
+import {
+  beginRequest,
+  finishRequest,
+  isDefinitiveRejection,
+  requestSessionMatches,
+} from './operation-requests';
+import { useAuthStore } from '@features/auth/store';
 import { todayString, tzOffsetMinutes } from '@shared/utils/date';
 
 /** Guard and cancellation for one voice operation; text callers omit it. */
@@ -60,10 +68,41 @@ export const coachService = {
         })),
       })),
 
-  sendMessage: (content: string, conversationId: string | null, voice?: VoiceRequestContext) => {
+  sendMessage: async (
+    content: string,
+    conversationId: string | null,
+    voice?: VoiceRequestContext,
+  ) => {
     if (voice && (!voice.isValid() || voice.signal.aborted)) {
       return Promise.reject(new axios.CanceledError());
     }
+    const { user, sessionGeneration } = useAuthStore.getState();
+    const userId = user?.id;
+    const request = await beginRequest('chat', JSON.stringify([conversationId, content]), {
+      date: todayString(),
+      tzOffsetMinutes: tzOffsetMinutes(),
+    });
+    if (
+      !requestSessionMatches(userId, sessionGeneration) ||
+      (voice && (!voice.isValid() || voice.signal.aborted))
+    )
+      throw new axios.CanceledError();
+    const cancelPending = () => {
+      if (!requestSessionMatches(userId, sessionGeneration)) return;
+      void api
+        .post<{ state: string }>(
+          `/credits/operations/by-key/${encodeURIComponent(request.key)}/cancel`,
+          {},
+        )
+        .then(async ({ data }) => {
+          if (data.state === 'cancelled') await finishRequest(request, userId);
+          if (requestSessionMatches(userId, sessionGeneration)) notifyCreditChange();
+        })
+        .catch(() => {
+          /* Fenced server recovery remains available if cancellation fails. */
+        });
+    };
+    voice?.signal.addEventListener('abort', cancelPending, { once: true });
     return (
       api
         // Chat com IA pode levar mais que os 10s padrão do axios.
@@ -73,23 +112,39 @@ export const coachService = {
           {
             message: content,
             conversation_id: conversationId,
-            date: todayString(),
-            tzOffsetMinutes: tzOffsetMinutes(),
+            date: request.date,
+            tzOffsetMinutes: request.tzOffsetMinutes,
           },
-          { timeout: 60000, ...(voice ? { signal: voice.signal } : {}) },
+          {
+            timeout: 60000,
+            headers: { 'Idempotency-Key': request.key },
+            ...(voice ? { signal: voice.signal } : {}),
+          },
         )
-        .then((r) => ({
-          conversationId: r.data.conversation_id,
-          message: {
-            id: `${r.data.conversation_id}-${Date.now()}`,
-            role: 'coach' as const,
-            content: r.data.message.content,
-            timestamp: r.data.message.created_at,
-            dietGenerated: r.data.diet_generated,
-            dietId: r.data.diet_id,
-            dietJobId: r.data.diet_job_id,
-          },
-        }))
+        .then(async (r) => {
+          await finishRequest(request, userId);
+          if (!requestSessionMatches(userId, sessionGeneration)) throw new axios.CanceledError();
+          notifyCreditChange();
+          return {
+            conversationId: r.data.conversation_id,
+            message: {
+              id: `${r.data.conversation_id}-${Date.now()}`,
+              role: 'coach' as const,
+              content: r.data.message.content,
+              timestamp: r.data.message.created_at,
+              dietGenerated: r.data.diet_generated,
+              dietId: r.data.diet_id,
+              dietJobId: r.data.diet_job_id,
+            },
+          };
+        })
+        .catch(async (error: unknown) => {
+          if (isDefinitiveRejection(error)) await finishRequest(request, userId);
+          throw error;
+        })
+        .finally(() => {
+          voice?.signal.removeEventListener('abort', cancelPending);
+        })
     );
   },
 

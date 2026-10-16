@@ -47,6 +47,8 @@ export type ScannerStackParamList = {
 // Root Stack
 export type RootStackParamList = {
   Auth: undefined;
+  Credits: undefined;
+  Admin: undefined;
   App: undefined;
   ProfileGoals: undefined;
   ProfileCoachPersonality: undefined;
@@ -58,19 +60,25 @@ export type RootStackParamList = {
 };
 
 // Screen props helpers
-export type AuthStackScreenProps<T extends keyof AuthStackParamList> =
-  NativeStackScreenProps<AuthStackParamList, T>;
+export type AuthStackScreenProps<T extends keyof AuthStackParamList> = NativeStackScreenProps<
+  AuthStackParamList,
+  T
+>;
 
 export type TabScreenProps<T extends keyof TabParamList> = CompositeScreenProps<
   BottomTabScreenProps<TabParamList, T>,
   NativeStackScreenProps<RootStackParamList>
 >;
 
-export type RootStackScreenProps<T extends keyof RootStackParamList> =
-  NativeStackScreenProps<RootStackParamList, T>;
+export type RootStackScreenProps<T extends keyof RootStackParamList> = NativeStackScreenProps<
+  RootStackParamList,
+  T
+>;
 
-export type ScannerStackScreenProps<T extends keyof ScannerStackParamList> =
-  NativeStackScreenProps<ScannerStackParamList, T>;
+export type ScannerStackScreenProps<T extends keyof ScannerStackParamList> = NativeStackScreenProps<
+  ScannerStackParamList,
+  T
+>;
 
 export type CommunityStackScreenProps<T extends keyof CommunityStackParamList> =
   CompositeScreenProps<

@@ -17,7 +17,15 @@ const { scannerService } = require('@shared/services/scanner.service');
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { foodLogService } = require('@shared/services/food-log.service');
 
-const item = (id: string) => ({ id, name: 'Arroz', calories: 200, protein: 4, carbs: 44, fat: 1, confidence: 0.9 });
+const item = (id: string) => ({
+  id,
+  name: 'Arroz',
+  calories: 200,
+  protein: 4,
+  carbs: 44,
+  fat: 1,
+  confidence: 0.9,
+});
 
 describe('useScannerStore', () => {
   beforeEach(() => {
@@ -42,7 +50,9 @@ describe('useScannerStore', () => {
   });
 
   it('convidado no limite (429) recebe convite para criar conta', async () => {
-    scannerService.analyzePhotoGuest.mockRejectedValue({ response: { status: 429, data: { error: 'TOO_MANY_REQUESTS' } } });
+    scannerService.analyzePhotoGuest.mockRejectedValue({
+      response: { status: 429, data: { error: 'TOO_MANY_REQUESTS' } },
+    });
     await useScannerStore.getState().analyze('data:image/jpeg;base64,AAA', { guest: true });
     expect(useScannerStore.getState().error).toContain('Crie uma conta');
   });
@@ -107,5 +117,24 @@ describe('useScannerStore', () => {
     expect(foodLogService.addMeal).not.toHaveBeenCalled();
     // O estado NÃO é resetado: o usuário continua na tela para nomear o item.
     expect(useScannerStore.getState().items).toHaveLength(1);
+  });
+});
+describe('scanner request generations', () => {
+  it('a reset followed by another scan ignores the older result', async () => {
+    let resolveOld!: (value: { items: ReturnType<typeof item>[] }) => void;
+    scannerService.analyzePhoto.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveOld = resolve;
+        }),
+    );
+    const old = useScannerStore.getState().analyze('old-photo');
+    useScannerStore.getState().reset();
+    scannerService.analyzePhoto.mockResolvedValueOnce({ items: [item('new')] });
+    await useScannerStore.getState().analyze('new-photo');
+    resolveOld({ items: [item('old')] });
+    await old;
+    expect(useScannerStore.getState().image).toBe('new-photo');
+    expect(useScannerStore.getState().items[0].id).toBe('new');
   });
 });
