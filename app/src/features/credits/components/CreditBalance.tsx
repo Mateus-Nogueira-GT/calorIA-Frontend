@@ -6,12 +6,14 @@ import { colors, spacing } from '@theme';
 import { useCreditsStore } from '../store';
 
 export function CreditBalance({ onPress }: { onPress: () => void }): React.JSX.Element | null {
-  const { wallet, error, load } = useCreditsStore();
+  const { wallet, error, load, featureVisible } = useCreditsStore();
   useEffect(() => {
     void load();
   }, [load]);
-  // Existing releases stay unchanged while backend enforcement is disabled.
-  if (!wallet?.enforcement_enabled && !wallet?.invites_enabled && !error) return null;
+  // Existing releases stay unchanged while backend enforcement is disabled —
+  // including when the wallet request fails (no "Saldo indisponível" for an
+  // account that has never had credits enabled).
+  if (!featureVisible) return null;
   return (
     <Pressable accessibilityRole="button" onPress={onPress} style={styles.button}>
       <Text>

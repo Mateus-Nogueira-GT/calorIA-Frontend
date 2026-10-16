@@ -91,4 +91,27 @@ describe('durable operation metadata', () => {
     expect(isDefinitiveRejection({ response: { status: 409, data: { error: 'OPERATION_CANCELLED' } } })).toBe(true);
     expect(isDefinitiveRejection({ response: { status: 503 } })).toBe(false);
   });
+
+  it('erro do próprio servidor durante a operação encerra a tentativa (retry com chave nova)', () => {
+    // O backend marca a operação como failed e libera a reserva ao lançar um
+    // AppError dentro da execução; reusar a chave daria 409 OPERATION_FAILED.
+    const definitive = (status: number, error: string) =>
+      isDefinitiveRejection({ response: { status, data: { error, message: 'x' } } });
+    expect(definitive(502, 'VISION_ERROR')).toBe(true);
+    expect(definitive(502, 'AI_TRUNCATED')).toBe(true);
+    expect(definitive(500, 'HISTORY_WRITE_FAILED')).toBe(true);
+    expect(definitive(429, 'AI_QUOTA_EXCEEDED')).toBe(true);
+  });
+
+  it('falha ambígua mantém a chave para recuperar o resultado sem cobrar de novo', () => {
+    expect(
+      isDefinitiveRejection({ response: { status: 503, data: { error: 'CREDITS_UNAVAILABLE' } } }),
+    ).toBe(false);
+    expect(
+      isDefinitiveRejection({ response: { status: 429, data: { error: 'TOO_MANY_REQUESTS' } } }),
+    ).toBe(false);
+    // Gateway/timeout: corpo que não é do nosso servidor.
+    expect(isDefinitiveRejection({ response: { status: 504, data: '<html>' } })).toBe(false);
+    expect(isDefinitiveRejection({ code: 'ECONNABORTED' })).toBe(false);
+  });
 });

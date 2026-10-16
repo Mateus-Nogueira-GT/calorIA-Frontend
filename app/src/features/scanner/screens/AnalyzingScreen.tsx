@@ -34,8 +34,12 @@ export function AnalyzingScreen({ navigation, route }: Props): React.JSX.Element
     });
     return () => {
       active = false;
+      // Fechar o modal por gesto no meio da análise desmonta esta tela sem
+      // passar pelo botão Cancelar: sem isto, a trava `isAnalyzing` do store
+      // fazia a próxima foto ser ignorada e a tela nova ficava na animação.
+      if (useScannerStore.getState().isAnalyzing) cancelAnalyze();
     };
-  }, [analyze, guest, navigation, route.params.image]);
+  }, [analyze, cancelAnalyze, guest, navigation, route.params.image]);
 
   return (
     <SafeAreaView style={styles.safe}>

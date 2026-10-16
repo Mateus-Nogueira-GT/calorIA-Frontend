@@ -87,7 +87,11 @@ export function InviteScreen({ token, onAuthenticate, onDone }: Props): React.JS
       setError(
         code === 'WELCOME_ALREADY_CLAIMED' || code === 'WELCOME_ALREADY_GRANTED'
           ? 'Esta conta já recebeu o benefício de boas-vindas. O convite continua disponível para outra conta elegível.'
-          : 'Não foi possível resgatar. Tente novamente para confirmar o resultado; o benefício não será duplicado.',
+          : code === 'INVITE_UNAVAILABLE'
+            ? // Revogado, expirado ou usado por outra conta depois da prévia:
+              // tentar de novo falharia igual.
+              'Este convite não está mais disponível. Peça um novo convite a quem enviou.'
+            : 'Não foi possível resgatar. Tente novamente para confirmar o resultado; o benefício não será duplicado.',
       );
     } finally {
       if (isCurrent()) {

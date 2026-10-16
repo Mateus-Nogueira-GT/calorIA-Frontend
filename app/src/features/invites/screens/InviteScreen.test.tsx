@@ -104,3 +104,14 @@ it('already welcomed account gets an actionable message without consuming the ot
     await screen.findByText(/convite continua disponível para outra conta elegível/),
   ).toBeTruthy();
 });
+it('convite revogado, expirado ou já usado não manda tentar de novo', async () => {
+  post.mockImplementation((path: string) =>
+    path.endsWith('preview')
+      ? Promise.resolve(preview)
+      : Promise.reject({ response: { status: 410, data: { error: 'INVITE_UNAVAILABLE' } } }),
+  );
+  const screen = render(<InviteScreen {...props()} />);
+  fireEvent.press(await screen.findByText('Confirmar e receber créditos'));
+  expect(await screen.findByText(/não está mais disponível/)).toBeTruthy();
+  expect(screen.queryByText(/Tente novamente/)).toBeNull();
+});

@@ -142,5 +142,17 @@ export function isDefinitiveRejection(error: unknown): boolean {
   )
     return true;
   const status = response?.status;
-  return status !== undefined && status >= 400 && status < 500 && ![408, 409, 429].includes(status);
+  if (status === undefined) return false;
+  // 5xx/429 com código do NOSSO servidor: o backend lançou o erro dentro da
+  // operação, marcou-a como failed e liberou a reserva. Reusar a chave só
+  // devolveria 409 OPERATION_FAILED e o "Tentar novamente" exigiria dois toques.
+  // Ambíguos mantêm a chave: CREDITS_UNAVAILABLE (pede consulta antes de
+  // reenviar), TOO_MANY_REQUESTS (barrado antes de existir operação) e respostas
+  // sem código nosso (gateway/timeout), em que o resultado pode já existir.
+  const code = typeof response?.data?.error === 'string' ? response.data.error : undefined;
+  if ((status >= 500 || status === 429) && code && !AMBIGUOUS_SERVER_ERRORS.includes(code))
+    return true;
+  return status >= 400 && status < 500 && ![408, 409, 429].includes(status);
 }
+
+const AMBIGUOUS_SERVER_ERRORS = ['CREDITS_UNAVAILABLE', 'TOO_MANY_REQUESTS', 'OPERATION_PENDING'];
