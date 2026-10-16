@@ -62,7 +62,13 @@ Envia uma mensagem para o assistente de dietas com IA.
         body: chatMessageBodySchema,
         response: {
           200: chatResponseSchema,
+          400: errorSchema.describe('IDEMPOTENCY_KEY_REQUIRED — atualize o aplicativo'),
           401: errorSchema,
+          402: errorSchema.describe('INSUFFICIENT_CREDITS'),
+          409: errorSchema.describe(
+            'IDEMPOTENCY_CONFLICT | OPERATION_PENDING | CONVERSATION_BUSY | OPERATION_FAILED',
+          ),
+          503: errorSchema.describe('CREDITS_UNAVAILABLE | CREDIT_POLICY_UNAVAILABLE'),
           422: errorSchema.describe('AI_CONTENT_FILTERED — o modelo recusou a mensagem'),
           429: errorSchema.describe('TOO_MANY_REQUESTS | AI_QUOTA_EXCEEDED'),
           500: errorSchema.describe('HISTORY_WRITE_FAILED — a conversa não foi salva; reenviar'),
@@ -75,7 +81,14 @@ Envia uma mensagem para o assistente de dietas com IA.
     },
     async (request, reply) => {
       const { sub: userId } = request.user as JwtPayload
-      const result = await sendChatMessage(fastify, userId, request.body)
+      const result = await sendChatMessage(
+        fastify,
+        userId,
+        request.body,
+        typeof request.headers['idempotency-key'] === 'string'
+          ? request.headers['idempotency-key']
+          : undefined,
+      )
       return reply.send(result)
     },
   )
@@ -115,7 +128,7 @@ Envia uma mensagem para o assistente de dietas com IA.
             'TRANSCRIBE_FAILED — rede/timeout/5xx/408/429 do provedor; pode tentar de novo',
           ),
           503: errorSchema.describe(
-            'TRANSCRIBE_UNAVAILABLE — provedor recusou (demais 4xx); digitar',
+            'TRANSCRIBE_UNAVAILABLE | CREDIT_POLICY_UNAVAILABLE — digitar a mensagem',
           ),
         },
       },

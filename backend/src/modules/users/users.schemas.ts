@@ -19,6 +19,7 @@ export const coachGenderEnum = z.enum(['male', 'female', 'neutral'])
 
 export const profileSchema = z.object({
   id: z.string().uuid(),
+  is_admin: z.boolean().default(false),
   username: z.string().nullable(),
   full_name: z.string().nullable(),
   avatar_url: z.string().url().nullable(),
@@ -44,6 +45,8 @@ export const profileSchema = z.object({
 
 export const updateProfileBodySchema = z
   .object({
+    // Permissions are read-only, even when mixed with a legitimate profile update.
+    is_admin: z.never().optional(),
     username: z
       .string()
       .min(3, 'Username deve ter ao menos 3 caracteres')

@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify'
 import { APIConnectionTimeoutError } from 'openai'
 import { zodResponseFormat } from 'openai/helpers/zod.js'
 import { buildModelsField, checkDailyQuota, logAiUsage } from '../../shared/ai-usage.js'
+import { assertAiTariffConfigured } from '../../shared/credit-ai-policy.js'
 import {
   type AiSingleDay,
   type CollectedUserData,
@@ -164,6 +165,7 @@ export async function createDietJob(
   conversationId: string,
   userData: CollectedUserData,
 ): Promise<{ jobId: string; dietId: string }> {
+  assertAiTariffConfigured('diet_generation')
   // Reaproveita uma geração em andamento em vez de abrir outra.
   //
   // O chat chama esta função toda vez que a IA usa a tool collect_diet_data, e
@@ -580,6 +582,7 @@ export async function processJobStep(
   userId: string,
   jobId: string,
 ): Promise<JobStatus> {
+  assertAiTariffConfigured('diet_generation')
   await expireStaleJobs(fastify, userId)
   const job = await loadJob(fastify, userId, jobId)
   if (job.status === 'completed' || job.status === 'failed') return toStatus(job)
