@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { localDateSchema, tzOffsetMinutesSchema } from '../../shared/local-date.js'
+import { creditReceiptSchema } from '../credits/credits.schemas.js'
 
 // ─── Requests ─────────────────────────────────────────────────────────────────
 
@@ -42,6 +43,7 @@ export const chatMessageSchema = z.object({
 })
 
 export const chatResponseSchema = z.object({
+  credit_receipt: creditReceiptSchema.optional(),
   conversation_id: z.string().uuid(),
   message: chatMessageSchema,
   /** Indica se a IA coletou dados suficientes e gerou a dieta */

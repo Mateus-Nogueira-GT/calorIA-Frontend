@@ -18,6 +18,7 @@ import { foodLogService } from '@shared/services/food-log.service';
 import { useDietStore } from '@features/diet/store';
 import { todayString } from '@shared/utils/date';
 import { getDailyCalorieGoal, getDailyFiberGoal, getDayTotals } from '@shared/utils/calories';
+import { CreditBalance } from '@features/credits/components/CreditBalance';
 import { CalorieRing } from '../components/CalorieRing';
 import { MacroCard } from '../components/MacroCard';
 import { MealListItem } from '../components/MealListItem';
@@ -151,6 +152,8 @@ export function DashboardScreen(): React.JSX.Element {
             </Text>
             <Text style={styles.headerHint}>Calorias, macros e o que ainda falta no seu dia.</Text>
           </View>
+
+          <CreditBalance onPress={() => navigation.navigate('Credits')} />
           <View
             testID="dashboard-calorie-summary"
             style={[

@@ -221,7 +221,7 @@ export const useAuthStore = create<AuthState>()(
       clearToken: () => {
         // Encerra o loop da geração da dieta e apaga o banner (job/sessão do
         // usuário anterior) — sem isso seguiam /step e o banner sobrevivia.
-        useCoachStore.getState().resetDietGeneration();
+        useCoachStore.getState().clear();
         useDietStore.getState().clear();
         useFoodLogStore.getState().clear();
         useScannerStore.getState().clear();

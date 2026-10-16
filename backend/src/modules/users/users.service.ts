@@ -34,6 +34,7 @@ export async function getUserProfile(fastify: FastifyInstance, userId: string): 
   const [profile] = await fastify.db<DbProfileRow[]>`
     SELECT
       p.id,
+      p.is_admin,
       p.username,
       p.full_name,
       p.avatar_url,

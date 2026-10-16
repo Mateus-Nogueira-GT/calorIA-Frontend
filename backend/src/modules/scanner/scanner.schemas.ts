@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { creditReceiptSchema } from '../credits/credits.schemas.js'
 
 // ─── Requests ─────────────────────────────────────────────────────────────────
 
@@ -30,6 +31,7 @@ export const scanItemSchema = z.object({
 // A IA hoje retorna 1 item por foto, mas o contrato já é uma lista para abrir
 // caminho a múltiplos itens por foto no futuro (e o front edita item a item).
 export const scanResponseSchema = z.object({
+  credit_receipt: creditReceiptSchema.optional(),
   items: z.array(scanItemSchema),
 })
 

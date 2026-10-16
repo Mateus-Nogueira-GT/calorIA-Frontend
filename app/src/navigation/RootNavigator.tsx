@@ -1,5 +1,5 @@
-import React, { useEffect } from 'react';
-import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, Linking, Platform, StyleSheet, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { WelcomeScreen } from '@features/auth/screens/WelcomeScreen';
@@ -20,6 +20,11 @@ import { dietService } from '@shared/services/diet.service';
 import { isProfileComplete, profileService } from '@shared/services/profile.service';
 import type { LinkingOptions } from '@react-navigation/native';
 import type { AuthStackParamList, RootStackParamList } from './types';
+
+import { CreditsScreen } from '@features/credits/screens/CreditsScreen';
+import { AdminScreen } from '@features/admin/screens/AdminScreen';
+import { InviteScreen } from '@features/invites/screens/InviteScreen';
+import { inviteTokenFromURL, useInviteStore } from '@features/invites/store';
 
 const RootStack = createNativeStackNavigator<RootStackParamList>();
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
@@ -42,6 +47,7 @@ const linking: LinkingOptions<RootStackParamList> = {
    * Para religar, fazer os dois lados acima e devolver o prefixo aqui.
    */
   prefixes: ['caloria://'],
+  filter: (url) => !url.startsWith('caloria://invite/'),
   config: {
     screens: {
       App: {
@@ -77,7 +83,11 @@ function isAppPreviewEnabled(): boolean {
   return new URLSearchParams(window.location.search).get('preview') === 'app';
 }
 
-function AuthNavigator({ startAtProfileSetup = false }: { startAtProfileSetup?: boolean }): React.JSX.Element {
+function AuthNavigator({
+  startAtProfileSetup = false,
+}: {
+  startAtProfileSetup?: boolean;
+}): React.JSX.Element {
   // R6: quem já tem sessão e só não terminou o perfil não pode cair no Welcome
   // — seria pedir login a quem acabou de logar. Vai direto ao passo que falta.
   const initialRouteName = startAtProfileSetup
@@ -108,6 +118,29 @@ function AuthNavigator({ startAtProfileSetup = false }: { startAtProfileSetup?: 
 }
 
 export function RootNavigator(): React.JSX.Element {
+  const pendingInvite = useInviteStore((s) => s.token);
+  const inviteHydrated = useInviteStore((s) => s.hydrated);
+  const [inviteAuthRequested, setInviteAuthRequested] = useState(false);
+  useEffect(() => {
+    if (!inviteHydrated) return;
+    const receive = (url: string) => {
+      const token = inviteTokenFromURL(url);
+      if (token) {
+        useInviteStore.getState().setToken(token);
+        setInviteAuthRequested(false);
+        if (Platform.OS === 'web' && typeof window !== 'undefined') {
+          window.history.replaceState({}, '', '/convite');
+        }
+      }
+    };
+    if (Platform.OS === 'web' && typeof window !== 'undefined') receive(window.location.href);
+    else
+      void Linking.getInitialURL().then((url) => {
+        if (url) receive(url);
+      });
+    const listener = Linking.addEventListener('url', ({ url }) => receive(url));
+    return () => listener.remove();
+  }, [inviteHydrated]);
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const hasHydrated = useAuthStore((state) => state.hasHydrated);
   const profileComplete = useAuthStore((state) => state.profileComplete);
@@ -119,6 +152,10 @@ export function RootNavigator(): React.JSX.Element {
   // sem metas (e o R5 preenchia o buraco com números inventados).
   const showAuthenticatedApp =
     (isAuthenticated && profileComplete === true) || isAppPreviewEnabled();
+
+  useEffect(() => {
+    if (showAuthenticatedApp) setInviteAuthRequested(false);
+  }, [showAuthenticatedApp]);
 
   // `profileComplete` é persistido: quem já foi verificado não paga splash de
   // novo. Só fica indeterminado na primeira abertura depois desta versão.
@@ -164,11 +201,35 @@ export function RootNavigator(): React.JSX.Element {
     );
   }
 
+  if (pendingInvite && !inviteAuthRequested && hasHydrated) {
+    return (
+      <InviteScreen
+        token={pendingInvite}
+        onAuthenticate={() => setInviteAuthRequested(true)}
+        onDone={() => {
+          useInviteStore.getState().setToken(null);
+          if (Platform.OS === 'web' && typeof window !== 'undefined')
+            window.history.replaceState({}, '', '/');
+        }}
+      />
+    );
+  }
+
   return (
     <NavigationContainer linking={linking}>
       {showAuthenticatedApp ? (
         <RootStack.Navigator screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
           <RootStack.Screen name="App" component={BrandTabNavigator} />
+          <RootStack.Screen
+            name="Credits"
+            component={CreditsScreen}
+            options={{ headerShown: true, title: 'Meus créditos' }}
+          />
+          <RootStack.Screen
+            name="Admin"
+            component={AdminScreen}
+            options={{ headerShown: true, title: 'Administração' }}
+          />
           <RootStack.Screen
             name="ProfileGoals"
             component={ProfileGoalsScreen}

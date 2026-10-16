@@ -9,6 +9,20 @@ const envSchema = z
     LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error']).default('info'),
     CORS_ORIGIN: z.string().default('*'),
 
+    CREDITS_ENFORCEMENT_ENABLED: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((v) => v === 'true'),
+    CREDIT_INVITES_ENABLED: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((v) => v === 'true'),
+    INVITE_PUBLIC_URL: z
+      .string()
+      .url()
+      .refine((value) => new URL(value).protocol === 'https:', 'Invite URL must use HTTPS')
+      .default('https://calor-ia-frontend.vercel.app/convite'),
+
     // Supabase
     SUPABASE_URL: z.string().url(),
     SUPABASE_ANON_KEY: z.string(),

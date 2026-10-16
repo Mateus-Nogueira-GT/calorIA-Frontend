@@ -5,7 +5,11 @@ import { profileService } from '@shared/services/profile.service';
 import { useAuthStore } from '@features/auth/store';
 import { dateToString } from '@shared/utils/date';
 
-export interface DayCalories { date: string; label: string; calories: number }
+export interface DayCalories {
+  date: string;
+  label: string;
+  calories: number;
+}
 
 const DAYS_PT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
@@ -15,17 +19,25 @@ export function useProfile() {
   const updateUser = useAuthStore((s) => s.updateUser);
   const [weeklyData, setWeeklyData] = useState<DayCalories[]>([]);
   const [streak, setStreak] = useState(0);
+  const [adminUserId, setAdminUserId] = useState<string | null>(null);
+  const isAdmin = Boolean(user?.id && adminUserId === user.id);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => { loadWeeklyData(); }, []);
+  useEffect(() => {
+    loadWeeklyData();
+  }, []);
 
   // Hidrata nome/foto E o streak canônico do backend (G5) — antes o streak era
   // recalculado no cliente sobre o diário, divergindo do exibido em
   // amigos/desafios (que usam a tabela `streaks`).
   useEffect(() => {
+    let active = true;
+    const generation = useAuthStore.getState().sessionGeneration;
     profileService
       .getMe()
       .then((p) => {
+        if (!p || !active || generation !== useAuthStore.getState().sessionGeneration) return;
+        setAdminUserId(p.is_admin === true ? p.id : null);
         updateUser({
           name: p.full_name ?? undefined,
           avatarUrl: p.avatar_url,
@@ -33,8 +45,13 @@ export function useProfile() {
         });
         setStreak(p.current_streak ?? 0);
       })
-      .catch(() => {});
-  }, [updateUser]);
+      .catch(() => {
+        if (active) setAdminUserId(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [updateUser, user?.id]);
 
   async function loadWeeklyData() {
     setLoading(true);
@@ -61,7 +78,11 @@ export function useProfile() {
   }
 
   const handleLogout = useCallback(async () => {
-    try { await authService.logout(); } finally { clearToken(); }
+    try {
+      await authService.logout();
+    } finally {
+      clearToken();
+    }
   }, [clearToken]);
 
   /**
@@ -75,5 +96,5 @@ export function useProfile() {
     clearToken();
   }, [clearToken]);
 
-  return { user, weeklyData, streak, loading, handleLogout, handleDeleteAccount };
+  return { user, weeklyData, streak, loading, isAdmin, handleLogout, handleDeleteAccount };
 }

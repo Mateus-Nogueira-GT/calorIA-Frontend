@@ -1,9 +1,17 @@
+import { CreditBalance } from '@features/credits/components/CreditBalance';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, View } from 'react-native';
+import {
+  FlatList,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  StyleSheet,
+  View,
+} from 'react-native';
 import { useIsFocused, useNavigation } from '@react-navigation/native';
-import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
+
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import type { TabParamList } from '@navigation/types';
+import type { TabScreenProps } from '@navigation/types';
 import { useCoachStore } from '../store';
 import { ChatBubble } from '../components/ChatBubble';
 import { ChatInput } from '../components/ChatInput';
@@ -21,8 +29,16 @@ const conversationSuggestions = [
 ];
 
 export function CoachScreen(): React.JSX.Element {
-  const { messages, isLoading, error, hasLoadedHistory, loadHistory, sendMessage, retryLastAction } = useCoachStore();
-  const nav = useNavigation<BottomTabNavigationProp<TabParamList>>();
+  const {
+    messages,
+    isLoading,
+    error,
+    hasLoadedHistory,
+    loadHistory,
+    sendMessage,
+    retryLastAction,
+  } = useCoachStore();
+  const nav = useNavigation<TabScreenProps<'Coach'>['navigation']>();
   const isFocused = useIsFocused();
   const insets = useSafeAreaInsets();
   const listRef = useRef<FlatList>(null);
@@ -53,7 +69,13 @@ export function CoachScreen(): React.JSX.Element {
     await sendMessage(suggestion);
   }
 
-  function handleScroll(event: { nativeEvent: { contentOffset: { y: number }; contentSize: { height: number }; layoutMeasurement: { height: number } } }) {
+  function handleScroll(event: {
+    nativeEvent: {
+      contentOffset: { y: number };
+      contentSize: { height: number };
+      layoutMeasurement: { height: number };
+    };
+  }) {
     const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
     const distanceFromBottom = contentSize.height - (contentOffset.y + layoutMeasurement.height);
     setShouldStickToBottom(distanceFromBottom < 96);
@@ -66,7 +88,7 @@ export function CoachScreen(): React.JSX.Element {
       keyboardVerticalOffset={Platform.select({ ios: spacing.md, android: 0, default: 0 })}
     >
       <View style={[styles.header, { paddingTop: Math.max(insets.top, spacing.xl) + spacing.md }]}>
-        <CoachMark size='md' />
+        <CoachMark size="md" />
         <View style={styles.headerCopy}>
           <Text style={styles.headerTitle}>Coach IA</Text>
           <View style={styles.statusRow}>
@@ -76,6 +98,9 @@ export function CoachScreen(): React.JSX.Element {
         </View>
       </View>
 
+      <View style={styles.balance}>
+        <CreditBalance onPress={() => nav.navigate('Credits')} />
+      </View>
       <DietJobBanner />
 
       <FlatList
@@ -86,11 +111,7 @@ export function CoachScreen(): React.JSX.Element {
         style={styles.list}
         renderItem={({ item }) => (
           <View>
-            <ChatBubble
-              message={item.content}
-              role={item.role}
-              timestamp={item.timestamp}
-            />
+            <ChatBubble message={item.content} role={item.role} timestamp={item.timestamp} />
             {item.id === lastCoachWithFlag && (
               <GenerateDietButton onSuccess={() => nav.navigate('Dashboard')} />
             )}
@@ -98,42 +119,55 @@ export function CoachScreen(): React.JSX.Element {
         )}
         onScroll={handleScroll}
         scrollEventThrottle={16}
-        keyboardShouldPersistTaps='handled'
+        keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
         ListFooterComponent={isLoading ? <TypingIndicator /> : null}
-        ListEmptyComponent={!hasLoadedHistory ? (
-          <View style={styles.loadingState}>
-            <CoachMark size='lg' />
-            <Text style={styles.loadingTitle}>Preparando sua conversa</Text>
-            <Text style={styles.loadingCopy}>Seu coach está organizando o histórico mais recente.</Text>
-          </View>
-        ) : (
-          <View style={styles.emptyState}>
-            <CoachMark size='lg' tone='anchor' />
-            <Text style={styles.emptyTitle}>Como posso ajudar hoje?</Text>
-            <Text style={styles.emptyCopy}>Converse sobre alimentação, metas e sua rotina nutricional.</Text>
-            <View style={styles.suggestions}>
-              {conversationSuggestions.map((suggestion) => (
-                <Pressable
-                  key={suggestion}
-                  onPress={() => void handleSuggestionPress(suggestion)}
-                  style={({ pressed }) => [styles.suggestionButton, pressed && styles.suggestionButtonPressed]}
-                  accessibilityRole='button'
-                  disabled={isLoading}
-                  accessibilityState={{ disabled: isLoading }}
-                >
-                  <Text style={styles.suggestionText}>{suggestion}</Text>
-                </Pressable>
-              ))}
+        ListEmptyComponent={
+          !hasLoadedHistory ? (
+            <View style={styles.loadingState}>
+              <CoachMark size="lg" />
+              <Text style={styles.loadingTitle}>Preparando sua conversa</Text>
+              <Text style={styles.loadingCopy}>
+                Seu coach está organizando o histórico mais recente.
+              </Text>
             </View>
-          </View>
-        )}
+          ) : (
+            <View style={styles.emptyState}>
+              <CoachMark size="lg" tone="anchor" />
+              <Text style={styles.emptyTitle}>Como posso ajudar hoje?</Text>
+              <Text style={styles.emptyCopy}>
+                Converse sobre alimentação, metas e sua rotina nutricional.
+              </Text>
+              <View style={styles.suggestions}>
+                {conversationSuggestions.map((suggestion) => (
+                  <Pressable
+                    key={suggestion}
+                    onPress={() => void handleSuggestionPress(suggestion)}
+                    style={({ pressed }) => [
+                      styles.suggestionButton,
+                      pressed && styles.suggestionButtonPressed,
+                    ]}
+                    accessibilityRole="button"
+                    disabled={isLoading}
+                    accessibilityState={{ disabled: isLoading }}
+                  >
+                    <Text style={styles.suggestionText}>{suggestion}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+          )
+        }
       />
 
       {error ? (
-        <View style={styles.errorBar} accessibilityLiveRegion='polite'>
+        <View style={styles.errorBar} accessibilityLiveRegion="polite">
           <Text style={styles.errorText}>{error}</Text>
-          <Pressable onPress={() => void retryLastAction()} style={styles.errorAction} accessibilityRole='button'>
+          <Pressable
+            onPress={() => void retryLastAction()}
+            style={styles.errorAction}
+            accessibilityRole="button"
+          >
             <Text style={styles.errorActionText}>Tentar novamente</Text>
           </Pressable>
         </View>
@@ -145,6 +179,7 @@ export function CoachScreen(): React.JSX.Element {
 }
 
 const styles = StyleSheet.create({
+  balance: { ...screenShellStyle, paddingHorizontal: spacing.lg },
   container: { flex: 1, backgroundColor: colors.brandBackground },
   header: {
     ...screenShellStyle,

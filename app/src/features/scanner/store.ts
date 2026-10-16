@@ -1,4 +1,6 @@
 import { create } from 'zustand';
+import { creditErrorMessage } from '@shared/services/credits.service';
+import { useAuthStore } from '@features/auth/store';
 import { scannerService } from '@shared/services/scanner.service';
 import type { ScanItem } from '@shared/services/scanner.service';
 import { foodLogService } from '@shared/services/food-log.service';
@@ -17,6 +19,7 @@ interface ScannerState {
   removeItem: (id: string) => void;
   addManualItem: () => void;
   confirm: () => Promise<void>;
+  cancelAnalyze: () => void;
   reset: () => void;
   clear: () => void;
 }
@@ -29,19 +32,36 @@ const initialState = {
 };
 
 let manualSeq = 0;
+let analysisGeneration = 0;
+let analysisController: AbortController | null = null;
 
 export const useScannerStore = create<ScannerState>((set, get) => ({
   ...initialState,
 
   analyze: async (image, options) => {
     const guest = options?.guest === true;
+    if (get().isAnalyzing) return;
+    const generation = useAuthStore.getState().sessionGeneration;
+    const request = ++analysisGeneration;
+    const controller = new AbortController();
+    analysisController = controller;
     set({ image, isAnalyzing: true, error: null });
     try {
       const res = guest
         ? await scannerService.analyzePhotoGuest(image)
-        : await scannerService.analyzePhoto(image);
+        : await scannerService.analyzePhoto(image, controller.signal);
+      if (
+        generation !== useAuthStore.getState().sessionGeneration ||
+        request !== analysisGeneration
+      )
+        return;
       set({ items: res.items, isAnalyzing: false });
     } catch (e) {
+      if (
+        generation !== useAuthStore.getState().sessionGeneration ||
+        request !== analysisGeneration
+      )
+        return;
       // H5 da spec: 422 NOT_FOOD merece orientação, não erro genérico.
       const backendError = (e as { response?: { data?: { error?: string } } }).response?.data
         ?.error;
@@ -49,11 +69,12 @@ export const useScannerStore = create<ScannerState>((set, get) => ({
       set({
         isAnalyzing: false,
         error:
-          backendError === 'NOT_FOOD'
+          creditErrorMessage(e) ??
+          (backendError === 'NOT_FOOD'
             ? 'Não identificamos comida nesta foto — tente outro ângulo ou mais luz.'
             : guest && status === 429
               ? 'Você atingiu o limite de análises sem conta. Crie uma conta para continuar.'
-              : 'Não foi possível analisar a imagem.',
+              : 'Não foi possível analisar a imagem.'),
       });
     }
   },
@@ -85,10 +106,7 @@ export const useScannerStore = create<ScannerState>((set, get) => ({
     // M7: sem itens válidos o fluxo caía direto no reset e o modal fechava como
     // se tivesse salvo — o usuário acreditava ter registrado a refeição.
     if (valid.length === 0) {
-      showAlert(
-        'Nada para adicionar',
-        'Dê um nome a pelo menos um item antes de confirmar.',
-      );
+      showAlert('Nada para adicionar', 'Dê um nome a pelo menos um item antes de confirmar.');
       throw new Error('SCAN_CONFIRM_EMPTY');
     }
     // D2 da spec: allSettled + remoção incremental — item salvo SAI da lista na
@@ -131,6 +149,26 @@ export const useScannerStore = create<ScannerState>((set, get) => ({
     set({ ...initialState });
   },
 
-  reset: () => set({ ...initialState }),
-  clear: () => set({ ...initialState }),
+  cancelAnalyze: () => {
+    analysisGeneration++;
+    analysisController?.abort();
+    analysisController = null;
+    set({
+      isAnalyzing: false,
+      error:
+        'Análise interrompida. Confira a solicitação em Créditos para verificar o resultado e a cobrança.',
+    });
+  },
+  reset: () => {
+    analysisGeneration++;
+    analysisController?.abort();
+    analysisController = null;
+    set({ ...initialState });
+  },
+  clear: () => {
+    analysisGeneration++;
+    analysisController?.abort();
+    analysisController = null;
+    set({ ...initialState });
+  },
 }));

@@ -1,4 +1,13 @@
+import axios from 'axios';
 import api from './api';
+import { notifyCreditChange } from './credits.service';
+import {
+  beginRequest,
+  finishRequest,
+  isDefinitiveRejection,
+  requestSessionMatches,
+} from './operation-requests';
+import { useAuthStore } from '@features/auth/store';
 
 export interface ScanItem {
   id: string;
@@ -49,9 +58,50 @@ function normalize(data: unknown): ScanResponse {
 
 export const scannerService = {
   /** Envia a imagem como data URL base64 para análise via IA Vision. */
-  analyzePhoto: (image: string) =>
-    // Visão via GPT-5 leva ~20s+ — timeout acima do padrão de 10s.
-    api.post<unknown>('/scanner/analyze', { image }, { timeout: 75000 }).then((r) => normalize(r.data)),
+  analyzePhoto: async (image: string, signal?: AbortSignal) => {
+    if (signal?.aborted) throw new axios.CanceledError();
+    const { user, sessionGeneration } = useAuthStore.getState();
+    const userId = user?.id;
+    const request = await beginRequest('photo', image);
+    if (!requestSessionMatches(userId, sessionGeneration) || signal?.aborted)
+      throw new axios.CanceledError();
+    const cancelPending = () => {
+      if (!requestSessionMatches(userId, sessionGeneration)) return;
+      void api
+        .post<{ state: string }>(
+          `/credits/operations/by-key/${encodeURIComponent(request.key)}/cancel`,
+          {},
+        )
+        .then(async ({ data }) => {
+          if (data.state === 'cancelled') await finishRequest(request, userId);
+          if (requestSessionMatches(userId, sessionGeneration)) notifyCreditChange();
+        })
+        .catch(() => {
+          /* Recover by operation key when server cancellation is uncertain. */
+        });
+    };
+    signal?.addEventListener('abort', cancelPending, { once: true });
+    try {
+      const response = await api.post<unknown>(
+        '/scanner/analyze',
+        { image },
+        {
+          timeout: 75000,
+          headers: { 'Idempotency-Key': request.key },
+          ...(signal ? { signal } : {}),
+        },
+      );
+      await finishRequest(request, userId);
+      if (!requestSessionMatches(userId, sessionGeneration)) throw new axios.CanceledError();
+      notifyCreditChange();
+      return normalize(response.data);
+    } catch (error) {
+      if (isDefinitiveRejection(error)) await finishRequest(request, userId);
+      throw error;
+    } finally {
+      signal?.removeEventListener('abort', cancelPending);
+    }
+  },
 
   /** Mesma análise sem conta (App Store 5.1.1(v)) — limitada por IP no backend. */
   analyzePhotoGuest: (image: string) =>

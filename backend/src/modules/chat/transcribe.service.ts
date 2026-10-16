@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 import { checkDailyQuota, logAiUsage } from '../../shared/ai-usage.js'
+import { assertAiTariffConfigured } from '../../shared/credit-ai-policy.js'
 import { env } from '../../shared/env.js'
 import { AppError } from '../../shared/errors.js'
 import type { TranscribeBody, TranscribeMimeType } from './chat.schemas.js'
@@ -85,6 +86,7 @@ export async function transcribeAudio(
   body: TranscribeBody,
   fetchImpl: typeof fetch = fetch,
 ): Promise<{ text: string }> {
+  assertAiTariffConfigured('audio_transcription')
   await checkDailyQuota(fastify, userId)
 
   const model = env.OPENAI_TRANSCRIBE_MODEL ?? DEFAULT_TRANSCRIBE_MODEL

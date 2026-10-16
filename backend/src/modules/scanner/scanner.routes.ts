@@ -43,6 +43,7 @@ const scannerRoutes: FastifyPluginAsyncZod = async (fastify) => {
           200: scanResponseSchema,
           422: errorSchema.describe('Imagem não contém comida'),
           429: errorSchema.describe('TOO_MANY_REQUESTS | AI_QUOTA_EXCEEDED'),
+          503: errorSchema.describe('CREDIT_POLICY_UNAVAILABLE | CREDITS_UNAVAILABLE'),
           502: errorSchema.describe('Serviço de IA indisponível'),
         },
       },
@@ -87,7 +88,13 @@ const scannerRoutes: FastifyPluginAsyncZod = async (fastify) => {
           body: analyzePhotoBodySchema,
           response: {
             200: scanResponseSchema,
+            400: errorSchema.describe('IDEMPOTENCY_KEY_REQUIRED — atualize o aplicativo'),
             401: errorSchema,
+            402: errorSchema.describe('INSUFFICIENT_CREDITS'),
+            409: errorSchema.describe(
+              'IDEMPOTENCY_CONFLICT | OPERATION_PENDING | OPERATION_FAILED',
+            ),
+            503: errorSchema.describe('CREDITS_UNAVAILABLE | CREDIT_POLICY_UNAVAILABLE'),
             422: errorSchema.describe('Imagem não contém comida'),
             429: errorSchema.describe('TOO_MANY_REQUESTS | AI_QUOTA_EXCEEDED'),
             502: errorSchema.describe('Serviço de IA indisponível'),
@@ -96,7 +103,16 @@ const scannerRoutes: FastifyPluginAsyncZod = async (fastify) => {
       },
       async (request, reply) => {
         const { sub: userId } = request.user as JwtPayload
-        return reply.send(await analyzePhoto(fastify, request.body.image, userId))
+        return reply.send(
+          await analyzePhoto(
+            fastify,
+            request.body.image,
+            userId,
+            typeof request.headers['idempotency-key'] === 'string'
+              ? request.headers['idempotency-key']
+              : undefined,
+          ),
+        )
       },
     )
   })

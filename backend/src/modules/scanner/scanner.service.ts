@@ -2,9 +2,11 @@ import { createHash, randomUUID } from 'node:crypto'
 import type { FastifyInstance } from 'fastify'
 import { zodResponseFormat } from 'openai/helpers/zod.js'
 import { buildModelsField, checkDailyQuota, logAiUsage } from '../../shared/ai-usage.js'
+import { assertAiTariffConfigured } from '../../shared/credit-ai-policy.js'
 import { env } from '../../shared/env.js'
 import { AppError } from '../../shared/errors.js'
 import { sanitizeVisionResult } from '../../shared/guardrails/index.js'
+import { runCreditOperation } from '../credits/credits.service.js'
 import { type ScanItem, type ScanResponse, visionAnalysisSchema } from './scanner.schemas.js'
 
 const VISION_SYSTEM_PROMPT = `Você é um nutricionista especialista em análise visual de alimentos.
@@ -67,6 +69,24 @@ function writeCache(fastify: FastifyInstance, hash: string, result: CacheResult)
  * userId null = convidado sem conta: cai no teto global de convidados.
  */
 export async function analyzePhoto(
+  fastify: FastifyInstance,
+  imageDataUrl: string,
+  userId: string | null,
+  idempotencyKey?: string,
+): Promise<ScanResponse> {
+  if (userId === null) {
+    assertAiTariffConfigured('guest_scanner')
+    return analyzePhotoCore(fastify, imageDataUrl, userId)
+  }
+  const { result, receipt } = await runCreditOperation(
+    fastify,
+    { userId, key: idempotencyKey, payload: { image: imageDataUrl }, type: 'photo', costUnits: 15 },
+    () => analyzePhotoCore(fastify, imageDataUrl, userId),
+  )
+  return receipt ? { ...result, credit_receipt: receipt } : result
+}
+
+async function analyzePhotoCore(
   fastify: FastifyInstance,
   imageDataUrl: string,
   userId: string | null,

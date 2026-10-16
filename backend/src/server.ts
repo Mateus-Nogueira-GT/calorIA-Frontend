@@ -16,9 +16,12 @@ import dbPlugin from './plugins/db.js'
 import openaiPlugin from './plugins/openai.js'
 import supabasePlugin from './plugins/supabase.js'
 
+import adminRoutes from './modules/admin/admin.routes.js'
 import authRoutes from './modules/auth/auth.routes.js'
 import challengesRoutes from './modules/challenges/challenges.routes.js'
 import chatRoutes from './modules/chat/chat.routes.js'
+import creditInvitesRoutes from './modules/credit-invites/credit-invites.routes.js'
+import creditsRoutes from './modules/credits/credits.routes.js'
 import dietsRoutes from './modules/diets/diets.routes.js'
 import feedRoutes from './modules/feed/feed.routes.js'
 import foodLogRoutes from './modules/food-log/food-log.routes.js'
@@ -67,6 +70,7 @@ export async function buildApp() {
     origin: corsWildcard ? true : env.CORS_ORIGIN.split(','),
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     credentials: !corsWildcard,
+    allowedHeaders: ['Content-Type', 'Authorization', 'Idempotency-Key'],
   })
 
   await app.register(rateLimit, {
@@ -156,6 +160,7 @@ export async function buildApp() {
       return reply.status(error.statusCode).send({
         error: error.code,
         message: error.message,
+        ...(error.details ? { details: error.details } : {}),
       })
     }
 
@@ -201,6 +206,9 @@ export async function buildApp() {
   }))
 
   // ─── Rotas ──────────────────────────────────────────────────────────────────
+  await app.register(creditsRoutes, { prefix: '/credits' })
+  await app.register(creditInvitesRoutes, { prefix: '/credit-invites' })
+  await app.register(adminRoutes, { prefix: '/admin' })
   await app.register(authRoutes, { prefix: '/auth' })
   await app.register(usersRoutes, { prefix: '/users' })
   await app.register(chatRoutes, { prefix: '/chat' })

@@ -2,10 +2,12 @@ import { randomUUID } from 'node:crypto'
 import type { FastifyInstance } from 'fastify'
 import type OpenAI from 'openai'
 import { buildModelsField, checkDailyQuota, logAiUsage } from '../../shared/ai-usage.js'
+import { assertAiTariffConfigured } from '../../shared/credit-ai-policy.js'
 import { type CollectedUserData, collectedUserDataSchema } from '../../shared/diet-ai-schema.js'
 import { env } from '../../shared/env.js'
 import { AppError } from '../../shared/errors.js'
 import { assessSafety, describeInvalidFields } from '../../shared/guardrails/index.js'
+import { type CreditTransaction, runCreditOperation } from '../credits/credits.service.js'
 import { createDietJob, getPendingJob } from '../diets/jobs.service.js'
 import { fetchUserContext, formatKnownData, formatUserContext } from './chat-context.js'
 import type { ChatMessageBody, ChatResponse } from './chat.schemas.js'
@@ -251,12 +253,61 @@ export async function sendChatMessage(
   fastify: FastifyInstance,
   userId: string,
   data: ChatMessageBody,
+  idempotencyKey?: string,
+): Promise<ChatResponse> {
+  // The lease is account-wide when starting a conversation, and conversation-wide
+  // thereafter. It is acquired by the wallet runner before history is read.
+  const conversationId = data.conversation_id ?? randomUUID()
+  let completedHistory: ChatHistoryMessage[] | undefined
+  const { result, receipt } = await runCreditOperation(
+    fastify,
+    {
+      userId,
+      key: idempotencyKey,
+      payload: data,
+      type: 'chat',
+      costUnits: 2,
+      conversationId: data.conversation_id ?? userId,
+    },
+    () =>
+      sendChatMessageCore(
+        fastify,
+        userId,
+        { ...data, conversation_id: conversationId },
+        env.CREDITS_ENFORCEMENT_ENABLED
+          ? (history) => {
+              completedHistory = history
+            }
+          : undefined,
+      ),
+    async (tx) => {
+      if (completedHistory) {
+        await persistHistory(fastify, userId, conversationId, completedHistory, 'collecting', tx)
+      }
+    },
+  )
+  return receipt ? { ...result, credit_receipt: receipt } : result
+}
+
+async function sendChatMessageCore(
+  fastify: FastifyInstance,
+  userId: string,
+  data: ChatMessageBody,
+  deferHistory?: (history: ChatHistoryMessage[]) => void,
 ): Promise<ChatResponse> {
   // OP2: teto diário de tokens antes de qualquer chamada de IA — usuário acima
   // da cota não paga nem a primeira chamada do turno.
   await checkDailyQuota(fastify, userId)
 
   const conversationId = data.conversation_id ?? randomUUID()
+  if (env.CREDITS_ENFORCEMENT_ENABLED && data.conversation_id) {
+    const [existing] = await fastify.db<{ user_id: string }[]>`
+      SELECT user_id FROM chat_history WHERE id = ${conversationId}
+    `
+    if (existing && existing.user_id !== userId) {
+      throw new AppError(404, 'NOT_FOUND', 'Conversa não encontrada.')
+    }
+  }
   const history = await loadHistory(fastify, userId, conversationId)
 
   history.push({ role: 'user', content: data.message })
@@ -284,16 +335,29 @@ export async function sendChatMessage(
     formatKnownData(context),
     hasActiveDiet,
   )
-  const toolParams = pendingJob
-    ? {}
-    : { tools: [COLLECT_DIET_DATA_TOOL], tool_choice: 'auto' as const, parallel_tool_calls: false }
+  const toolParams =
+    pendingJob || env.CREDITS_ENFORCEMENT_ENABLED
+      ? {}
+      : {
+          tools: [COLLECT_DIET_DATA_TOOL],
+          tool_choice: 'auto' as const,
+          parallel_tool_calls: false,
+        }
 
   // ── Chamada à OpenAI com suporte a function calling ──────────────────────
   const baseParams = {
     model: env.OPENAI_MODEL,
     // I5.2: fallbacks do OpenRouter (spread não dispara excess-property check).
     ...buildModelsField(env.OPENAI_MODEL, env.OPENAI_FALLBACK_MODELS),
-    messages: [{ role: 'system' as const, content: systemPrompt }, ...windowedHistory(history)],
+    messages: [
+      {
+        role: 'system' as const,
+        content: env.CREDITS_ENFORCEMENT_ENABLED
+          ? `${systemPrompt}\nA geração de novos planos está temporariamente indisponível. Responda dúvidas normalmente, mas não prometa iniciar uma dieta.`
+          : systemPrompt,
+      },
+      ...windowedHistory(history),
+    ],
     ...toolParams,
     // O modelo é reasoning: não aceita temperature custom (só o default) e
     // gasta "reasoning tokens" do orçamento — por isso um limite mais folgado.
@@ -370,6 +434,7 @@ export async function sendChatMessage(
 
   // ── Detecta chamada de função: IA coletou todos os dados ─────────────────
   if (choice.finish_reason === 'tool_calls' && choice.message.tool_calls?.length) {
+    assertAiTariffConfigured('diet_generation')
     const toolCall = choice.message.tool_calls[0]
     if (toolCall.function.name === 'collect_diet_data') {
       return handleDietGeneration(
@@ -394,7 +459,8 @@ export async function sendChatMessage(
     throw new AppError(502, 'AI_TRUNCATED', 'A IA devolveu uma resposta vazia. Tente novamente.')
   }
   history.push({ role: 'assistant', content: assistantMessage })
-  await persistHistory(fastify, userId, conversationId, history, 'collecting')
+  if (deferHistory) deferHistory(history)
+  else await persistHistory(fastify, userId, conversationId, history, 'collecting')
 
   return {
     conversation_id: conversationId,
@@ -572,6 +638,12 @@ async function loadHistory(
     `
     return normalizeHistory(row?.messages)
   } catch {
+    if (env.CREDITS_ENFORCEMENT_ENABLED)
+      throw new AppError(
+        503,
+        'CREDITS_UNAVAILABLE',
+        'Não foi possível recuperar a conversa. Tente novamente.',
+      )
     return []
   }
 }
@@ -582,17 +654,24 @@ async function persistHistory(
   conversationId: string,
   messages: ChatHistoryMessage[],
   status: string,
+  transaction?: CreditTransaction,
 ): Promise<void> {
   const messagesStr = JSON.stringify(messages)
   try {
-    await fastify.db`
+    const sql = transaction ?? fastify.db
+    const rows = await sql`
       INSERT INTO chat_history (id, user_id, messages, status)
       VALUES (${conversationId}, ${userId}, ${messagesStr}::jsonb, ${status})
       ON CONFLICT (id) DO UPDATE
         SET messages   = ${messagesStr}::jsonb,
             status     = ${status},
             updated_at = NOW()
+        WHERE chat_history.user_id = EXCLUDED.user_id
+      RETURNING id
     `
+    if (transaction && rows.length === 0) {
+      throw new AppError(404, 'NOT_FOUND', 'Conversa não encontrada.')
+    }
   } catch (err) {
     // C5: o histórico é a fonte de verdade da conversa. Engolir a falha
     // devolvia conversation_id ao app e a próxima mensagem vinha sem o turno

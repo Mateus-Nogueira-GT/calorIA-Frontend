@@ -32,7 +32,7 @@ const coachPersonalityLabels = {
 } as const;
 
 export function ProfileScreen({ navigation }: TabScreenProps<'Profile'>): React.JSX.Element {
-  const { user, weeklyData, streak, loading, handleLogout, handleDeleteAccount } =
+  const { user, weeklyData, streak, loading, isAdmin, handleLogout, handleDeleteAccount } =
     useProfile();
   const profilePreferences = useAuthStore((state) => state.profilePreferences);
 
@@ -111,6 +111,20 @@ export function ProfileScreen({ navigation }: TabScreenProps<'Profile'>): React.
           {!loading && weeklyData.length > 0 && <WeeklyCalorieChart data={weeklyData} />}
         </View>
         <View style={styles.menuCard}>
+          <ProfileMenuItem
+            label="Meus créditos"
+            description="Saldo disponível e histórico de uso"
+            onPress={() => navigation.navigate('Credits')}
+            testID="profile-credits-btn"
+          />
+          {isAdmin && (
+            <ProfileMenuItem
+              label="Administração"
+              description="Convites e créditos de boas-vindas"
+              onPress={() => navigation.navigate('Admin')}
+              testID="profile-admin-btn"
+            />
+          )}
           <ProfileMenuItem
             label="Editar perfil"
             description="Altere seu nome e foto de perfil"
