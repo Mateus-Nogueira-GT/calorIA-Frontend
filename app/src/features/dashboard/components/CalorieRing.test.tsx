@@ -1,5 +1,5 @@
 import React from 'react';
-import { Dimensions } from 'react-native';
+import { Dimensions, StyleSheet } from 'react-native';
 import { render } from '@testing-library/react-native';
 import { CalorieRing, halfDegrees } from './CalorieRing';
 
@@ -91,4 +91,35 @@ it('fonte ampliada move rótulos para fora do círculo fixo', () => {
   } finally {
     dimensions.mockRestore();
   }
+});
+
+describe('rótulos fora do anel (fonte ampliada)', () => {
+  function withLargeFont(run: () => void) {
+    const dimensions = jest
+      .spyOn(Dimensions, 'get')
+      .mockReturnValue({ width: 390, height: 844, scale: 3, fontScale: 2 });
+    try {
+      run();
+    } finally {
+      dimensions.mockRestore();
+    }
+  }
+
+  it('mantém o limite 999%+ igual ao rótulo dentro do anel', () => {
+    withLargeFont(() => {
+      const { getByText, queryByText } = render(
+        <CalorieRing current={30000} goal={2000} size={108} />,
+      );
+      expect(getByText('999%+')).toBeTruthy();
+      expect(queryByText('1500%')).toBeNull();
+    });
+  });
+
+  it('fica abaixo da borda do anel, que passa strokeWidth do contêiner', () => {
+    withLargeFont(() => {
+      const { getByTestId } = render(<CalorieRing current={1000} goal={2000} size={108} />);
+      // strokeWidth = round(108 × 0,085) = 9; folga de 8 além da borda.
+      expect(StyleSheet.flatten(getByTestId('ring-labels-outside').props.style).marginTop).toBe(17);
+    });
+  });
 });

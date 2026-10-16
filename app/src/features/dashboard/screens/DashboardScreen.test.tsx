@@ -135,3 +135,28 @@ it('calorias de cinco dígitos têm a largura da seção, sem competir com o ane
     StyleSheet.flatten(getByTestId('dashboard-calorie-summary').props.style).flexDirection,
   ).toBe('column');
 });
+
+it('total com decimal (450.5) não conta como número longo', () => {
+  const date = todayString();
+  useFoodLogStore.setState({
+    mealsByDate: {
+      [date]: [
+        {
+          id: 'decimal',
+          mealType: 'other',
+          name: 'Refeição',
+          calories: 450.5,
+          protein: 0,
+          carbs: 0,
+          fat: 0,
+          loggedAt: new Date().toISOString(),
+        },
+      ],
+    },
+    syncedDates: { [date]: true },
+  });
+  const { getByTestId } = renderDashboard();
+  expect(
+    StyleSheet.flatten(getByTestId('dashboard-calorie-summary').props.style).flexDirection,
+  ).not.toBe('column');
+});
