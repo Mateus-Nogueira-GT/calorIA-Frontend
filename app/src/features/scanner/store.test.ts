@@ -34,7 +34,10 @@ describe('useScannerStore', () => {
   });
 
   it('analyze popula items', async () => {
-    scannerService.analyzePhoto.mockResolvedValue({ items: [item('1'), item('2')] });
+    scannerService.analyzePhoto.mockResolvedValue({
+      items: [item('1'), item('2')],
+      acknowledge: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
+    });
     const { result } = renderHook(() => useScannerStore());
     await act(() => result.current.analyze('data:image/jpeg;base64,AAA'));
     expect(result.current.items).toHaveLength(2);
@@ -121,7 +124,10 @@ describe('useScannerStore', () => {
 });
 describe('scanner request generations', () => {
   it('a reset followed by another scan ignores the older result', async () => {
-    let resolveOld!: (value: { items: ReturnType<typeof item>[] }) => void;
+    let resolveOld!: (value: {
+      items: ReturnType<typeof item>[];
+      acknowledge: () => Promise<void>;
+    }) => void;
     scannerService.analyzePhoto.mockImplementationOnce(
       () =>
         new Promise((resolve) => {
@@ -130,9 +136,15 @@ describe('scanner request generations', () => {
     );
     const old = useScannerStore.getState().analyze('old-photo');
     useScannerStore.getState().reset();
-    scannerService.analyzePhoto.mockResolvedValueOnce({ items: [item('new')] });
+    scannerService.analyzePhoto.mockResolvedValueOnce({
+      items: [item('new')],
+      acknowledge: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
+    });
     await useScannerStore.getState().analyze('new-photo');
-    resolveOld({ items: [item('old')] });
+    resolveOld({
+      items: [item('old')],
+      acknowledge: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
+    });
     await old;
     expect(useScannerStore.getState().image).toBe('new-photo');
     expect(useScannerStore.getState().items[0].id).toBe('new');

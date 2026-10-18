@@ -124,12 +124,12 @@ export const coachService = {
             ...binding.config,
           },
         )
-        .then(async (r) => {
-          await finishRequest(request, userId);
+        .then((r) => {
           if (!isCurrentOwner(owner)) throw new axios.CanceledError();
           notifyCreditChange();
           return {
             conversationId: r.data.conversation_id,
+            acknowledge: () => finishRequest(request, userId),
             message: {
               id: `${r.data.conversation_id}-${Date.now()}`,
               role: 'coach' as const,

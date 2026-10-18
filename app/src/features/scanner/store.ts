@@ -48,7 +48,7 @@ export const useScannerStore = create<ScannerState>((set, get) => ({
     set({ image, isAnalyzing: true, error: null });
     try {
       const res = guest
-        ? await scannerService.analyzePhotoGuest(image)
+        ? { ...(await scannerService.analyzePhotoGuest(image)), acknowledge: undefined }
         : await scannerService.analyzePhoto(image, controller.signal);
       if (
         generation !== useAuthStore.getState().sessionGeneration ||
@@ -56,6 +56,7 @@ export const useScannerStore = create<ScannerState>((set, get) => ({
       )
         return;
       set({ items: res.items, isAnalyzing: false });
+      void res.acknowledge?.();
     } catch (e) {
       if (
         generation !== useAuthStore.getState().sessionGeneration ||

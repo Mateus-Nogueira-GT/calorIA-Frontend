@@ -94,10 +94,12 @@ export const scannerService = {
           ...binding.config,
         },
       );
-      await finishRequest(request, userId);
       if (!isCurrentOwner(owner)) throw new axios.CanceledError();
       notifyCreditChange();
-      return normalize(response.data);
+      return {
+        ...normalize(response.data),
+        acknowledge: () => finishRequest(request, userId),
+      };
     } catch (error) {
       if (isDefinitiveRejection(error)) await finishRequest(request, userId);
       throw error;
