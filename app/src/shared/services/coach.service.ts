@@ -5,9 +5,8 @@ import {
   beginRequest,
   finishRequest,
   isDefinitiveRejection,
-  requestSessionMatches,
 } from './operation-requests';
-import { useAuthStore } from '@features/auth/store';
+import { bindRequestToOwner, captureSessionOwner, isCurrentOwner } from './session-owner';
 import { todayString, tzOffsetMinutes } from '@shared/utils/date';
 
 /** Guard and cancellation for one voice operation; text callers omit it. */
@@ -76,32 +75,36 @@ export const coachService = {
     if (voice && (!voice.isValid() || voice.signal.aborted)) {
       return Promise.reject(new axios.CanceledError());
     }
-    const { user, sessionGeneration } = useAuthStore.getState();
-    const userId = user?.id;
+    const owner = captureSessionOwner();
+    const userId = owner.userId;
     const request = await beginRequest('chat', JSON.stringify([conversationId, content]), {
       date: todayString(),
       tzOffsetMinutes: tzOffsetMinutes(),
     });
     if (
-      !requestSessionMatches(userId, sessionGeneration) ||
+      !isCurrentOwner(owner) ||
       (voice && (!voice.isValid() || voice.signal.aborted))
     )
       throw new axios.CanceledError();
     const cancelPending = () => {
-      if (!requestSessionMatches(userId, sessionGeneration)) return;
+      if (!isCurrentOwner(owner)) return;
+      const cancellation = bindRequestToOwner(owner);
       void api
         .post<{ state: string }>(
           `/credits/operations/by-key/${encodeURIComponent(request.key)}/cancel`,
           {},
+          cancellation.config,
         )
         .then(async ({ data }) => {
           if (data.state === 'cancelled') await finishRequest(request, userId);
-          if (requestSessionMatches(userId, sessionGeneration)) notifyCreditChange();
+          if (isCurrentOwner(owner)) notifyCreditChange();
         })
         .catch(() => {
           /* Fenced server recovery remains available if cancellation fails. */
-        });
+        })
+        .finally(cancellation.release);
     };
+    const binding = bindRequestToOwner(owner, voice?.signal);
     voice?.signal.addEventListener('abort', cancelPending, { once: true });
     return (
       api
@@ -118,12 +121,12 @@ export const coachService = {
           {
             timeout: 60000,
             headers: { 'Idempotency-Key': request.key },
-            ...(voice ? { signal: voice.signal } : {}),
+            ...binding.config,
           },
         )
         .then(async (r) => {
           await finishRequest(request, userId);
-          if (!requestSessionMatches(userId, sessionGeneration)) throw new axios.CanceledError();
+          if (!isCurrentOwner(owner)) throw new axios.CanceledError();
           notifyCreditChange();
           return {
             conversationId: r.data.conversation_id,
@@ -144,6 +147,7 @@ export const coachService = {
         })
         .finally(() => {
           voice?.signal.removeEventListener('abort', cancelPending);
+          binding.release();
         })
     );
   },

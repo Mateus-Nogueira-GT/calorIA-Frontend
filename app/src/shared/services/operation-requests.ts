@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { useAuthStore } from '@features/auth/store';
+import { captureSessionOwner, isCurrentOwner } from './session-owner';
 import { newOperationKey } from './credits.service';
 import { kvStorage } from './storage';
 
@@ -39,24 +39,18 @@ async function serialized<T>(owner: string, action: () => Promise<T>): Promise<T
   }
 }
 
-export function requestSessionMatches(userId: string | undefined, generation: number): boolean {
-  const current = useAuthStore.getState();
-  return current.user?.id === userId && current.sessionGeneration === generation;
-}
-
 export async function beginRequest(
   type: PendingRequest['type'],
   payload: string,
   context?: { date: string; tzOffsetMinutes: number },
 ): Promise<PendingRequest> {
-  const auth = useAuthStore.getState();
-  const userId = auth.user?.id;
-  const generation = auth.sessionGeneration;
+  const owner = captureSessionOwner();
+  const userId = owner.userId;
   const sig = signature(payload);
   const slot = `${userId}:${type}:${sig}`;
   return serialized(userId ?? 'guest', async () => {
     const list = userId ? await pendingRequests(userId) : [];
-    if (!requestSessionMatches(userId, generation)) throw new axios.CanceledError();
+    if (!isCurrentOwner(owner)) throw new axios.CanceledError();
     const previous =
       active.get(slot) ?? list.find((item) => item.type === type && item.signature === sig);
     if (previous && !completed.has(previous.key)) {
@@ -85,7 +79,7 @@ export async function beginRequest(
       }
     }
     active.set(slot, next);
-    if (!requestSessionMatches(userId, generation)) throw new axios.CanceledError();
+    if (!isCurrentOwner(owner)) throw new axios.CanceledError();
     return next;
   });
 }

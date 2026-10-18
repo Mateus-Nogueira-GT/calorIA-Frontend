@@ -5,9 +5,8 @@ import {
   beginRequest,
   finishRequest,
   isDefinitiveRejection,
-  requestSessionMatches,
 } from './operation-requests';
-import { useAuthStore } from '@features/auth/store';
+import { bindRequestToOwner, captureSessionOwner, isCurrentOwner } from './session-owner';
 
 export interface ScanItem {
   id: string;
@@ -60,26 +59,30 @@ export const scannerService = {
   /** Envia a imagem como data URL base64 para análise via IA Vision. */
   analyzePhoto: async (image: string, signal?: AbortSignal) => {
     if (signal?.aborted) throw new axios.CanceledError();
-    const { user, sessionGeneration } = useAuthStore.getState();
-    const userId = user?.id;
+    const owner = captureSessionOwner();
+    const userId = owner.userId;
     const request = await beginRequest('photo', image);
-    if (!requestSessionMatches(userId, sessionGeneration) || signal?.aborted)
+    if (!isCurrentOwner(owner) || signal?.aborted)
       throw new axios.CanceledError();
     const cancelPending = () => {
-      if (!requestSessionMatches(userId, sessionGeneration)) return;
+      if (!isCurrentOwner(owner)) return;
+      const cancellation = bindRequestToOwner(owner);
       void api
         .post<{ state: string }>(
           `/credits/operations/by-key/${encodeURIComponent(request.key)}/cancel`,
           {},
+          cancellation.config,
         )
         .then(async ({ data }) => {
           if (data.state === 'cancelled') await finishRequest(request, userId);
-          if (requestSessionMatches(userId, sessionGeneration)) notifyCreditChange();
+          if (isCurrentOwner(owner)) notifyCreditChange();
         })
         .catch(() => {
           /* Recover by operation key when server cancellation is uncertain. */
-        });
+        })
+        .finally(cancellation.release);
     };
+    const binding = bindRequestToOwner(owner, signal);
     signal?.addEventListener('abort', cancelPending, { once: true });
     try {
       const response = await api.post<unknown>(
@@ -88,11 +91,11 @@ export const scannerService = {
         {
           timeout: 75000,
           headers: { 'Idempotency-Key': request.key },
-          ...(signal ? { signal } : {}),
+          ...binding.config,
         },
       );
       await finishRequest(request, userId);
-      if (!requestSessionMatches(userId, sessionGeneration)) throw new axios.CanceledError();
+      if (!isCurrentOwner(owner)) throw new axios.CanceledError();
       notifyCreditChange();
       return normalize(response.data);
     } catch (error) {
@@ -100,6 +103,7 @@ export const scannerService = {
       throw error;
     } finally {
       signal?.removeEventListener('abort', cancelPending);
+      binding.release();
     }
   },
 

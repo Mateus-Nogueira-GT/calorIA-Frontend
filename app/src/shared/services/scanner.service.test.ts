@@ -63,6 +63,11 @@ describe('scanner cancelável', () => {
     const key = api.post.mock.calls[0][2].headers['Idempotency-Key'];
     expect(api.post.mock.calls[1][0]).toBe(`/credits/operations/by-key/${key}/cancel`);
     expect(api.post.mock.calls[1][1]).toEqual({});
+    expect(api.post.mock.calls[1][2]).toEqual({
+      caloriaOwner: expect.objectContaining({ generation: expect.any(Number) }),
+      signal: expect.objectContaining({ aborted: false }),
+    });
+    expect(api.post.mock.calls[1][2].signal).not.toBe(controller.signal);
     rejectScan(Object.assign(new Error('cancelled'), { code: 'ERR_CANCELED' }));
     await expect(pending).rejects.toMatchObject({ code: 'ERR_CANCELED' });
   });
