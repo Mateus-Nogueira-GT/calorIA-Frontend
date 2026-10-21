@@ -153,7 +153,7 @@ export const coachService = {
    */
   speak: (conversationId: string, config?: AxiosRequestConfig) =>
     api
-      .post<{ audio: string; mimeType: 'audio/mpeg' }>(
+      .post<{ audio: string; mimeType: 'audio/wav' | 'audio/mpeg' }>(
         '/chat/speech',
         { conversation_id: conversationId },
         { timeout: SPEECH_TIMEOUT_MS, ...config },

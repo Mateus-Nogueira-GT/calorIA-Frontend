@@ -51,7 +51,7 @@ beforeEach(() => {
   useAuthStore.getState().setToken('t-A', { id: 'user-A', name: 'A', email: 'a@x.test' });
   useCoachStore.getState().clear();
   send.mockResolvedValue(reply);
-  speak.mockResolvedValue({ audio: 'SUQz', mimeType: 'audio/mpeg' });
+  speak.mockResolvedValue({ audio: 'UklG', mimeType: 'audio/wav' });
   save.mockResolvedValue('file:///cache/reply.mp3');
   play.mockResolvedValue(undefined);
 });
@@ -64,7 +64,7 @@ describe('resposta do Coach em áudio', () => {
       'conv-1',
       expect.objectContaining({ caloriaOwner: expect.objectContaining({ userId: 'user-A' }) }),
     );
-    expect(save).toHaveBeenCalledWith('SUQz');
+    expect(save).toHaveBeenCalledWith('UklG', 'audio/wav');
     expect(replyMessage()?.audioUri).toBe('file:///cache/reply.mp3');
     expect(play).toHaveBeenCalledWith('file:///cache/reply.mp3', expect.any(Function));
     expect(useCoachStore.getState().speakingMessageId).toBe('conv-1-9');
