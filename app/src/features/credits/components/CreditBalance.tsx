@@ -19,7 +19,10 @@ export function CreditBalance({ onPress }: { onPress: () => void }): React.JSX.E
       <Text>
         {error
           ? 'Saldo indisponível · consultar'
-          : `${formatCredits(wallet?.available_units ?? 0)} créditos disponíveis`}
+          : wallet
+            ? `${formatCredits(wallet.available_units)} créditos disponíveis`
+            : // D07: sem carteira o saldo é desconhecido — nunca mostrar zero.
+              'Consultando saldo…'}
       </Text>
       {wallet?.enforcement_enabled && (
         <Text variant="caption">Foto: 3 créditos · 5 mensagens: 1 crédito</Text>

@@ -58,3 +58,18 @@ it('créditos desligados com saldo carregado: nada aparece', async () => {
   await act(async () => {});
   expect(screen.toJSON()).toBeNull();
 });
+
+it('D07: nova consulta depois de falha não inventa zero e mostra que está consultando', async () => {
+  read.mockReturnValueOnce(new Promise(() => {}));
+  useCreditsStore.setState({
+    wallet: null,
+    featureVisible: true,
+    loading: false,
+    error: 'Não foi possível consultar seu saldo.',
+  });
+  const screen = render(<CreditBalance onPress={() => {}} />);
+  await act(async () => {});
+  expect(useCreditsStore.getState().loading).toBe(true);
+  expect(screen.queryByText(/0 créditos disponíveis/)).toBeNull();
+  expect(screen.getByText('Consultando saldo…')).toBeTruthy();
+});
