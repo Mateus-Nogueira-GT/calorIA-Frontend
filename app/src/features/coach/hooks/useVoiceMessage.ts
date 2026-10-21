@@ -3,6 +3,7 @@ import { Alert, AppState, Linking } from 'react-native';
 import axios from 'axios';
 import { creditErrorMessage } from '@shared/services/credits.service';
 import { useAuthStore } from '@features/auth/store';
+import { useCoachStore } from '../store';
 import { coachService, VoiceRequestContext } from '@shared/services/coach.service';
 import {
   ActiveRecording,
@@ -234,6 +235,8 @@ export function useVoiceMessage({ onSend, disabled, isFocused = true }: Options)
   }, [isFocused, cancel]);
 
   const start = useCallback(async () => {
+    // Gravar por cima da resposta falada não faz sentido: para a fala antes.
+    useCoachStore.getState().stopSpeaking();
     const auth = useAuthStore.getState();
     if (
       !isVoiceSupported ||

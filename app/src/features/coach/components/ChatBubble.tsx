@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { Text } from '@shared/components';
 import { colors, typography, spacing, radius } from '@theme';
 import { CoachMark } from './CoachMark';
@@ -8,21 +8,39 @@ interface Props {
   message: string;
   role: 'coach' | 'user';
   timestamp: Date;
+  /** Resposta falada disponível: botão Ouvir/Parar. */
+  audio?: { speaking: boolean; onToggle: () => void };
 }
 
-export function ChatBubble({ message, role, timestamp }: Props): React.JSX.Element {
+export function ChatBubble({ message, role, timestamp, audio }: Props): React.JSX.Element {
   const time = timestamp.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
   if (role === 'coach') {
     return (
       <View style={styles.coachRow}>
-        <CoachMark size='sm' />
+        <CoachMark size="sm" />
         <View style={styles.coachWrap}>
           <Text style={styles.senderLabel}>Coach IA</Text>
           <View style={styles.coachBubble}>
             <Text style={styles.coachMessage}>{message}</Text>
           </View>
-          <Text variant="caption" style={styles.time}>{time}</Text>
+          {audio && (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={audio.speaking ? 'Parar áudio da resposta' : 'Ouvir resposta'}
+              accessibilityState={{ selected: audio.speaking }}
+              onPress={audio.onToggle}
+              hitSlop={8}
+              style={styles.audioButton}
+            >
+              <Text style={styles.audioLabel}>
+                {audio.speaking ? 'Parar áudio' : 'Ouvir resposta'}
+              </Text>
+            </Pressable>
+          )}
+          <Text variant="caption" style={styles.time}>
+            {time}
+          </Text>
         </View>
       </View>
     );
@@ -35,7 +53,9 @@ export function ChatBubble({ message, role, timestamp }: Props): React.JSX.Eleme
         <View style={styles.userBubble}>
           <Text style={styles.userMessage}>{message}</Text>
         </View>
-        <Text variant="caption" style={[styles.time, styles.timeRight]}>{time}</Text>
+        <Text variant="caption" style={[styles.time, styles.timeRight]}>
+          {time}
+        </Text>
       </View>
     </View>
   );
@@ -82,5 +102,20 @@ const styles = StyleSheet.create({
   },
   senderLabelUser: { textAlign: 'right' },
   time: { marginTop: 5, color: colors.brandTextMuted },
+  audioButton: {
+    alignSelf: 'flex-start',
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.md,
+    marginTop: spacing.xs,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.brandDivider,
+  },
+  audioLabel: {
+    color: colors.brandText,
+    fontFamily: typography.fontFamily.semiBold,
+    fontSize: typography.fontSize.sm,
+  },
   timeRight: { alignSelf: 'flex-end' },
 });

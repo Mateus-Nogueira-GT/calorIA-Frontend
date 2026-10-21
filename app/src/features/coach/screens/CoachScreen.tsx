@@ -1,6 +1,7 @@
 import { CreditBalance } from '@features/credits/components/CreditBalance';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  AppState,
   FlatList,
   KeyboardAvoidingView,
   Platform,
@@ -37,6 +38,9 @@ export function CoachScreen(): React.JSX.Element {
     loadHistory,
     sendMessage,
     retryLastAction,
+    speakingMessageId,
+    toggleSpeech,
+    stopSpeaking,
   } = useCoachStore();
   const nav = useNavigation<TabScreenProps<'Coach'>['navigation']>();
   const isFocused = useIsFocused();
@@ -47,6 +51,17 @@ export function CoachScreen(): React.JSX.Element {
   useEffect(() => {
     void loadHistory();
   }, [loadHistory]);
+
+  // A resposta falada não continua tocando fora do Coach nem em background.
+  useEffect(() => {
+    if (!isFocused) stopSpeaking();
+  }, [isFocused, stopSpeaking]);
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (next) => {
+      if (next !== 'active') stopSpeaking();
+    });
+    return () => subscription.remove();
+  }, [stopSpeaking]);
 
   const lastCoachWithFlag = useMemo(() => {
     for (let i = messages.length - 1; i >= 0; i--) {
@@ -106,12 +121,25 @@ export function CoachScreen(): React.JSX.Element {
       <FlatList
         ref={listRef}
         data={messages}
+        extraData={speakingMessageId}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.chatContent}
         style={styles.list}
         renderItem={({ item }) => (
           <View>
-            <ChatBubble message={item.content} role={item.role} timestamp={item.timestamp} />
+            <ChatBubble
+              message={item.content}
+              role={item.role}
+              timestamp={item.timestamp}
+              audio={
+                item.audioUri
+                  ? {
+                      speaking: speakingMessageId === item.id,
+                      onToggle: () => toggleSpeech(item.id),
+                    }
+                  : undefined
+              }
+            />
             {item.id === lastCoachWithFlag && (
               <GenerateDietButton onSuccess={() => nav.navigate('Dashboard')} />
             )}
