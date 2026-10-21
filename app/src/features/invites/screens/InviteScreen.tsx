@@ -30,6 +30,8 @@ export function InviteScreen({ token, onAuthenticate, onDone }: Props): React.JS
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<'new' | 'existing' | null>(null);
+  // D08: esta conta já recebeu as boas-vindas; repetir o resgate falharia igual.
+  const [claimBlocked, setClaimBlocked] = useState(false);
   const generation = useAuthStore((state) => state.sessionGeneration);
   const scope = `${generation}:${token}`;
   const currentScope = useRef(scope);
@@ -63,13 +65,14 @@ export function InviteScreen({ token, onAuthenticate, onDone }: Props): React.JS
     lock.current = false;
     setDone(null);
     setBusy(false);
+    setClaimBlocked(false);
     void load();
     return () => {
       mounted.current = false;
     };
   }, [load]);
   async function claim() {
-    if (lock.current || !authenticated || !preview) return;
+    if (lock.current || !authenticated || !preview || claimBlocked) return;
     const version = ++claimVersion.current;
     const isCurrent = () =>
       mounted.current && currentScope.current === scope && version === claimVersion.current;
@@ -84,6 +87,11 @@ export function InviteScreen({ token, onAuthenticate, onDone }: Props): React.JS
     } catch (e) {
       if (!isCurrent()) return;
       const code = (e as { response?: { data?: { error?: string } } })?.response?.data?.error;
+      // D08: estados terminais não deixam o botão de resgate ativo; falhas
+      // transitórias continuam com retry.
+      if (code === 'INVITE_UNAVAILABLE') setPreview(null);
+      if (code === 'WELCOME_ALREADY_CLAIMED' || code === 'WELCOME_ALREADY_GRANTED')
+        setClaimBlocked(true);
       setError(
         code === 'WELCOME_ALREADY_CLAIMED' || code === 'WELCOME_ALREADY_GRANTED'
           ? 'Esta conta já recebeu o benefício de boas-vindas. O convite continua disponível para outra conta elegível.'
@@ -140,7 +148,7 @@ export function InviteScreen({ token, onAuthenticate, onDone }: Props): React.JS
               {authenticated ? (
                 <View style={styles.group}>
                   <Text>Resgatar para {user?.email}? Confirme a conta antes de continuar.</Text>
-                  <Button loading={busy} onPress={claim}>
+                  <Button loading={busy} disabled={claimBlocked} onPress={claim}>
                     {buttonLabels.claim}
                   </Button>
                   <Button
