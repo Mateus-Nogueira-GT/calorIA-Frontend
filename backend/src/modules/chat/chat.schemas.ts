@@ -66,9 +66,9 @@ export const speechBodySchema = z.object({
 })
 
 export const speechResponseSchema = z.object({
-  /** MP3 em base64 puro (sem prefixo data:). */
+  /** Áudio em base64 puro (sem prefixo data:): WAV (padrão, Gemini) ou MP3. */
   audio: z.string(),
-  mimeType: z.literal('audio/mpeg'),
+  mimeType: z.enum(['audio/wav', 'audio/mpeg']),
 })
 
 export const errorSchema = z.object({

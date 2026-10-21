@@ -7,9 +7,15 @@ export const isSpeechSupported = true;
 let current: { player: AudioPlayer; subscription: { remove: () => void } } | null = null;
 let sequence = 0;
 
-/** Grava o MP3 (base64) no cache e devolve o uri para tocar depois. */
-export async function saveSpeech(base64: string): Promise<string> {
-  const file = new File(Paths.cache, `coach-reply-${Date.now()}-${sequence++}.mp3`);
+export type SpeechMimeType = 'audio/wav' | 'audio/mpeg';
+
+/**
+ * Grava o áudio (base64) no cache e devolve o uri para tocar depois. A
+ * extensão segue o formato: o player do iOS identifica o arquivo por ela.
+ */
+export async function saveSpeech(base64: string, mimeType: SpeechMimeType): Promise<string> {
+  const extension = mimeType === 'audio/wav' ? 'wav' : 'mp3';
+  const file = new File(Paths.cache, `coach-reply-${Date.now()}-${sequence++}.${extension}`);
   file.write(base64, { encoding: 'base64' });
   return file.uri;
 }

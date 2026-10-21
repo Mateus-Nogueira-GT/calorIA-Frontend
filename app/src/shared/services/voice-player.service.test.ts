@@ -13,11 +13,12 @@ beforeEach(() => {
   jest.clearAllMocks();
 });
 
-it('saveSpeech grava o base64 no cache e devolve o uri', async () => {
-  const uri = await saveSpeech('SUQz');
+it('saveSpeech grava o base64 no cache com a extensão do formato', async () => {
+  const wav = await saveSpeech('UklG', 'audio/wav');
   const file = fs.__files[fs.__files.length - 1];
-  expect(file.write).toHaveBeenCalledWith('SUQz', { encoding: 'base64' });
-  expect(uri).toMatch(/^file:\/\/\/cache\/coach-reply-.*\.mp3$/);
+  expect(file.write).toHaveBeenCalledWith('UklG', { encoding: 'base64' });
+  expect(wav).toMatch(/^file:\/\/\/cache\/coach-reply-.*\.wav$/);
+  expect(await saveSpeech('SUQz', 'audio/mpeg')).toMatch(/\.mp3$/);
 });
 
 it('playSpeech sai no alto-falante mesmo no silencioso, antes de tocar', async () => {

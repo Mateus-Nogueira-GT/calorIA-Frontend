@@ -15,6 +15,38 @@ const SPEECH_TIMEOUT_MS = 30_000
 /** Estimativa para a cota diária: o provedor cobra por caractere/token de texto. */
 const CHARS_PER_TOKEN = 4
 
+/** PCM do provedor: 16 bits, mono. Taxa vem do Content-Type (`rate=`) ou do env. */
+const PCM_BITS = 16
+const PCM_CHANNELS = 1
+
+export type SpeechMimeType = 'audio/mpeg' | 'audio/wav'
+
+/** Envolve PCM 16 bits mono num container WAV, que o iOS e o Android tocam nativamente. */
+export function pcmToWav(pcm: Buffer, sampleRate: number): Buffer {
+  const header = Buffer.alloc(44)
+  const byteRate = (sampleRate * PCM_CHANNELS * PCM_BITS) / 8
+  header.write('RIFF', 0)
+  header.writeUInt32LE(36 + pcm.length, 4)
+  header.write('WAVE', 8)
+  header.write('fmt ', 12)
+  header.writeUInt32LE(16, 16)
+  header.writeUInt16LE(1, 20)
+  header.writeUInt16LE(PCM_CHANNELS, 22)
+  header.writeUInt32LE(sampleRate, 24)
+  header.writeUInt32LE(byteRate, 28)
+  header.writeUInt16LE((PCM_CHANNELS * PCM_BITS) / 8, 32)
+  header.writeUInt16LE(PCM_BITS, 34)
+  header.write('data', 36)
+  header.writeUInt32LE(pcm.length, 40)
+  return Buffer.concat([header, pcm])
+}
+
+function pcmRate(contentType: string | null): number {
+  const match = contentType?.match(/rate=(\d+)/i)
+  const rate = match ? Number(match[1]) : env.OPENAI_TTS_PCM_RATE
+  return Number.isFinite(rate) && rate > 0 ? rate : env.OPENAI_TTS_PCM_RATE
+}
+
 const unavailable = () =>
   new AppError(503, 'SPEECH_UNAVAILABLE', 'A resposta em áudio está indisponível no momento.')
 const failed = () =>
@@ -39,7 +71,7 @@ export async function synthesizeLastReply(
   userId: string,
   conversationId: string,
   fetchImpl: typeof fetch = fetch,
-): Promise<{ audio: string; mimeType: 'audio/mpeg' }> {
+): Promise<{ audio: string; mimeType: SpeechMimeType }> {
   if (!env.COACH_SPEECH_ENABLED) throw unavailable()
   assertAiTariffConfigured('speech_synthesis')
 
@@ -51,6 +83,8 @@ export async function synthesizeLastReply(
   await checkDailyQuota(fastify, userId)
 
   const model = env.OPENAI_TTS_MODEL
+  // Gemini TTS só devolve PCM bruto; o servidor converte para WAV.
+  const format = env.OPENAI_TTS_FORMAT
   let res: Response
   try {
     res = await fetchImpl(`${env.OPENAI_BASE_URL}/audio/speech`, {
@@ -61,7 +95,7 @@ export async function synthesizeLastReply(
         'HTTP-Referer': 'https://caloria.app',
         'X-Title': 'CalorIA',
       },
-      body: JSON.stringify({ model, voice: env.OPENAI_TTS_VOICE, input, response_format: 'mp3' }),
+      body: JSON.stringify({ model, voice: env.OPENAI_TTS_VOICE, input, response_format: format }),
       signal: AbortSignal.timeout(SPEECH_TIMEOUT_MS),
     })
   } catch (err) {
@@ -98,5 +132,8 @@ export async function synthesizeLastReply(
     usage: { prompt_tokens: tokens, completion_tokens: 0, total_tokens: tokens },
   })
 
-  return { audio: Buffer.from(bytes).toString('base64'), mimeType: 'audio/mpeg' }
+  if (format === 'mp3')
+    return { audio: Buffer.from(bytes).toString('base64'), mimeType: 'audio/mpeg' }
+  const wav = pcmToWav(Buffer.from(bytes), pcmRate(res.headers.get('content-type')))
+  return { audio: wav.toString('base64'), mimeType: 'audio/wav' }
 }

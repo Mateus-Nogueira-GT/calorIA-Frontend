@@ -501,9 +501,9 @@ async function speakReply(messageId: string, conversationId: string): Promise<vo
     useCoachStore.getState().messages.some((m) => m.id === messageId);
   const binding = bindRequestToOwner(owner);
   try {
-    const { audio } = await coachService.speak(conversationId, binding.config);
+    const { audio, mimeType } = await coachService.speak(conversationId, binding.config);
     if (!stillValid()) return;
-    const uri = await saveSpeech(audio);
+    const uri = await saveSpeech(audio, mimeType);
     if (!stillValid()) return;
     useCoachStore.setState((state) => ({
       messages: state.messages.map((m) => (m.id === messageId ? { ...m, audioUri: uri } : m)),

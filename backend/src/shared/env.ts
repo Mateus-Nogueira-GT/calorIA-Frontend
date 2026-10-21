@@ -72,6 +72,9 @@ const envSchema = z
       (v) => (v === '' || v == null ? undefined : v),
       z.string().default('Kore'),
     ),
+    // 'pcm' (Gemini TTS só aceita PCM; o servidor converte para WAV) ou 'mp3'.
+    OPENAI_TTS_FORMAT: z.enum(['pcm', 'mp3']).default('pcm'),
+    OPENAI_TTS_PCM_RATE: z.coerce.number().int().positive().default(24000),
     COACH_SPEECH_ENABLED: z
       .enum(['true', 'false'])
       .default('true')
