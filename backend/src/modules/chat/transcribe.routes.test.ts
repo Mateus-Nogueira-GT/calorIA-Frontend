@@ -145,3 +145,40 @@ describe('POST /chat/transcribe', () => {
     expect(res.json().error).toBe('TRANSCRIBE_UNAVAILABLE')
   })
 })
+
+describe('POST /chat/speech', () => {
+  it('sem JWT → 401', async () => {
+    const { app } = await buildTestApp()
+    const res = await app.inject({
+      method: 'POST',
+      url: '/chat/speech',
+      payload: { conversation_id: '22222222-2222-2222-2222-222222222222' },
+    })
+    expect(res.statusCode).toBe(401)
+  })
+
+  it('conversation_id inválido → 400', async () => {
+    const { app, auth } = await buildTestApp()
+    const res = await app.inject({
+      method: 'POST',
+      url: '/chat/speech',
+      headers: auth,
+      payload: { conversation_id: 'nao-e-uuid' },
+    })
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('conversa que não é do usuário → 404 sem chamar o provedor', async () => {
+    const fetchSpy = vi.fn()
+    vi.stubGlobal('fetch', fetchSpy)
+    const { app, auth } = await buildTestApp()
+    const res = await app.inject({
+      method: 'POST',
+      url: '/chat/speech',
+      headers: auth,
+      payload: { conversation_id: '22222222-2222-2222-2222-222222222222' },
+    })
+    expect(res.statusCode).toBe(404)
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+})

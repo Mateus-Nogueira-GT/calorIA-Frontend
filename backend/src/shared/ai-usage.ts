@@ -8,7 +8,7 @@ import { AppError } from './errors.js'
  * hoje quanto custa cada dieta/usuário sem migration nova.
  */
 
-export type AiFeature = 'chat' | 'diet_day' | 'vision' | 'transcribe'
+export type AiFeature = 'chat' | 'diet_day' | 'vision' | 'transcribe' | 'speech'
 
 interface AiUsageParams {
   feature: AiFeature
