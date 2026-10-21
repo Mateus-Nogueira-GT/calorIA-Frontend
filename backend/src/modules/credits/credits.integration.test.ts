@@ -32,15 +32,16 @@ if (url && !['localhost', '127.0.0.1', '[::1]'].includes(new URL(url).hostname))
  DO $$ BEGIN IF NOT EXISTS(SELECT FROM pg_roles WHERE rolname='anon') THEN CREATE ROLE anon; END IF; IF NOT EXISTS(SELECT FROM pg_roles WHERE rolname='authenticated') THEN CREATE ROLE authenticated; END IF; END $$;
  CREATE TABLE auth.users(id uuid PRIMARY KEY); CREATE TABLE profiles(id uuid PRIMARY KEY,is_admin boolean DEFAULT false,full_name text);
  GRANT USAGE ON SCHEMA public TO anon,authenticated; GRANT ALL ON profiles TO anon,authenticated; GRANT UPDATE(is_admin),INSERT(is_admin) ON profiles TO authenticated;`)
-    await db.unsafe(
-      await readFile(
-        new URL(
-          '../../../supabase/migrations/20261016012212_credits_and_invites.sql',
-          import.meta.url,
+    for (const migration of [
+      '20261016012212_credits_and_invites.sql',
+      '20261021204335_credits_deletion_key_fix.sql',
+    ])
+      await db.unsafe(
+        await readFile(
+          new URL(`../../../supabase/migrations/${migration}`, import.meta.url),
+          'utf8',
         ),
-        'utf8',
-      ),
-    )
+      )
     env.CREDITS_ENFORCEMENT_ENABLED = true
     env.CREDIT_INVITES_ENABLED = true
   })
@@ -359,5 +360,144 @@ if (url && !['localhost', '127.0.0.1', '[::1]'].includes(new URL(url).hostname))
     expect(op).toEqual({ result: null, user_id: null })
     const [entry] = await db`SELECT user_id,units FROM credit_ledger`
     expect(entry).toEqual({ user_id: null, units: -15 })
+  })
+  const deleteAccountAsAuth = async (id: string, forceIndexScan = false) => {
+    await db.unsafe(
+      `DO $$ BEGIN IF NOT EXISTS(SELECT FROM pg_roles WHERE rolname='credits_test_auth_admin') THEN CREATE ROLE credits_test_auth_admin; END IF; END $$; GRANT USAGE ON SCHEMA auth TO credits_test_auth_admin; GRANT SELECT,DELETE ON auth.users TO credits_test_auth_admin;`,
+    )
+    await db.begin(async (tx) => {
+      if (forceIndexScan) {
+        await tx`SET LOCAL enable_seqscan=off`
+        await tx`SET LOCAL enable_bitmapscan=off`
+      }
+      await tx`SET LOCAL ROLE credits_test_auth_admin`
+      await tx`DELETE FROM auth.users WHERE id=${id}`
+    })
+  }
+  it('D05: exclusão com chave igual ao id de outra operação não colide', async () => {
+    for (let round = 0; round < 3; round++) {
+      const owner = randomUUID()
+      await db`INSERT INTO auth.users(id) VALUES(${owner})`
+      await db`INSERT INTO credit_wallets(user_id,balance_units) VALUES(${owner},75)`
+      const first = await runCreditOperation(
+        f,
+        { ...input(), userId: owner, key: '0000000000000000', payload: 'first' },
+        async () => ({ ok: true }),
+      )
+      await runCreditOperation(
+        f,
+        {
+          ...input(),
+          userId: owner,
+          key: String(first.receipt?.operation_id),
+          payload: 'second',
+        },
+        async () => ({ ok: true }),
+      )
+      const ids = (await db`SELECT id FROM credit_operations WHERE user_id=${owner}`).map(
+        (r) => r.id,
+      )
+      await deleteAccountAsAuth(owner, true)
+      expect(await db`SELECT id FROM auth.users WHERE id=${owner}`).toHaveLength(0)
+      const keys = await db`SELECT idempotency_key FROM credit_operations WHERE id IN ${db(ids)}`
+      expect(keys.map((r) => r.idempotency_key).sort()).toEqual(
+        ids.map((id) => `deleted:${id}`).sort(),
+      )
+    }
+  })
+  it('D05: exclusão de conta sem operações e com operação failed', async () => {
+    await deleteAccountAsAuth(other)
+    expect(await db`SELECT id FROM auth.users WHERE id=${other}`).toHaveLength(0)
+    await expect(
+      runCreditOperation(f, input(), async () => {
+        throw new Error('provider down')
+      }),
+    ).rejects.toMatchObject({ code: 'CREDITS_UNAVAILABLE' })
+    await deleteAccountAsAuth(user)
+    expect(await db`SELECT id FROM auth.users WHERE id=${user}`).toHaveLength(0)
+  })
+
+  const waitForLockWait = async (pattern: string) => {
+    for (let attempt = 0; attempt < 100; attempt++) {
+      const [activity] =
+        await db`SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE ${pattern}`
+      if (activity.n > 0) return
+      await new Promise((r) => setTimeout(r, 10))
+    }
+    throw new Error(`no transaction waiting on lock for ${pattern}`)
+  }
+  const deferred = () => {
+    let resolve!: () => void
+    const promise = new Promise<void>((r) => {
+      resolve = r
+    })
+    return { promise, resolve }
+  }
+  /** Liquidação aguarda o lock da carteira enquanto o prazo vence (ou não). */
+  const settleAfterWalletLock = async (leaseMs: number, holdMs: number) => {
+    const infer = deferred()
+    const inferStarted = deferred()
+    const pending = runCreditOperation(f, input(), async () => {
+      inferStarted.resolve()
+      await infer.promise
+      return { ok: true }
+    })
+    await inferStarted.promise
+    const unlock = deferred()
+    const locked = deferred()
+    const blocker = db.begin(async (tx) => {
+      await tx`SELECT user_id FROM credit_wallets WHERE user_id=${user} FOR UPDATE`
+      await tx.unsafe(
+        `UPDATE credit_operations SET lease_expires_at=clock_timestamp()+interval '${leaseMs} milliseconds' WHERE user_id='${user}'`,
+      )
+      locked.resolve()
+      await unlock.promise
+    })
+    await locked.promise
+    infer.resolve()
+    await waitForLockWait('%SELECT user_id FROM credit_wallets%FOR UPDATE%')
+    await new Promise((r) => setTimeout(r, holdMs))
+    unlock.resolve()
+    await blocker
+    return pending
+  }
+  it('D06: liquidação que espera o lock além do prazo expira sem débito', async () => {
+    await expect(settleAfterWalletLock(250, 350)).rejects.toMatchObject({
+      code: 'OPERATION_EXPIRED',
+    })
+    const [op] = await db`SELECT state FROM credit_operations WHERE user_id=${user}`
+    expect(op.state).toBe('failed')
+    const [w] =
+      await db`SELECT balance_units,reserved_units FROM credit_wallets WHERE user_id=${user}`
+    expect(w).toEqual({ balance_units: 75, reserved_units: 0 })
+    expect(await db`SELECT id FROM credit_ledger WHERE kind='debit'`).toHaveLength(0)
+  })
+  it('D06: liquidação dentro do prazo, mesmo esperando o lock, debita normalmente', async () => {
+    const result = await settleAfterWalletLock(5000, 100)
+    expect(result.receipt?.charged_units).toBe(15)
+  })
+  it('D06: resgate que espera o lock além do prazo não concede', async () => {
+    const invite = await createInvite(f, admin, randomUUID())
+    const unlock = deferred()
+    const locked = deferred()
+    const blocker = db.begin(async (tx) => {
+      await tx.unsafe(
+        `UPDATE credit_invites SET expires_at=clock_timestamp()+interval '250 milliseconds' WHERE id='${invite.id}'`,
+      )
+      locked.resolve()
+      await unlock.promise
+    })
+    await locked.promise
+    const redeem = redeemInvite(f, user, String(invite.url).split('#')[1])
+    await waitForLockWait('%FROM credit_invites WHERE token_hash%FOR UPDATE%')
+    await new Promise((r) => setTimeout(r, 350))
+    unlock.resolve()
+    await blocker
+    await expect(redeem).rejects.toMatchObject({ code: 'INVITE_UNAVAILABLE' })
+    const [row] = await db`SELECT status FROM credit_invites WHERE id=${invite.id}`
+    expect(row.status).toBe('active')
+    expect(await db`SELECT user_id FROM credit_welcome_claims`).toHaveLength(0)
+    const [w] = await db`SELECT balance_units FROM credit_wallets WHERE user_id=${user}`
+    expect(w.balance_units).toBe(75)
   })
 })

@@ -171,8 +171,17 @@ export async function runCreditOperation<T>(
       await tx`SELECT user_id FROM credit_wallets WHERE user_id=${input.userId} FOR UPDATE`
       const [op] = await tx<
         Operation<T>[]
-      >`SELECT * FROM credit_operations WHERE id=${id} AND fence=${fence} AND state='running' AND lease_expires_at>=now() FOR UPDATE`
-      if (!op) throw new AppError(409, 'OPERATION_EXPIRED', 'Esta tentativa expirou sem cobrança.')
+      >`SELECT * FROM credit_operations WHERE id=${id} AND fence=${fence} AND state='running' FOR UPDATE`
+      // D06: now() é o início da transação e não anda durante a espera pelo
+      // lock. O prazo é conferido num comando separado, já com os locks, contra
+      // o relógio real.
+      const [lease] = op
+        ? await tx<
+            { expired: boolean }[]
+          >`SELECT lease_expires_at < clock_timestamp() AS expired FROM credit_operations WHERE id=${id}`
+        : []
+      if (!op || lease?.expired !== false)
+        throw new AppError(409, 'OPERATION_EXPIRED', 'Esta tentativa expirou sem cobrança.')
       await persist?.(tx, result)
       const [w] = await tx<
         { balance_units: number; reserved_units: number }[]

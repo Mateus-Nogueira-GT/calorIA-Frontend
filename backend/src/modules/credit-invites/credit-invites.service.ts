@@ -50,8 +50,8 @@ export async function redeemInvite(f: FastifyInstance, userId: string, token: st
     await tx`INSERT INTO credit_wallets(user_id) VALUES(${userId}) ON CONFLICT DO NOTHING`
     await tx`SELECT user_id FROM credit_wallets WHERE user_id=${userId} FOR UPDATE`
     const [invite] = await tx<
-      { id: string; status: string; claimed_by: string | null; expired: boolean }[]
-    >`SELECT id,status,claimed_by,expires_at<=now() AS expired FROM credit_invites WHERE token_hash=${hashInvite(token)} FOR UPDATE`
+      { id: string; status: string; claimed_by: string | null }[]
+    >`SELECT id,status,claimed_by FROM credit_invites WHERE token_hash=${hashInvite(token)} FOR UPDATE`
     if (!invite)
       throw new AppError(410, 'INVITE_UNAVAILABLE', 'Convite inválido, utilizado ou expirado.')
     const [prior] = await tx`SELECT invite_id FROM credit_welcome_claims WHERE user_id=${userId}`
@@ -60,7 +60,12 @@ export async function redeemInvite(f: FastifyInstance, userId: string, token: st
         await tx`SELECT balance_units,balance_units-reserved_units AS available_units FROM credit_wallets WHERE user_id=${userId}`
       return { granted: false, grant_units: 75, ...w }
     }
-    if (invite.status !== 'active' || invite.expired)
+    // D06: prazo conferido depois do lock do convite, contra o relógio real
+    // (now() é o início da transação e não anda durante a espera).
+    const [{ expired }] = await tx<
+      { expired: boolean }[]
+    >`SELECT expires_at <= clock_timestamp() AS expired FROM credit_invites WHERE id=${invite.id}`
+    if (invite.status !== 'active' || expired)
       throw new AppError(410, 'INVITE_UNAVAILABLE', 'Convite inválido, utilizado ou expirado.')
     if (prior)
       throw new AppError(
