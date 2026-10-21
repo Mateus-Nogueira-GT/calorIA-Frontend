@@ -20,6 +20,7 @@ import {
   finishRequest,
   pendingRequests,
   isDefinitiveRejection,
+  FAILED_BEFORE_SETTLEMENT,
 } from './operation-requests';
 import { kvStorage } from './storage';
 
@@ -88,7 +89,9 @@ describe('durable operation metadata', () => {
     expect(
       isDefinitiveRejection({ response: { status: 409, data: { error: 'OPERATION_FAILED' } } }),
     ).toBe(true);
-    expect(isDefinitiveRejection({ response: { status: 409, data: { error: 'OPERATION_CANCELLED' } } })).toBe(true);
+    expect(
+      isDefinitiveRejection({ response: { status: 409, data: { error: 'OPERATION_CANCELLED' } } }),
+    ).toBe(true);
     expect(isDefinitiveRejection({ response: { status: 503 } })).toBe(false);
   });
 
@@ -101,6 +104,41 @@ describe('durable operation metadata', () => {
     expect(definitive(502, 'AI_TRUNCATED')).toBe(true);
     expect(definitive(500, 'HISTORY_WRITE_FAILED')).toBe(true);
     expect(definitive(429, 'AI_QUOTA_EXCEEDED')).toBe(true);
+  });
+
+  it.each([
+    [500, 'INTERNAL_SERVER_ERROR', false],
+    [502, undefined, false],
+    [503, 'CREDITS_UNAVAILABLE', false],
+    [500, 'SOMETHING_NEW', false],
+    [502, 'VISION_ERROR', true],
+    [504, 'AI_TIMEOUT', true],
+    [502, 'TRANSCRIBE_FAILED', true],
+    [500, 'HISTORY_WRITE_FAILED', true],
+    [409, 'OPERATION_FAILED', true],
+    [429, 'TOO_MANY_REQUESTS', false],
+    [422, 'NOT_FOOD', true],
+  ] as Array<[number, string | undefined, boolean]>)(
+    'status %s com código %s → definitivo = %s',
+    (status, error, expected) => {
+      expect(isDefinitiveRejection({ response: { status, data: error ? { error } : {} } })).toBe(
+        expected,
+      );
+    },
+  );
+
+  it('a allowlist de 5xx definitivos é só de falhas anteriores à liquidação', () => {
+    expect([...FAILED_BEFORE_SETTLEMENT].sort()).toEqual(
+      [
+        'AI_ERROR',
+        'AI_TIMEOUT',
+        'AI_TRUNCATED',
+        'AI_UNAVAILABLE',
+        'HISTORY_WRITE_FAILED',
+        'TRANSCRIBE_FAILED',
+        'VISION_ERROR',
+      ].sort(),
+    );
   });
 
   it('falha ambígua mantém a chave para recuperar o resultado sem cobrar de novo', () => {

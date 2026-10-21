@@ -70,7 +70,7 @@ Descartado: o interceptor síncrono (`{ synchronous: true }`). Ele faz o axios c
 ### R5 — 500 ambíguo mantém a chave (risco financeiro)
 
 - `isDefinitiveRejection` só trata um 5xx como definitivo quando o código está numa allowlist de falhas que o backend lança **dentro** do `infer()`. Nesse caso o `runCreditOperation` já marcou a operação como `failed` e liberou a reserva:
-  `VISION_ERROR`, `AI_ERROR`, `AI_UNAVAILABLE`, `AI_TIMEOUT`, `AI_TRUNCATED`, `TRANSCRIBE_FAILED`.
+  `VISION_ERROR`, `AI_ERROR`, `AI_UNAVAILABLE`, `AI_TIMEOUT`, `AI_TRUNCATED`, `TRANSCRIBE_FAILED` e `HISTORY_WRITE_FAILED`. Este último é lançado por `persistHistory` dentro da transação de liquidação, então o rollback desfaz o débito antes do commit.
 - Qualquer outro 5xx mantém a chave, inclusive `INTERNAL_SERVER_ERROR`, códigos desconhecidos e 5xx sem código. O retry com a mesma chave recebe o replay, se a operação teve sucesso, ou `409 OPERATION_FAILED`, que já é definitivo e libera uma chave nova no toque seguinte.
 - As regras de 409 e 429 não mudam.
 - A allowlist vira uma constante exportada com comentário apontando a origem de cada código no backend.
