@@ -6,9 +6,12 @@ class File {
     this.uri = uris.join('/');
     this.base64 = jest.fn(() => Promise.resolve(File.__nextBase64));
     this.delete = jest.fn();
+    this.write = jest.fn();
     files.push(this);
   }
 }
 File.__nextBase64 = 'QUFBQQ==';
 
-module.exports = { File, __files: files };
+const Paths = { cache: 'file:///cache' };
+
+module.exports = { File, Paths, __files: files };

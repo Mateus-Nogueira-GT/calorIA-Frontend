@@ -1,11 +1,7 @@
-import axios from 'axios';
+import axios, { type AxiosRequestConfig } from 'axios';
 import api from './api';
 import { notifyCreditChange } from './credits.service';
-import {
-  beginRequest,
-  finishRequest,
-  isDefinitiveRejection,
-} from './operation-requests';
+import { beginRequest, finishRequest, isDefinitiveRejection } from './operation-requests';
 import { bindRequestToOwner, captureSessionOwner, isCurrentOwner } from './session-owner';
 import { todayString, tzOffsetMinutes } from '@shared/utils/date';
 
@@ -48,6 +44,8 @@ export type TranscribeMimeType = 'audio/m4a' | 'audio/mp4' | 'audio/aac' | 'audi
 // O backend espera o provedor de transcrição até 55 s; o cliente espera um
 // pouco mais para receber o erro dele (502/503) em vez de um timeout local.
 const TRANSCRIBE_TIMEOUT_MS = 65000;
+// O backend espera o provedor de voz até 30 s.
+const SPEECH_TIMEOUT_MS = 40000;
 
 function toCoachRole(role: 'user' | 'assistant'): 'coach' | 'user' {
   return role === 'assistant' ? 'coach' : 'user';
@@ -81,10 +79,7 @@ export const coachService = {
       date: todayString(),
       tzOffsetMinutes: tzOffsetMinutes(),
     });
-    if (
-      !isCurrentOwner(owner) ||
-      (voice && (!voice.isValid() || voice.signal.aborted))
-    )
+    if (!isCurrentOwner(owner) || (voice && (!voice.isValid() || voice.signal.aborted)))
       throw new axios.CanceledError();
     const cancelPending = () => {
       if (!isCurrentOwner(owner)) return;
@@ -151,6 +146,19 @@ export const coachService = {
         })
     );
   },
+
+  /**
+   * Última resposta do Coach em áudio (MP3 base64). O texto vem do histórico
+   * no servidor; `config` leva a vinculação ao dono da sessão.
+   */
+  speak: (conversationId: string, config?: AxiosRequestConfig) =>
+    api
+      .post<{ audio: string; mimeType: 'audio/mpeg' }>(
+        '/chat/speech',
+        { conversation_id: conversationId },
+        { timeout: SPEECH_TIMEOUT_MS, ...config },
+      )
+      .then((r) => r.data),
 
   /** Áudio em base64 puro (sem prefixo data:) → texto transcrito. */
   transcribe: (audioBase64: string, mimeType: TranscribeMimeType, signal?: AbortSignal) =>

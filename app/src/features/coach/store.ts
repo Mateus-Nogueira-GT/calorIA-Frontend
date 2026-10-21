@@ -6,6 +6,17 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 import { coachService, CoachMessage, VoiceRequestContext } from '@shared/services/coach.service';
 import { dietService, DietJobStatus } from '@shared/services/diet.service';
 import { kvStorage } from '@shared/services/storage';
+import {
+  bindRequestToOwner,
+  captureSessionOwner,
+  isCurrentOwner,
+} from '@shared/services/session-owner';
+import {
+  isSpeechSupported,
+  playSpeech,
+  saveSpeech,
+  stopSpeech,
+} from '@shared/services/voice-player.service';
 import { useDietStore } from '@features/diet/store';
 
 // OP2: teto diário de tokens do backend (429 AI_QUOTA_EXCEEDED). Sem isso, o
@@ -77,6 +88,10 @@ function retryErrorMessage(e: unknown): string {
 // /step a mais e nenhum banner do usuário anterior.
 let dietSession = 0;
 let messageRequestId = 0;
+/** Invalida pedidos de áudio em voo (logout/troca de conversa). */
+let speechRequest = 0;
+/** Incrementa quando o usuário para a fala: áudio que chegar depois não toca sozinho. */
+let speechAutoplay = 0;
 
 // Single-flight por jobId: retry/retomada com o loop do mesmo job ainda vivo
 // reaproveitam a promise em vez de abrir um segundo loop (2 /step em voo =
@@ -97,6 +112,8 @@ interface StoreMessage {
   dietGenerated?: boolean;
   dietId?: string | null;
   dietJobId?: string | null;
+  /** MP3 da resposta falada (cache local, não persistido). */
+  audioUri?: string;
 }
 
 interface DietJobState {
@@ -119,6 +136,12 @@ interface CoachState {
   dietJob: DietJobState | null;
   /** Job da geração corrente/última — necessário para o retry (B8). */
   activeJobId: string | null;
+  /** Resposta tocando agora (uma por vez). */
+  speakingMessageId: string | null;
+  /** Ouvir/parar a resposta falada de uma bolha. */
+  toggleSpeech: (messageId: string) => void;
+  /** Para a fala (gravação nova, saída da tela, background, logout). */
+  stopSpeaking: () => void;
   loadHistory: () => Promise<void>;
   sendMessage: (content: string, voice?: VoiceRequestContext) => Promise<boolean>;
   retryLastAction: () => Promise<void>;
@@ -153,6 +176,22 @@ export const useCoachStore = create<CoachState>()(
       lastFailedAction: null,
       dietJob: null,
       activeJobId: null,
+      speakingMessageId: null,
+
+      toggleSpeech: (messageId) => {
+        if (get().speakingMessageId === messageId) {
+          get().stopSpeaking();
+          return;
+        }
+        const uri = get().messages.find((m) => m.id === messageId)?.audioUri;
+        if (uri) playMessage(messageId, uri);
+      },
+
+      stopSpeaking: () => {
+        speechAutoplay++;
+        stopSpeech();
+        if (get().speakingMessageId !== null) set({ speakingMessageId: null });
+      },
 
       loadHistory: async () => {
         const { conversationId } = get();
@@ -225,14 +264,17 @@ export const useCoachStore = create<CoachState>()(
             ...(voice ? [voice] : []),
           );
           if (!isCurrent()) return false;
+          const reply = toStoreMessage(message);
           set((s) => ({
             conversationId,
-            messages: [...s.messages, toStoreMessage(message)],
+            messages: [...s.messages, reply],
             isLoading: false,
             error: null,
             lastFailedAction: null,
           }));
           void acknowledge();
+          // Usuário falou → o Coach responde também em áudio (spec 21/10).
+          if (voice) void speakReply(reply.id, conversationId);
           // Dieta é gerada de forma assíncrona (1 dia por chamada) — inicia o polling.
           if (message.dietJobId) void get().runDietGeneration(message.dietJobId);
           return true;
@@ -263,8 +305,7 @@ export const useCoachStore = create<CoachState>()(
           const session = dietSession;
           const generation = useAuthStore.getState().sessionGeneration;
           const isCurrent = () =>
-            session === dietSession &&
-            generation === useAuthStore.getState().sessionGeneration;
+            session === dietSession && generation === useAuthStore.getState().sessionGeneration;
           const lastUserMessage = [...messages]
             .reverse()
             .find((message) => message.role === 'user');
@@ -402,6 +443,9 @@ export const useCoachStore = create<CoachState>()(
 
       clear: () => {
         messageRequestId++;
+        speechRequest++;
+        speechAutoplay++;
+        stopSpeech();
         dietSession++;
         dietLoops.clear();
         dietRetries.clear();
@@ -414,6 +458,7 @@ export const useCoachStore = create<CoachState>()(
           lastFailedAction: null,
           dietJob: null,
           activeJobId: null,
+          speakingMessageId: null,
         });
       },
     }),
@@ -426,6 +471,50 @@ export const useCoachStore = create<CoachState>()(
     },
   ),
 );
+
+// --- Resposta falada do Coach ---
+function playMessage(messageId: string, uri: string): void {
+  useCoachStore.setState({ speakingMessageId: messageId });
+  playSpeech(uri, () => {
+    if (useCoachStore.getState().speakingMessageId === messageId)
+      useCoachStore.setState({ speakingMessageId: null });
+  }).catch(() => {
+    if (useCoachStore.getState().speakingMessageId === messageId)
+      useCoachStore.setState({ speakingMessageId: null });
+  });
+}
+
+/**
+ * Busca a resposta em áudio, salva e toca. Falha é silenciosa: a resposta já
+ * está em texto. Só aplica se a sessão, a conversa e a mensagem continuam as
+ * mesmas; só toca sozinha se ninguém parou a fala enquanto o áudio chegava.
+ */
+async function speakReply(messageId: string, conversationId: string): Promise<void> {
+  if (!isSpeechSupported) return;
+  const owner = captureSessionOwner();
+  const request = ++speechRequest;
+  const autoplay = speechAutoplay;
+  const stillValid = () =>
+    isCurrentOwner(owner) &&
+    request === speechRequest &&
+    useCoachStore.getState().conversationId === conversationId &&
+    useCoachStore.getState().messages.some((m) => m.id === messageId);
+  const binding = bindRequestToOwner(owner);
+  try {
+    const { audio } = await coachService.speak(conversationId, binding.config);
+    if (!stillValid()) return;
+    const uri = await saveSpeech(audio);
+    if (!stillValid()) return;
+    useCoachStore.setState((state) => ({
+      messages: state.messages.map((m) => (m.id === messageId ? { ...m, audioUri: uri } : m)),
+    }));
+    if (autoplay === speechAutoplay) playMessage(messageId, uri);
+  } catch {
+    /* R12: sem áudio, a resposta continua em texto. */
+  } finally {
+    binding.release();
+  }
+}
 
 // --- Loop da geração de um job (o single-flight fica em runDietGeneration) ---
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));

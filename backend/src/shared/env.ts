@@ -63,6 +63,19 @@ const envSchema = z
       (v) => (v === '' || v == null ? undefined : v),
       z.string().optional(),
     ),
+    // Resposta falada do Coach (TTS via OpenRouter /audio/speech).
+    OPENAI_TTS_MODEL: z.preprocess(
+      (v) => (v === '' || v == null ? undefined : v),
+      z.string().default('google/gemini-3.8-flash-tts'),
+    ),
+    OPENAI_TTS_VOICE: z.preprocess(
+      (v) => (v === '' || v == null ? undefined : v),
+      z.string().default('Kore'),
+    ),
+    COACH_SPEECH_ENABLED: z
+      .enum(['true', 'false'])
+      .default('true')
+      .transform((v) => v === 'true'),
     // Modelo da GERAÇÃO DE DIAS da dieta. Default = OPENAI_MODEL (resolvido no
     // transform abaixo): o custo só muda com opt-in explícito. Gerar um dia de
     // cardápio estruturado não precisa do modelo topo — aponte para um médio.

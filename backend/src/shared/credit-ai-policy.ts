@@ -1,7 +1,11 @@
 import { env } from './env.js'
 import { AppError } from './errors.js'
 
-export type AiFeature = 'diet_generation' | 'audio_transcription' | 'guest_scanner'
+export type AiFeature =
+  | 'diet_generation'
+  | 'audio_transcription'
+  | 'guest_scanner'
+  | 'speech_synthesis'
 
 /**
  * Tarifa de cada recurso de IA fora de foto/mensagem quando a carteira está
@@ -13,6 +17,7 @@ export const AI_FEATURE_TARIFFS: Readonly<Partial<Record<AiFeature, 'free'>>> = 
   diet_generation: 'free',
   audio_transcription: 'free',
   guest_scanner: 'free',
+  speech_synthesis: 'free',
 })
 
 export function assertAiTariffConfigured(feature: AiFeature): void {

@@ -21,7 +21,30 @@ class AudioRecorder {
   }
 }
 
+const players = [];
+class AudioPlayer {
+  constructor(source) {
+    this.source = source;
+    this.listeners = [];
+    this.play = jest.fn();
+    this.pause = jest.fn();
+    this.remove = jest.fn();
+    this.addListener = jest.fn((event, listener) => {
+      this.listeners.push({ event, listener });
+      return { remove: jest.fn() };
+    });
+    players.push(this);
+  }
+  /** Teste: dispara um status de reprodução. */
+  __emit(status) {
+    for (const { event, listener } of this.listeners)
+      if (event === 'playbackStatusUpdate') listener(status);
+  }
+}
+
 module.exports = {
+  createAudioPlayer: jest.fn((source) => new AudioPlayer(source)),
+  __players: players,
   AudioModule: { AudioRecorder },
   requestRecordingPermissionsAsync: jest.fn(() =>
     Promise.resolve({ granted: true, status: 'granted', canAskAgain: true, expires: 'never' }),

@@ -89,3 +89,20 @@ describe('cancelamento idempotente do coach', () => {
     await expect(promise).rejects.toMatchObject({ code: 'ERR_CANCELED' });
   });
 });
+
+describe('coachService.speak', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('pede /chat/speech só com o id da conversa e repassa a vinculação ao dono', async () => {
+    api.post.mockResolvedValue({ data: { audio: 'SUQz', mimeType: 'audio/mpeg' } });
+    const signal = new AbortController().signal;
+    const result = await coachService.speak('conv-1', { signal });
+    const [url, body, config] = api.post.mock.calls[0];
+    expect(url).toBe('/chat/speech');
+    expect(body).toEqual({ conversation_id: 'conv-1' });
+    expect(config).toMatchObject({ timeout: 40000, signal });
+    expect(result).toEqual({ audio: 'SUQz', mimeType: 'audio/mpeg' });
+  });
+});

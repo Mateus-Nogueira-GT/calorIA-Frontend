@@ -1,4 +1,5 @@
 import { useAuthStore } from '@features/auth/store';
+import { useCoachStore } from '@features/coach/store';
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import { act, renderHook } from '@testing-library/react-native';
 import { Alert, AppState, AppStateStatus } from 'react-native';
@@ -85,6 +86,16 @@ describe('useVoiceMessage', () => {
     expect(result.current.isSupported).toBe(true);
     expect(result.current.status).toBe('idle');
     expect(result.current.elapsedSeconds).toBe(0);
+  });
+
+  it('começar a gravar para a resposta falada que estiver tocando', async () => {
+    const stopSpeaking = jest.fn();
+    useCoachStore.setState({ stopSpeaking });
+    const { result } = setup();
+    await act(async () => {
+      await result.current.start();
+    });
+    expect(stopSpeaking).toHaveBeenCalledTimes(1);
   });
 
   it('start com permissão → gravando, e o cronômetro anda', async () => {

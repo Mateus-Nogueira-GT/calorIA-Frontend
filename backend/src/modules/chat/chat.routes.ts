@@ -7,10 +7,13 @@ import {
   chatMessageSchema,
   chatResponseSchema,
   errorSchema,
+  speechBodySchema,
+  speechResponseSchema,
   transcribeBodySchema,
   transcribeResponseSchema,
 } from './chat.schemas.js'
 import { getChatHistory, sendChatMessage } from './chat.service.js'
+import { synthesizeLastReply } from './speech.service.js'
 import { transcribeAudio } from './transcribe.service.js'
 
 const chatRoutes: FastifyPluginAsyncZod = async (fastify) => {
@@ -136,6 +139,43 @@ Envia uma mensagem para o assistente de dietas com IA.
     async (request, reply) => {
       const { sub: userId } = request.user as JwtPayload
       return reply.send(await transcribeAudio(fastify, userId, request.body))
+    },
+  )
+
+  /**
+   * POST /chat/speech
+   * Fala a última resposta do Coach da conversa (TTS). O app pede depois de uma
+   * mensagem enviada por voz; o texto vem do histórico, nunca do cliente.
+   */
+  fastify.post(
+    '/speech',
+    {
+      config: {
+        rateLimit: {
+          max: 20,
+          timeWindow: '1 minute',
+        },
+      },
+      schema: {
+        tags: ['Chat'],
+        summary: 'Resposta do Coach em áudio',
+        description:
+          'Gera MP3 (base64) da última resposta do Coach na conversa do usuário (TTS via OpenRouter).',
+        security: [{ bearerAuth: [] }],
+        body: speechBodySchema,
+        response: {
+          200: speechResponseSchema,
+          401: errorSchema,
+          404: errorSchema.describe('CONVERSATION_NOT_FOUND | NO_REPLY_TO_SPEAK'),
+          429: errorSchema.describe('TOO_MANY_REQUESTS | AI_QUOTA_EXCEEDED'),
+          502: errorSchema.describe('SPEECH_FAILED — rede/timeout/5xx do provedor'),
+          503: errorSchema.describe('SPEECH_UNAVAILABLE — recurso desligado ou recusado'),
+        },
+      },
+    },
+    async (request, reply) => {
+      const { sub: userId } = request.user as JwtPayload
+      return reply.send(await synthesizeLastReply(fastify, userId, request.body.conversation_id))
     },
   )
 

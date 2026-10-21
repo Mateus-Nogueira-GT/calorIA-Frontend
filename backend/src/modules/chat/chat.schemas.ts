@@ -61,6 +61,16 @@ export const transcribeResponseSchema = z.object({
   text: z.string(),
 })
 
+export const speechBodySchema = z.object({
+  conversation_id: z.string().uuid(),
+})
+
+export const speechResponseSchema = z.object({
+  /** MP3 em base64 puro (sem prefixo data:). */
+  audio: z.string(),
+  mimeType: z.literal('audio/mpeg'),
+})
+
 export const errorSchema = z.object({
   error: z.string(),
   message: z.string(),
