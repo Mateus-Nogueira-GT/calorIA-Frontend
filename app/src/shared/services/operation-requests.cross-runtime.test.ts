@@ -116,6 +116,26 @@ describe('pendências entre runtimes (D04)', () => {
   });
 });
 
+describe('Web Locks recusado', () => {
+  it('lock indisponível não bloqueia a criação da pendência', async () => {
+    Object.defineProperty(globalThis.navigator, 'locks', {
+      value: { request: () => Promise.reject(new Error('SecurityError')) },
+      configurable: true,
+    });
+    const { beginRequest, pendingRequests } = require('./operation-requests') as OperationRequests;
+    await beginRequest('photo', photo);
+    expect(await pendingRequests('owner-A')).toHaveLength(1);
+  });
+
+  it('erro da própria ação sob o lock não executa a ação duas vezes', async () => {
+    installSharedLocks();
+    const { withStorageLock } = require('./storage-lock');
+    const action = jest.fn(() => Promise.reject(new Error('boom')));
+    await expect(withStorageLock('x', action)).rejects.toThrow('boom');
+    expect(action).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('500 ambíguo preserva a chave', () => {
   function scannerWith(adapter: (config: InternalAxiosRequestConfig) => Promise<unknown>) {
     const { scannerService } = require('./scanner.service');

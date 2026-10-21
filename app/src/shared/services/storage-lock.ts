@@ -10,5 +10,17 @@ interface LockManagerLike {
 export function withStorageLock<T>(name: string, action: () => Promise<T>): Promise<T> {
   const locks =
     typeof navigator !== 'undefined' ? (navigator as { locks?: LockManagerLike }).locks : undefined;
-  return locks?.request ? locks.request(name, action) : action();
+  if (!locks?.request) return action();
+  let started = false;
+  return locks
+    .request(name, () => {
+      started = true;
+      return action();
+    })
+    .catch((error: unknown) => {
+      // Iframe sandboxado/origem opaca recusa o lock (SecurityError): segue
+      // sem ele em vez de bloquear foto e coach. Erro da própria ação sobe.
+      if (started) throw error;
+      return action();
+    });
 }
