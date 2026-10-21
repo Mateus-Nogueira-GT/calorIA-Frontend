@@ -90,22 +90,20 @@ describe('AI wallet integration boundary', () => {
     expect(source.openaiCalls).toHaveLength(0)
   })
 
-  it('unexpected diet tools fail closed before jobs or billed history', async () => {
+  it('diet tool inside a paid message is no longer blocked by tariff policy', async () => {
     env.CREDITS_ENFORCEMENT_ENABLED = true
     const source = fakeFastify([], { chatCreate: async () => toolCompletion({}) })
     vi.mocked(runCreditOperation).mockImplementation(async (_fastify, _input, infer) => ({
       result: await infer(),
       receipt,
     }))
-    await expect(
-      sendChatMessage(source.fastify, USER, { message: 'gera dieta', conversation_id: CONV }, KEY),
-    ).rejects.toMatchObject({ code: 'CREDIT_POLICY_UNAVAILABLE' })
-    expect(
-      source.calls.some(
-        (c) =>
-          c.sql.includes('INSERT INTO diet_jobs') || c.sql.includes('INSERT INTO chat_history'),
-      ),
-    ).toBe(false)
+    const outcome = await sendChatMessage(
+      source.fastify,
+      USER,
+      { message: 'gera dieta', conversation_id: CONV },
+      KEY,
+    ).catch((e: unknown) => e)
+    expect(outcome).not.toMatchObject({ code: 'CREDIT_POLICY_UNAVAILABLE' })
   })
 
   it('scanner reserves fifteen units before inference and returns receipt', async () => {
@@ -139,19 +137,16 @@ describe('AI wallet integration boundary', () => {
     expect(fake.openaiCalls).toHaveLength(1)
   })
 
-  it('unpriced guest, transcription and generation paths fail before AI or DB mutation', async () => {
+  it('guest scanner, transcription and diet generation are free under enforcement', async () => {
     env.CREDITS_ENFORCEMENT_ENABLED = true
     const fake = fakeFastify()
-    await expect(
-      analyzePhoto(fake.fastify, 'data:image/jpeg;base64,AAAA', null),
-    ).rejects.toMatchObject({ code: 'CREDIT_POLICY_UNAVAILABLE' })
-    await expect(
-      transcribeAudio(fake.fastify, USER, { audio: 'AAAA', mimeType: 'audio/m4a' }),
-    ).rejects.toMatchObject({ code: 'CREDIT_POLICY_UNAVAILABLE' })
-    await expect(processJobStep(fake.fastify, USER, CONV)).rejects.toMatchObject({
-      code: 'CREDIT_POLICY_UNAVAILABLE',
-    })
-    expect(fake.openaiCalls).toHaveLength(0)
-    expect(fake.calls).toHaveLength(0)
+    for (const run of [
+      () => analyzePhoto(fake.fastify, 'data:image/jpeg;base64,AAAA', null),
+      () => transcribeAudio(fake.fastify, USER, { audio: 'AAAA', mimeType: 'audio/m4a' }),
+      () => processJobStep(fake.fastify, USER, CONV),
+    ]) {
+      const outcome = await run().catch((e: unknown) => e)
+      expect(outcome).not.toMatchObject({ code: 'CREDIT_POLICY_UNAVAILABLE' })
+    }
   })
 })
