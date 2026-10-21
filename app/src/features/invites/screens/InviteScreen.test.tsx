@@ -115,3 +115,38 @@ it('convite revogado, expirado ou já usado não manda tentar de novo', async ()
   expect(await screen.findByText(/não está mais disponível/)).toBeTruthy();
   expect(screen.queryByText(/Tente novamente/)).toBeNull();
 });
+
+const claimButton = (screen: ReturnType<typeof render>) =>
+  screen.queryByRole('button', { name: 'Confirmar e receber créditos' });
+const isActionable = (button: ReturnType<typeof claimButton>) =>
+  Boolean(button && !button.props.accessibilityState?.disabled);
+const redeemRejects = (error: unknown) =>
+  post.mockImplementation((path: string) =>
+    path.endsWith('preview') ? Promise.resolve(preview) : Promise.reject(error),
+  );
+
+it('D08: convite indisponível no resgate não deixa o botão de resgate ativo', async () => {
+  redeemRejects({ response: { status: 410, data: { error: 'INVITE_UNAVAILABLE' } } });
+  const screen = render(<InviteScreen {...props()} />);
+  fireEvent.press(await screen.findByText('Confirmar e receber créditos'));
+  await screen.findByText(/não está mais disponível/);
+  expect(isActionable(claimButton(screen))).toBe(false);
+  expect(screen.getByText('Conferir convite')).toBeTruthy();
+});
+
+it('D08: conta que já recebeu as boas-vindas não pode repetir o resgate, mas pode trocar de conta', async () => {
+  redeemRejects({ response: { status: 409, data: { error: 'WELCOME_ALREADY_CLAIMED' } } });
+  const screen = render(<InviteScreen {...props()} />);
+  fireEvent.press(await screen.findByText('Confirmar e receber créditos'));
+  await screen.findByText(/convite continua disponível para outra conta elegível/);
+  expect(isActionable(claimButton(screen))).toBe(false);
+  expect(screen.getByText('Usar outra conta')).toBeTruthy();
+});
+
+it('D08: falha de rede mantém o resgate disponível para nova tentativa', async () => {
+  redeemRejects(new Error('offline'));
+  const screen = render(<InviteScreen {...props()} />);
+  fireEvent.press(await screen.findByText('Confirmar e receber créditos'));
+  await screen.findByText(/Tente novamente para confirmar/);
+  await waitFor(() => expect(isActionable(claimButton(screen))).toBe(true));
+});
