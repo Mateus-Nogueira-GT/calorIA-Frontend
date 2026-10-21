@@ -2,6 +2,7 @@ import axios from 'axios';
 import { captureSessionOwner, isCurrentOwner } from './session-owner';
 import { newOperationKey } from './credits.service';
 import { kvStorage } from './storage';
+import { withStorageLock } from './storage-lock';
 
 export interface PendingRequest {
   key: string;
@@ -27,10 +28,15 @@ const active = new Map<string, PendingRequest>();
 const completed = new Set<string>();
 const writes = new Map<string, Promise<unknown>>();
 
-/** Serialize read/modify/write so photo and chat metadata cannot erase each other. */
+/**
+ * Serialize read/modify/write so photo and chat metadata cannot erase each other:
+ * in memory within this runtime, and with a Web Lock across browser tabs (D04).
+ */
 async function serialized<T>(owner: string, action: () => Promise<T>): Promise<T> {
   const previous = writes.get(owner) ?? Promise.resolve();
-  const next = previous.catch(() => undefined).then(action);
+  const next = previous
+    .catch(() => undefined)
+    .then(() => withStorageLock(storageKey(owner), action));
   writes.set(owner, next);
   try {
     return await next;
@@ -126,27 +132,49 @@ export async function finishRequest(request: PendingRequest, userId?: string): P
   }
 }
 
+/**
+ * 5xx codes our backend throws inside the credit operation's inference or its
+ * settlement transaction, before any debit commits. runCreditOperation then
+ * fences the operation as failed and releases the reservation
+ * (backend/src/modules/credits/credits.service.ts, settle/catch), so reusing
+ * the key would only return 409 OPERATION_FAILED. Origins:
+ * - VISION_ERROR: backend/src/modules/scanner/scanner.service.ts
+ * - AI_TIMEOUT, AI_UNAVAILABLE, AI_ERROR, AI_TRUNCATED: backend/src/modules/chat/chat.service.ts
+ * - HISTORY_WRITE_FAILED: chat.service.ts persistHistory, inside the settlement tx
+ * - TRANSCRIBE_FAILED: backend/src/modules/chat/transcribe.service.ts
+ */
+export const FAILED_BEFORE_SETTLEMENT = [
+  'VISION_ERROR',
+  'AI_ERROR',
+  'AI_UNAVAILABLE',
+  'AI_TIMEOUT',
+  'AI_TRUNCATED',
+  'TRANSCRIBE_FAILED',
+  'HISTORY_WRITE_FAILED',
+] as const;
+
 export function isDefinitiveRejection(error: unknown): boolean {
   const response = (error as { response?: { status?: number; data?: { error?: string } } })
     ?.response;
   // A fenced, terminal operation needs a fresh key when the user explicitly retries.
   if (
     response?.status === 409 &&
-    ['OPERATION_FAILED', 'OPERATION_EXPIRED', 'OPERATION_CANCELLED'].includes(response.data?.error ?? '')
+    ['OPERATION_FAILED', 'OPERATION_EXPIRED', 'OPERATION_CANCELLED'].includes(
+      response.data?.error ?? '',
+    )
   )
     return true;
   const status = response?.status;
   if (status === undefined) return false;
-  // 5xx/429 com código do NOSSO servidor: o backend lançou o erro dentro da
-  // operação, marcou-a como failed e liberou a reserva. Reusar a chave só
-  // devolveria 409 OPERATION_FAILED e o "Tentar novamente" exigiria dois toques.
-  // Ambíguos mantêm a chave: CREDITS_UNAVAILABLE (pede consulta antes de
-  // reenviar), TOO_MANY_REQUESTS (barrado antes de existir operação) e respostas
-  // sem código nosso (gateway/timeout), em que o resultado pode já existir.
   const code = typeof response?.data?.error === 'string' ? response.data.error : undefined;
-  if ((status >= 500 || status === 429) && code && !AMBIGUOUS_SERVER_ERRORS.includes(code))
-    return true;
-  return status >= 400 && status < 500 && ![408, 409, 429].includes(status);
+  // 5xx: só é definitivo o que comprovadamente falhou antes da liquidação. Um
+  // INTERNAL_SERVER_ERROR, código desconhecido ou corpo de gateway pode ter
+  // chegado DEPOIS do commit do débito — reusar a chave devolve o resultado
+  // salvo (ou 409 OPERATION_FAILED, que libera chave nova) sem cobrar de novo.
+  if (status >= 500)
+    return code !== undefined && (FAILED_BEFORE_SETTLEMENT as readonly string[]).includes(code);
+  // 429 com código nosso vem de dentro da operação (ex.: cota de IA);
+  // TOO_MANY_REQUESTS é barrado antes de existir operação.
+  if (status === 429) return code !== undefined && code !== 'TOO_MANY_REQUESTS';
+  return status >= 400 && status < 500 && ![408, 409].includes(status);
 }
-
-const AMBIGUOUS_SERVER_ERRORS = ['CREDITS_UNAVAILABLE', 'TOO_MANY_REQUESTS', 'OPERATION_PENDING'];
