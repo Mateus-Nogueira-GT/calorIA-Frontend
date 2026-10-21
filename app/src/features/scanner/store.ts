@@ -7,6 +7,7 @@ import { foodLogService } from '@shared/services/food-log.service';
 import { useFoodLogStore } from '@features/food-log/store';
 import { todayString } from '@shared/utils/date';
 import { showAlert } from '@shared/utils/show-alert';
+import { captureSessionOwner, isCurrentOwner } from '@shared/services/session-owner';
 
 interface ScannerState {
   image: string | null;
@@ -110,24 +111,33 @@ export const useScannerStore = create<ScannerState>((set, get) => ({
       showAlert('Nada para adicionar', 'Dê um nome a pelo menos um item antes de confirmar.');
       throw new Error('SCAN_CONFIRM_EMPTY');
     }
+    // D01 (debug 18/10): a resposta pode chegar depois de logout/login ou de
+    // uma nova análise. Dono e tentativa são capturados antes de salvar.
+    const owner = captureSessionOwner();
+    const attempt = analysisGeneration;
     // D2 da spec: allSettled + remoção incremental — item salvo SAI da lista na
     // hora, então um retry após falha parcial reenvia só o que faltou (antes o
     // Promise.all re-salvava os já persistidos, duplicando no diário).
     const results = await Promise.allSettled(
       valid.map((i) =>
         foodLogService
-          .addMeal({
-            name: i.name.trim(),
-            calories: i.calories,
-            protein: i.protein,
-            carbs: i.carbs,
-            fat: i.fat,
-            fiber: i.fiber ?? null,
-          })
+          .addMeal(
+            {
+              name: i.name.trim(),
+              calories: i.calories,
+              protein: i.protein,
+              carbs: i.carbs,
+              fat: i.fat,
+              fiber: i.fiber ?? null,
+            },
+            owner,
+          )
           .then((meal) => ({ scanItemId: i.id, meal })),
       ),
     );
 
+    // Outra conta: nada desta resposta pode tocar o diário, o scanner ou alertas.
+    if (!isCurrentOwner(owner)) throw new Error('SCAN_CONFIRM_STALE');
     const savedIds = new Set<string>();
     for (const r of results) {
       if (r.status === 'fulfilled') {
@@ -137,6 +147,9 @@ export const useScannerStore = create<ScannerState>((set, get) => ({
         useFoodLogStore.getState().addMeal(todayString(), r.value.meal);
       }
     }
+    // Mesma conta, mas o scanner já é outra tentativa: as refeições são desta
+    // conta e ficam no diário; o scan novo não é apagado.
+    if (attempt !== analysisGeneration) throw new Error('SCAN_CONFIRM_STALE');
     set((s) => ({ items: s.items.filter((i) => !savedIds.has(i.id)) }));
 
     const failures = results.filter((r) => r.status === 'rejected').length;
