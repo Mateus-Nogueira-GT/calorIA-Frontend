@@ -13,6 +13,7 @@ import {
   cancelCreditOperation,
   reconcileCreditOperations,
   runCreditOperation,
+  wallet,
 } from './credits.service.js'
 const url = process.env.TEST_DATABASE_URL
 if (url && !['localhost', '127.0.0.1', '[::1]'].includes(new URL(url).hostname))
@@ -499,5 +500,60 @@ if (url && !['localhost', '127.0.0.1', '[::1]'].includes(new URL(url).hostname))
     expect(await db`SELECT user_id FROM credit_welcome_claims`).toHaveLength(0)
     const [w] = await db`SELECT balance_units FROM credit_wallets WHERE user_id=${user}`
     expect(w.balance_units).toBe(75)
+  })
+  describe('boas-vindas automáticas para conta nova', () => {
+    const newAccount = async () => {
+      const id = randomUUID()
+      await db`INSERT INTO auth.users(id) VALUES(${id})`
+      return id
+    }
+    const welcomeRows = (id: string) =>
+      db`SELECT units,invite_id FROM credit_ledger WHERE user_id=${id} AND kind='welcome'`
+    it('primeira carteira recebe 15 créditos com lançamento no extrato', async () => {
+      const id = await newAccount()
+      expect(await wallet(f, id)).toEqual({
+        balance_units: 75,
+        reserved_units: 0,
+        available_units: 75,
+      })
+      expect(await welcomeRows(id)).toEqual([{ units: 75, invite_id: null }])
+    })
+    it('carteira existente não recebe boas-vindas de novo', async () => {
+      const id = await newAccount()
+      await wallet(f, id)
+      await wallet(f, id)
+      await runCreditOperation(f, { ...input(), userId: id }, async () => ({ ok: true }))
+      expect(await welcomeRows(id)).toHaveLength(1)
+      const [w] = await db`SELECT balance_units FROM credit_wallets WHERE user_id=${id}`
+      expect(w.balance_units).toBe(60)
+    })
+    it('conta com carteira anterior (criada antes desta regra) não é alterada', async () => {
+      await wallet(f, other)
+      expect(await welcomeRows(other)).toHaveLength(0)
+      const [w] = await db`SELECT balance_units FROM credit_wallets WHERE user_id=${other}`
+      expect(w.balance_units).toBe(0)
+    })
+    it('primeira foto de conta nova já usa os créditos de boas-vindas', async () => {
+      const id = await newAccount()
+      const result = await runCreditOperation(f, { ...input(), userId: id }, async () => ({
+        ok: true,
+      }))
+      expect(result.receipt?.balance_units).toBe(60)
+    })
+    it('criação simultânea da primeira carteira concede uma única vez', async () => {
+      const id = await newAccount()
+      await Promise.all([wallet(f, id), wallet(f, id), wallet(f, id)])
+      expect(await welcomeRows(id)).toHaveLength(1)
+      const [w] = await db`SELECT balance_units FROM credit_wallets WHERE user_id=${id}`
+      expect(w.balance_units).toBe(75)
+    })
+    it('resgate de convite por conta nova cria a carteira com boas-vindas e soma o convite', async () => {
+      const id = await newAccount()
+      const invite = await createInvite(f, admin, randomUUID())
+      const result = await redeemInvite(f, id, String(invite.url).split('#')[1])
+      expect(result.granted).toBe(true)
+      const [w] = await db`SELECT balance_units FROM credit_wallets WHERE user_id=${id}`
+      expect(w.balance_units).toBe(150)
+    })
   })
 })

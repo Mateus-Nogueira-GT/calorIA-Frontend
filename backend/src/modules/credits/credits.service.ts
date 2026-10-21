@@ -28,12 +28,27 @@ export function validateIdempotencyKey(key: unknown): string {
     throw new AppError(400, 'IDEMPOTENCY_KEY_REQUIRED', 'Atualize o aplicativo e tente novamente.')
   return key
 }
+/**
+ * Cria a carteira na primeira vez, já com os créditos de boas-vindas e o
+ * lançamento no extrato. ON CONFLICT torna a concessão única mesmo com
+ * chamadas simultâneas: só quem efetivamente insere a carteira lança o crédito.
+ * Carteiras anteriores a esta regra não são tocadas.
+ */
+export async function ensureWallet(tx: CreditTransaction, userId: string): Promise<void> {
+  const created =
+    await tx`INSERT INTO credit_wallets(user_id,balance_units) VALUES(${userId},${CREDIT_POLICY.welcome_units}) ON CONFLICT DO NOTHING RETURNING user_id`
+  if (created.length)
+    await tx`INSERT INTO credit_ledger(user_id,kind,units) VALUES(${userId},'welcome',${CREDIT_POLICY.welcome_units})`
+}
 export async function wallet(fastify: FastifyInstance, userId: string) {
   if (!env.CREDITS_ENFORCEMENT_ENABLED && !env.CREDIT_INVITES_ENABLED)
     return { balance_units: 0, reserved_units: 0, available_units: 0 }
-  const [row] = await fastify.db<
-    { balance_units: number; reserved_units: number }[]
-  >`SELECT balance_units,reserved_units FROM credit_wallets WHERE user_id=${userId}`
+  const [row] = await fastify.db.begin(async (tx) => {
+    await ensureWallet(tx, userId)
+    return tx<
+      { balance_units: number; reserved_units: number }[]
+    >`SELECT balance_units,reserved_units FROM credit_wallets WHERE user_id=${userId}`
+  })
   return {
     balance_units: row?.balance_units ?? 0,
     reserved_units: row?.reserved_units ?? 0,
@@ -63,7 +78,7 @@ export async function cancelCreditOperation(
   const key = validateIdempotencyKey(keyInput)
   if (!env.CREDITS_ENFORCEMENT_ENABLED) return { state: 'disabled' as const, operation_id: null }
   return fastify.db.begin(async (tx) => {
-    await tx`INSERT INTO credit_wallets(user_id) VALUES(${userId}) ON CONFLICT DO NOTHING`
+    await ensureWallet(tx, userId)
     await tx`SELECT user_id FROM credit_wallets WHERE user_id=${userId} FOR UPDATE`
     const [op] = await tx<
       Operation<unknown>[]
@@ -111,7 +126,7 @@ export async function runCreditOperation<T>(
   try {
     await reconcileCreditOperations(fastify, input.userId)
     await fastify.db.begin(async (tx) => {
-      await tx`INSERT INTO credit_wallets(user_id) VALUES(${input.userId}) ON CONFLICT DO NOTHING`
+      await ensureWallet(tx, input.userId)
       const [w] = await tx<
         { balance_units: number; reserved_units: number }[]
       >`SELECT balance_units,reserved_units FROM credit_wallets WHERE user_id=${input.userId} FOR UPDATE`

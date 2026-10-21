@@ -2,7 +2,7 @@ import { createHash, randomBytes } from 'node:crypto'
 import type { FastifyInstance } from 'fastify'
 import { env } from '../../shared/env.js'
 import { AppError } from '../../shared/errors.js'
-import { validateIdempotencyKey } from '../credits/credits.service.js'
+import { ensureWallet, validateIdempotencyKey } from '../credits/credits.service.js'
 interface InviteRow {
   id: string
   label: string | null
@@ -47,7 +47,7 @@ export async function previewInvite(f: FastifyInstance, token: string) {
 export async function redeemInvite(f: FastifyInstance, userId: string, token: string) {
   assertInvitesEnabled()
   return f.db.begin(async (tx) => {
-    await tx`INSERT INTO credit_wallets(user_id) VALUES(${userId}) ON CONFLICT DO NOTHING`
+    await ensureWallet(tx, userId)
     await tx`SELECT user_id FROM credit_wallets WHERE user_id=${userId} FOR UPDATE`
     const [invite] = await tx<
       { id: string; status: string; claimed_by: string | null }[]
