@@ -1,0 +1,14 @@
+{"scenario":"delete","sqlstate":"23505","constraint":"credit_operations_user_id_idempotency_key_key","user_remains":true}
+FAIL account deletion remains possible with legal idempotency keys: duplicate key value violates unique constraint "credit_operations_user_id_idempotency_key_key"
+{"scenario":"expired-reservation","state":"succeeded","expired":true,"charged_units":15}
+FAIL expired reservation cannot settle after waiting for wallet lock: Expired reservation debited after lock wait
++ actual - expected
+
++ 'succeeded'
+- 'failed'
+
+{"scenario":"expired-invite","expired":true,"status":"used","granted":true,"balance_units":75}
+FAIL invite cannot be redeemed after expiry while waiting for its row lock: Expired invite granted 75 units after lock wait
+
+true !== false
+

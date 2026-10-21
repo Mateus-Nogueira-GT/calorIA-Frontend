@@ -1,0 +1,99 @@
+(node:23094) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+FAIL ../docs/qa/debug-2026-10-18/invite-terminal-action.repro.test.tsx
+  ● Console
+
+    console.log
+      REPRO_TERMINAL_INVITE {"actionable":true}
+
+      at Object.log (../docs/qa/debug-2026-10-18/invite-terminal-action.repro.test.tsx:127:11)
+
+  ● terminal unavailability must not leave an enabled claim action for the same invite
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: false
+    Received: true
+
+      126 |   const actionable = Boolean(button && !button.props.accessibilityState?.disabled);
+      127 |   console.log('REPRO_TERMINAL_INVITE', JSON.stringify({ actionable }));
+    > 128 |   expect(actionable).toBe(false);
+          |                      ^
+      129 | });
+      130 |
+
+      at Object.toBe (../docs/qa/debug-2026-10-18/invite-terminal-action.repro.test.tsx:128:22)
+      at asyncGeneratorStep (node_modules/@babel/runtime/helpers/asyncToGenerator.js:3:17)
+      at _next (node_modules/@babel/runtime/helpers/asyncToGenerator.js:17:9)
+
+FAIL ../docs/qa/debug-2026-10-18/credit-balance-loading.repro.test.tsx
+  ● Console
+
+    console.log
+      REPRO_BALANCE_RETRY {"loading":true,"wallet":null,"error":null,"displaysZero":true}
+
+      at Object.log (../docs/qa/debug-2026-10-18/credit-balance-loading.repro.test.tsx:68:11)
+
+  ● retry cannot report a fabricated zero while a known active wallet is unavailable
+
+    expect(received).toBeNull()
+
+    Received: {"_fiber": {"_debugHookTypes": null, "_debugInfo": null, "_debugNeedsRemount": false, "_debugOwner": [FiberNode], "_debugStack": [Error: react-stack-top-frame], "_debugTask": null, "actualDuration": 0, "actualStartTime": 1792323303016, "alternate": [FiberNode], "child": [FiberNode], "childLanes": 0, "deletions": null, "dependencies": null, "elementType": "Text", "flags": 4, "index": 0, "key": null, "lanes": 0, "memoizedProps": [Object], "memoizedState": null, "mode": 3, "pendingProps": [Object], "ref": null, "refCleanup": null, "return": [FiberNode], "selfBaseDuration": 0, "sibling": null, "stateNode": [Object], "subtreeFlags": 4, "tag": 5, "treeBaseDuration": 0, "type": "Text", "updateQueue": null}}
+
+      67 |   await act(async () => {});
+      68 |   console.log('REPRO_BALANCE_RETRY', JSON.stringify({ loading: useCreditsStore.getState().loading, wallet: useCreditsStore.getState().wallet, error: useCreditsStore.getState().error, displaysZero: Boolean(screen.queryByText('0 créditos disponíveis')) }));
+    > 69 |   expect(screen.queryByText('0 créditos disponíveis')).toBeNull();
+         |                                                        ^
+      70 | });
+      71 |
+
+      at Object.toBeNull (../docs/qa/debug-2026-10-18/credit-balance-loading.repro.test.tsx:69:56)
+      at asyncGeneratorStep (node_modules/@babel/runtime/helpers/asyncToGenerator.js:3:17)
+      at _next (node_modules/@babel/runtime/helpers/asyncToGenerator.js:17:9)
+
+FAIL ../docs/qa/debug-2026-10-18/scanner-confirm-session.repro.test.ts
+  ● Console
+
+    console.log
+      REPRO_SCANNER_SESSION_RESULT {"currentUser":"new-user","diary":[{"id":"old-meal","name":"Private meal of account A","calories":200,"protein":4,"carbs":44,"fat":1,"loggedAt":"2026-10-18T11:35:03.394Z","mealType":"other"}],"scannerItems":[],"scannerImage":null}
+
+      at Object.log (../docs/qa/debug-2026-10-18/scanner-confirm-session.repro.test.ts:23:11)
+
+  ● old confirmation must not populate the next account diary or erase its active scanner
+
+    expect(received).toEqual(expected) // deep equality
+
+    - Expected  -  1
+    + Received  + 12
+
+    - Array []
+    + Array [
+    +   Object {
+    +     "calories": 200,
+    +     "carbs": 44,
+    +     "fat": 1,
+    +     "id": "old-meal",
+    +     "loggedAt": "2026-10-18T11:35:03.394Z",
+    +     "mealType": "other",
+    +     "name": "Private meal of account A",
+    +     "protein": 4,
+    +   },
+    + ]
+
+      22 |   const actual = { currentUser: useAuthStore.getState().user?.id, diary: useFoodLogStore.getState().mealsByDate[todayString()] ?? [], scannerItems: useScannerStore.getState().items, scannerImage: useScannerStore.getState().image };
+      23 |   console.log('REPRO_SCANNER_SESSION_RESULT', JSON.stringify(actual));
+    > 24 |   expect(actual.diary).toEqual([]);
+         |                        ^
+      25 |   expect(actual.scannerItems.map((entry) => entry.id)).toEqual(['new-scan']);
+      26 |   expect(actual.scannerImage).toBe('new-account-image');
+      27 | });
+
+      at Object.toEqual (../docs/qa/debug-2026-10-18/scanner-confirm-session.repro.test.ts:24:24)
+      at asyncGeneratorStep (node_modules/@babel/runtime/helpers/asyncToGenerator.js:3:17)
+      at _next (node_modules/@babel/runtime/helpers/asyncToGenerator.js:17:9)
+
+Test Suites: 3 failed, 3 total
+Tests:       3 failed, 11 passed, 14 total
+Snapshots:   0 total
+Time:        1.684 s, estimated 5 s
+Ran all test suites within paths "../docs/qa/debug-2026-10-18/scanner-confirm-session.repro.test.ts", "../docs/qa/debug-2026-10-18/credit-balance-loading.repro.test.tsx", "../docs/qa/debug-2026-10-18/invite-terminal-action.repro.test.tsx".

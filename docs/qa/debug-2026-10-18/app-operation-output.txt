@@ -1,0 +1,198 @@
+FAIL ../docs/qa/debug-2026-10-18/app-live-session-diagnostic.test.ts
+  ● P1 actual stores: initial coach answer after logout loses its recovery key and conversation id
+
+    expect(received).toHaveLength(expected)
+
+    Expected length: 1
+    Received length: 0
+    Received array:  []
+
+      44 |   expect(await pending).toBe(false);
+      45 |   expect(useCoachStore.getState().conversationId).toBeNull();
+    > 46 |   expect(await pendingRequests(A.id)).toHaveLength(1);
+         |                                       ^
+      47 | });
+      48 |
+      49 | it('P1 actual scanner/store/AbortSignal: logout during post-response cleanup loses the paid photo recovery', async () => {
+
+      at Object.toHaveLength (../docs/qa/debug-2026-10-18/app-live-session-diagnostic.test.ts:46:39)
+      at asyncGeneratorStep (node_modules/@babel/runtime/helpers/asyncToGenerator.js:3:17)
+      at _next (node_modules/@babel/runtime/helpers/asyncToGenerator.js:17:9)
+
+  ● P1 actual scanner/store/AbortSignal: logout during post-response cleanup loses the paid photo recovery
+
+    expect(received).toHaveLength(expected)
+
+    Expected length: 1
+    Received length: 0
+    Received array:  []
+
+      67 |   await pending;
+      68 |   expect(useScannerStore.getState().items).toEqual([]);
+    > 69 |   expect(await pendingRequests(A.id)).toHaveLength(1);
+         |                                       ^
+      70 | });
+      71 |
+      72 | it('P1 actual auth interceptor: queued account switch can rebind old request payload to B credentials', async () => {
+
+      at Object.toHaveLength (../docs/qa/debug-2026-10-18/app-live-session-diagnostic.test.ts:69:39)
+      at asyncGeneratorStep (node_modules/@babel/runtime/helpers/asyncToGenerator.js:3:17)
+      at _next (node_modules/@babel/runtime/helpers/asyncToGenerator.js:17:9)
+
+  ● P1 actual auth interceptor: queued account switch can rebind old request payload to B credentials
+
+    expect(received).toHaveLength(expected)
+
+    Expected length: 0
+    Received length: 1
+    Received array:  [{"_caloriaSessionGeneration": 12, "adapter": [Function anonymous], "allowAbsoluteUrls": true, "baseURL": "http://localhost:3000", "data": "{\"image\":\"data:image/jpeg;base64,live-fixture\"}", "env": {"Blob": [Function Blob], "FormData": [Function FormData]}, "headers": {"Accept": "application/json, text/plain, */*", "Authorization": "Bearer fixture-B", "Content-Type": "application/json", "Idempotency-Key": "66cf074c-3a42-448d-a195-7340b2b4485a"}, "maxBodyLength": -1, "maxContentLength": -1, "method": "post", "timeout": 75000, "transformRequest": [[Function transformRequest]], "transformResponse": [[Function transformResponse]], "transitional": {"advertiseZstdAcceptEncoding": false, "clarifyTimeoutError": false, "forcedJSONParsing": true, "legacyInterceptorReqResOrdering": true, "silentJSONParsing": true, "validateStatusUndefinedResolves": true}, "url": "/scanner/analyze", "validateStatus": [Function validateStatus], "xsrfCookieName": "XSRF-TOKEN", "xsrfHeaderName": "X-XSRF-TOKEN"}]
+
+      86 |   const photos = sent.filter(c => c.url === '/scanner/analyze');
+      87 |   expect(photos[0]?.headers.Authorization).toBe('Bearer fixture-B'); // Actual new identity confirmed.
+    > 88 |   expect(photos).toHaveLength(0);
+         |                  ^
+      89 | });
+      90 |
+      91 | it('P1 actual scanner confirm: old account meal response cannot populate new account diary or erase new scan', async () => {
+
+      at Object.toHaveLength (../docs/qa/debug-2026-10-18/app-live-session-diagnostic.test.ts:88:18)
+      at asyncGeneratorStep (node_modules/@babel/runtime/helpers/asyncToGenerator.js:3:17)
+      at _next (node_modules/@babel/runtime/helpers/asyncToGenerator.js:17:9)
+
+  ● P1 actual scanner confirm: old account meal response cannot populate new account diary or erase new scan
+
+    expect(received).toEqual(expected) // deep equality
+
+    - Expected  -  1
+    + Received  + 13
+
+    - Array []
+    + Array [
+    +   Object {
+    +     "calories": 100,
+    +     "carbs": 20,
+    +     "confidence": 0.9,
+    +     "fat": 1,
+    +     "id": "meal-owned-by-A",
+    +     "loggedAt": "2026-10-18T00:00:00Z",
+    +     "mealType": "other",
+    +     "name": "Refeição privada A",
+    +     "protein": 2,
+    +   },
+    + ]
+
+      102 |   deliver();
+      103 |   await saving;
+    > 104 |   expect(Object.values(useFoodLogStore.getState().mealsByDate).flat()).toEqual([]);
+          |                                                                        ^
+      105 |   expect(useScannerStore.getState().items[0]?.id).toBe('scan-B');
+      106 | });
+      107 |
+
+      at Object.toEqual (../docs/qa/debug-2026-10-18/app-live-session-diagnostic.test.ts:104:72)
+      at asyncGeneratorStep (node_modules/@babel/runtime/helpers/asyncToGenerator.js:3:17)
+      at _next (node_modules/@babel/runtime/helpers/asyncToGenerator.js:17:9)
+
+  ● P1 actual coach text store: queued account switch cannot send private A message authenticated as B
+
+    expect(received).toHaveLength(expected)
+
+    Expected length: 0
+    Received length: 1
+    Received array:  [{"_caloriaSessionGeneration": 20, "adapter": [Function anonymous], "allowAbsoluteUrls": true, "baseURL": "http://localhost:3000", "data": "{\"message\":\"mensagem privada originalmente digitada por A\",\"conversation_id\":null,\"date\":\"2026-10-18\",\"tzOffsetMinutes\":-180}", "env": {"Blob": [Function Blob], "FormData": [Function FormData]}, "headers": {"Accept": "application/json, text/plain, */*", "Authorization": "Bearer fixture-B", "Content-Type": "application/json", "Idempotency-Key": "24be3b24-b503-4501-8c39-9579a1bb09d4"}, "maxBodyLength": -1, "maxContentLength": -1, "method": "post", "timeout": 60000, "transformRequest": [[Function transformRequest]], "transformResponse": [[Function transformResponse]], "transitional": {"advertiseZstdAcceptEncoding": false, "clarifyTimeoutError": false, "forcedJSONParsing": true, "legacyInterceptorReqResOrdering": true, "silentJSONParsing": true, "validateStatusUndefinedResolves": true}, "url": "/chat/message", "validateStatus": [Function validateStatus], "xsrfCookieName": "XSRF-TOKEN", "xsrfHeaderName": "X-XSRF-TOKEN"}]
+
+      131 |   expect(posts[0]?.data).toContain('mensagem privada originalmente digitada por A');
+      132 |   // The actual UI store uses no AbortSignal for ordinary text messages.
+    > 133 |   expect(posts).toHaveLength(0);
+          |                 ^
+      134 | });
+      135 |
+
+      at Object.toHaveLength (../docs/qa/debug-2026-10-18/app-live-session-diagnostic.test.ts:133:17)
+      at asyncGeneratorStep (node_modules/@babel/runtime/helpers/asyncToGenerator.js:3:17)
+      at _next (node_modules/@babel/runtime/helpers/asyncToGenerator.js:17:9)
+
+FAIL ../docs/qa/debug-2026-10-18/app-operation-diagnostic.test.ts
+  ● P1: completed photo arriving after account change remains discoverable for its owner
+
+    expect(received).toHaveLength(expected)
+
+    Expected length: 1
+    Received length: 0
+    Received array:  []
+
+      38 |   expect(await pending).toMatchObject({ code: 'ERR_CANCELED' });
+      39 |   // Actual f5ca5bf: 0. The charged result has no local recovery key on return to A.
+    > 40 |   expect(await pendingRequests('owner-A')).toHaveLength(1);
+         |                                            ^
+      41 | });
+      42 |
+      43 | it('P1: account switch between service guard and Axios interceptor cannot send the old photo as another user', async () => {
+
+      at Object.toHaveLength (../docs/qa/debug-2026-10-18/app-operation-diagnostic.test.ts:40:44)
+      at asyncGeneratorStep (node_modules/@babel/runtime/helpers/asyncToGenerator.js:3:17)
+      at _next (node_modules/@babel/runtime/helpers/asyncToGenerator.js:17:9)
+
+  ● P1: account switch between service guard and Axios interceptor cannot send the old photo as another user
+
+    expect(received).toHaveLength(expected)
+
+    Expected length: 0
+    Received length: 1
+    Received array:  [{"_caloriaSessionGeneration": 2, "adapter": [Function anonymous], "allowAbsoluteUrls": true, "baseURL": "http://localhost:3000", "data": "{\"image\":\"data:image/jpeg;base64,diagnostic-fixture\"}", "env": {"Blob": [Function Blob], "FormData": [Function FormData]}, "headers": {"Accept": "application/json, text/plain, */*", "Authorization": "Bearer fixture-token-B", "Content-Type": "application/json", "Idempotency-Key": "78bd8245-ce98-463d-9db1-196f8a191b57"}, "maxBodyLength": -1, "maxContentLength": -1, "method": "post", "timeout": 75000, "transformRequest": [[Function transformRequest]], "transformResponse": [[Function transformResponse]], "transitional": {"advertiseZstdAcceptEncoding": false, "clarifyTimeoutError": false, "forcedJSONParsing": true, "legacyInterceptorReqResOrdering": true, "silentJSONParsing": true, "validateStatusUndefinedResolves": true}, "url": "/scanner/analyze", "validateStatus": [Function validateStatus], "xsrfCookieName": "XSRF-TOKEN", "xsrfHeaderName": "X-XSRF-TOKEN"}]
+
+      56 |   api.interceptors.request.eject(id);
+      57 |   // Actual: one POST, with B's token and A's photo. No real network/provider.
+    > 58 |   expect(sent).toHaveLength(0);
+         |                ^
+      59 | });
+      60 |
+      61 | it('RISCO condicional: HTTP500 apos-commit simulado deve preservar a chave (sem debito real provado)', async () => {
+
+      at Object.toHaveLength (../docs/qa/debug-2026-10-18/app-operation-diagnostic.test.ts:58:16)
+      at asyncGeneratorStep (node_modules/@babel/runtime/helpers/asyncToGenerator.js:3:17)
+      at _next (node_modules/@babel/runtime/helpers/asyncToGenerator.js:17:9)
+
+  ● RISCO condicional: HTTP500 apos-commit simulado deve preservar a chave (sem debito real provado)
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: 1
+    Received: 2
+
+      78 |   expect(calls).toBe(2);
+      79 |   // Actual: 2 keys, so the backend cannot replay the previously committed result.
+    > 80 |   expect(keys.size).toBe(1);
+         |                     ^
+      81 | });
+      82 |
+      83 | it('P2: two browser runtimes cannot erase one another\'s pending operation metadata', async () => {
+
+      at Object.toBe (../docs/qa/debug-2026-10-18/app-operation-diagnostic.test.ts:80:21)
+      at asyncGeneratorStep (node_modules/@babel/runtime/helpers/asyncToGenerator.js:3:17)
+      at _next (node_modules/@babel/runtime/helpers/asyncToGenerator.js:17:9)
+
+  ● P2: two browser runtimes cannot erase one another's pending operation metadata
+
+    expect(received).toHaveLength(expected)
+
+    Expected length: 2
+    Received length: 1
+    Received array:  [{"created_at": "2026-10-18T11:38:32.165Z", "key": "4ac8c685-2034-4c8e-b032-b67fd1d20d02", "signature": "20:1300054817:2208442807", "type": "chat"}]
+
+       98 |   await pendingB;
+       99 |   // Actual: only B's metadata remains. Per-module queue is not shared across tabs.
+    > 100 |   expect(await clientA!.pendingRequests('owner-A')).toHaveLength(2);
+          |                                                     ^
+      101 | });
+      102 |
+
+      at Object.toHaveLength (../docs/qa/debug-2026-10-18/app-operation-diagnostic.test.ts:100:53)
+      at asyncGeneratorStep (node_modules/@babel/runtime/helpers/asyncToGenerator.js:3:17)
+      at _next (node_modules/@babel/runtime/helpers/asyncToGenerator.js:17:9)
+
+Test Suites: 2 failed, 2 total
+Tests:       9 failed, 9 total
+Snapshots:   0 total
+Time:        1.117 s
+Ran all test suites.
