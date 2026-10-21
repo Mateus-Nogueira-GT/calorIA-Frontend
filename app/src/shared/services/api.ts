@@ -2,6 +2,13 @@ import axios, { InternalAxiosRequestConfig } from 'axios';
 import { Platform } from 'react-native';
 import { API_BASE_URL, API_TIMEOUT } from '@env';
 import { useAuthStore } from '@features/auth/store';
+import { isCurrentOwner, type SessionOwner } from './session-owner';
+
+declare module 'axios' {
+  interface AxiosRequestConfig {
+    caloriaOwner?: SessionOwner;
+  }
+}
 
 /**
  * URL da API: o .env manda; sem ele, fallback de DEV por plataforma.
@@ -36,6 +43,15 @@ api.interceptors.request.use((config) => {
   // salvou — e o dashboard montava com o request ainda em voo.
   // O refresh (abaixo) já usava o mesmo fallback.
   const { token, pendingAuth, sessionGeneration } = useAuthStore.getState();
+  const requestGeneration = (
+    config as InternalAxiosRequestConfig & { _caloriaSessionGeneration?: number }
+  )._caloriaSessionGeneration;
+  if (
+    (config.caloriaOwner && !isCurrentOwner(config.caloriaOwner)) ||
+    (requestGeneration !== undefined && requestGeneration !== sessionGeneration)
+  ) {
+    throw new axios.CanceledError();
+  }
   Object.assign(config, { _caloriaSessionGeneration: sessionGeneration });
   const accessToken = token ?? pendingAuth?.token ?? null;
   if (accessToken) {

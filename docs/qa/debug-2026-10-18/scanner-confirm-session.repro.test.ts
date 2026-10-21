@@ -1,0 +1,27 @@
+import { useScannerStore } from '@features/scanner/store';
+import { useFoodLogStore } from '@features/food-log/store';
+import { useAuthStore } from '@features/auth/store';
+import { foodLogService } from '@shared/services/food-log.service';
+import { todayString } from '@shared/utils/date';
+jest.mock('@shared/utils/show-alert', () => ({ showAlert: jest.fn() }));
+jest.mock('@shared/services/scanner.service', () => ({ scannerService: { analyzePhoto: jest.fn(), analyzePhotoGuest: jest.fn() } }));
+jest.mock('@shared/services/food-log.service', () => ({ foodLogService: { addMeal: jest.fn() } }));
+const addMeal = foodLogService.addMeal as jest.Mock;
+const item = (id: string, name: string) => ({ id, name, calories: 200, protein: 4, carbs: 44, fat: 1, confidence: 0.9 });
+it('old confirmation must not populate the next account diary or erase its active scanner', async () => {
+  let complete!: (value: unknown) => void;
+  addMeal.mockReturnValueOnce(new Promise((resolve) => { complete = resolve; }));
+  useAuthStore.setState({ sessionGeneration: 100, isAuthenticated: true, user: { id: 'old-user', name: 'Old', email: 'old@example.test' } });
+  useScannerStore.setState({ items: [item('old-scan', 'Private meal of account A')] });
+  const savingOldAccount = useScannerStore.getState().confirm();
+  useAuthStore.getState().clearToken();
+  useAuthStore.setState({ sessionGeneration: 102, isAuthenticated: true, user: { id: 'new-user', name: 'New', email: 'new@example.test' } });
+  useScannerStore.setState({ image: 'new-account-image', items: [item('new-scan', 'Unsaved scan of account B')] });
+  complete({ id: 'old-meal', name: 'Private meal of account A', calories: 200, protein: 4, carbs: 44, fat: 1, loggedAt: new Date().toISOString(), mealType: 'other' });
+  await savingOldAccount;
+  const actual = { currentUser: useAuthStore.getState().user?.id, diary: useFoodLogStore.getState().mealsByDate[todayString()] ?? [], scannerItems: useScannerStore.getState().items, scannerImage: useScannerStore.getState().image };
+  console.log('REPRO_SCANNER_SESSION_RESULT', JSON.stringify(actual));
+  expect(actual.diary).toEqual([]);
+  expect(actual.scannerItems.map((entry) => entry.id)).toEqual(['new-scan']);
+  expect(actual.scannerImage).toBe('new-account-image');
+});

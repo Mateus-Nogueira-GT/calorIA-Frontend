@@ -9,6 +9,7 @@ jest.mock('@shared/services/coach.service', () => ({
     }),
     sendMessage: jest.fn().mockResolvedValue({
       conversationId: 'c1',
+      acknowledge: jest.fn().mockResolvedValue(undefined),
       message: {
         id: 'c1-123',
         role: 'coach',
@@ -121,6 +122,7 @@ describe('useCoachStore', () => {
     const { coachService } = require('@shared/services/coach.service');
     coachService.sendMessage.mockResolvedValueOnce({
       conversationId: 'c1',
+      acknowledge: jest.fn().mockResolvedValue(undefined),
       message: {
         id: 'r1',
         role: 'coach',
@@ -769,6 +771,7 @@ describe('envio de voz vinculado à operação', () => {
     const runJob = jest.spyOn(useCoachStore.getState(), 'runDietGeneration');
     resolve({
       conversationId: 'old-session',
+      acknowledge: jest.fn().mockResolvedValue(undefined),
       message: {
         id: 'old-msg',
         role: 'coach',

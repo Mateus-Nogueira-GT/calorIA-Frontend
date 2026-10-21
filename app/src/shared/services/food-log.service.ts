@@ -1,4 +1,5 @@
 import api from './api';
+import { bindRequestToOwner, type SessionOwner } from './session-owner';
 import { todayString } from '@shared/utils/date';
 
 export type AppMealType = 'breakfast' | 'lunch' | 'snack' | 'dinner' | 'other';
@@ -46,8 +47,19 @@ export const foodLogService = {
     api.get<DaySummary[]>('/food-log/summary', { params: { from, to } }).then((r) => r.data),
   // Sempre envia a data LOCAL — sem ela o servidor grava CURRENT_DATE (UTC),
   // que às 21h BRT já é "amanhã" e a refeição sumia da lista do dia.
-  addMeal: (data: AddMealPayload) =>
-    api.post<Meal>('/food-log', { ...data, date: data.date ?? todayString() }).then((r) => r.data),
+  addMeal: async (data: AddMealPayload, owner?: SessionOwner): Promise<Meal> => {
+    const binding = owner ? bindRequestToOwner(owner) : undefined;
+    try {
+      const response = await api.post<Meal>(
+        '/food-log',
+        { ...data, date: data.date ?? todayString() },
+        binding?.config,
+      );
+      return response.data;
+    } finally {
+      binding?.release();
+    }
+  },
   /** Corrige uma refeição (ex.: a IA errou). A data não muda. */
   updateMeal: (id: string, data: Omit<AddMealPayload, 'date'>) =>
     api.patch<Meal>(`/food-log/${id}`, data).then((r) => r.data),

@@ -219,7 +219,7 @@ export const useCoachStore = create<CoachState>()(
         };
         voice?.signal.addEventListener('abort', onAbort, { once: true });
         try {
-          const { conversationId, message } = await coachService.sendMessage(
+          const { conversationId, message, acknowledge } = await coachService.sendMessage(
             trimmed,
             get().conversationId,
             ...(voice ? [voice] : []),
@@ -232,6 +232,7 @@ export const useCoachStore = create<CoachState>()(
             error: null,
             lastFailedAction: null,
           }));
+          void acknowledge();
           // Dieta é gerada de forma assíncrona (1 dia por chamada) — inicia o polling.
           if (message.dietJobId) void get().runDietGeneration(message.dietJobId);
           return true;
@@ -260,6 +261,10 @@ export const useCoachStore = create<CoachState>()(
         if (lastFailedAction === 'send') {
           if (get().isLoading) return;
           const session = dietSession;
+          const generation = useAuthStore.getState().sessionGeneration;
+          const isCurrent = () =>
+            session === dietSession &&
+            generation === useAuthStore.getState().sessionGeneration;
           const lastUserMessage = [...messages]
             .reverse()
             .find((message) => message.role === 'user');
@@ -267,11 +272,12 @@ export const useCoachStore = create<CoachState>()(
 
           set({ isLoading: true, error: null });
           try {
-            const { conversationId: nextConversationId, message } = await coachService.sendMessage(
-              lastUserMessage.content,
-              conversationId,
-            );
-            if (session !== dietSession) return;
+            const {
+              conversationId: nextConversationId,
+              message,
+              acknowledge,
+            } = await coachService.sendMessage(lastUserMessage.content, conversationId);
+            if (!isCurrent()) return;
             set((state) => ({
               conversationId: nextConversationId,
               messages: [...state.messages, toStoreMessage(message)],
@@ -279,9 +285,10 @@ export const useCoachStore = create<CoachState>()(
               error: null,
               lastFailedAction: null,
             }));
+            void acknowledge();
             if (message.dietJobId) void get().runDietGeneration(message.dietJobId);
           } catch (e) {
-            if (session !== dietSession) return;
+            if (!isCurrent()) return;
             set({
               isLoading: false,
               error:

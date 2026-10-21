@@ -1,10 +1,72 @@
 import { useAuthStore } from '@features/auth/store';
-import axios, { AxiosAdapter, AxiosError, InternalAxiosRequestConfig } from 'axios';
+import axios, { AxiosAdapter, AxiosError, AxiosRequestConfig, InternalAxiosRequestConfig } from 'axios';
 import { waitFor } from '@testing-library/react-native';
 import { coachService } from './coach.service';
 import api, { applyRefreshedSession } from './api';
 
 const USER = { id: 'u1', name: 'Rafael', email: 'rafael@exemplo.com' };
+
+describe('request session ownership', () => {
+  const originalAdapter = api.defaults.adapter;
+  let dispatched: InternalAxiosRequestConfig[];
+
+  beforeEach(() => {
+    useAuthStore.getState().clearToken();
+    useAuthStore.getState().setToken('old', USER, 'old-refresh');
+    dispatched = [];
+    api.defaults.adapter = async (config) => {
+      dispatched.push(config);
+      return { data: {}, status: 200, statusText: 'OK', headers: {}, config };
+    };
+  });
+
+  afterEach(() => {
+    api.defaults.adapter = originalAdapter;
+  });
+
+  it('cancela um request de A antes de despachar com a credencial de B', async () => {
+    const state = useAuthStore.getState();
+    const config = {
+      caloriaOwner: { userId: 'u1', generation: state.sessionGeneration },
+    };
+    const request = api.post('/chat', {}, config).catch((error: unknown) => error);
+    useAuthStore.getState().setToken('new', { id: 'u2', name: 'Outra', email: 'other@test.com' });
+
+    expect(await request).toMatchObject({ code: 'ERR_CANCELED' });
+    expect(dispatched).toHaveLength(0);
+  });
+
+  it('cancela retry de geração antiga antes de anexar Authorization', async () => {
+    const config: AxiosRequestConfig & { _caloriaSessionGeneration: number } = {
+      _caloriaSessionGeneration: useAuthStore.getState().sessionGeneration,
+    };
+    useAuthStore.getState().clearToken();
+    useAuthStore.getState().setToken('new', { id: 'u2', name: 'Outra', email: 'other@test.com' });
+    let intercepted: InternalAxiosRequestConfig | undefined;
+    const interceptor = api.interceptors.request.use((requestConfig) => {
+      intercepted = requestConfig;
+      return requestConfig;
+    });
+    try {
+      const result = await api.post('/chat', {}, config).catch((error: unknown) => error);
+
+      expect(result).toMatchObject({ code: 'ERR_CANCELED' });
+      expect(intercepted?.headers.Authorization).toBeUndefined();
+      expect(dispatched).toHaveLength(0);
+    } finally {
+      api.interceptors.request.eject(interceptor);
+    }
+  });
+
+  it('continua anexando o token atual para requests sem dono explícito', async () => {
+    useAuthStore.getState().setToken('current', USER);
+
+    await api.post('/chat', {});
+
+    expect(dispatched).toHaveLength(1);
+    expect(dispatched[0].headers.Authorization).toBe('Bearer current');
+  });
+});
 
 describe('applyRefreshedSession', () => {
   beforeEach(() => {

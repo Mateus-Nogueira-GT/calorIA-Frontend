@@ -80,7 +80,11 @@ describe('cancelamento idempotente do coach', () => {
       /^\/credits\/operations\/by-key\/[A-Za-z0-9_-]+\/cancel$/,
     );
     expect(api.post.mock.calls[1][1]).toEqual({});
-    expect(api.post.mock.calls[1][2]).toBeUndefined();
+    expect(api.post.mock.calls[1][2]).toEqual({
+      caloriaOwner: expect.objectContaining({ generation: expect.any(Number) }),
+      signal: expect.objectContaining({ aborted: false }),
+    });
+    expect(api.post.mock.calls[1][2].signal).not.toBe(controller.signal);
     rejectMessage(Object.assign(new Error('cancelled'), { code: 'ERR_CANCELED' }));
     await expect(promise).rejects.toMatchObject({ code: 'ERR_CANCELED' });
   });

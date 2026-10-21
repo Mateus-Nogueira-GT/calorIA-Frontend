@@ -7,15 +7,23 @@ import { ScannerGuestContext } from '../mode';
 jest.mock('@shared/services/scanner.service', () => ({
   scannerService: { analyzePhoto: jest.fn() },
 }));
-jest.mock('@shared/services/food-log.service', () => ({ foodLogService: { addMeal: jest.fn().mockResolvedValue({}) } }));
+jest.mock('@shared/services/food-log.service', () => ({
+  foodLogService: { addMeal: jest.fn().mockResolvedValue({}) },
+}));
 
-const navigation = { navigate: jest.fn(), goBack: jest.fn(), getParent: () => ({ goBack: jest.fn() }) } as never;
+const navigation = {
+  navigate: jest.fn(),
+  goBack: jest.fn(),
+  getParent: () => ({ goBack: jest.fn() }),
+} as never;
 
 describe('ScanResultScreen', () => {
   beforeEach(() => {
     useScannerStore.setState({
       image: 'x',
-      items: [{ id: '1', name: 'Arroz', calories: 200, protein: 4, carbs: 44, fat: 1, confidence: 0.9 }],
+      items: [
+        { id: '1', name: 'Arroz', calories: 200, protein: 4, carbs: 44, fat: 1, confidence: 0.9 },
+      ],
       isAnalyzing: false,
       error: null,
     });
@@ -23,16 +31,46 @@ describe('ScanResultScreen', () => {
   });
 
   it('renderiza os itens detectados', () => {
-    const { getByText } = render(<ScanResultScreen navigation={navigation} route={{ key: 'k', name: 'ScanResult' } as never} />);
+    const { getByText } = render(
+      <ScanResultScreen
+        navigation={navigation}
+        route={{ key: 'k', name: 'ScanResult' } as never}
+      />,
+    );
     expect(getByText('Arroz')).toBeTruthy();
   });
 
   it('confirmar adiciona ao diário', async () => {
-    const { getByText } = render(<ScanResultScreen navigation={navigation} route={{ key: 'k', name: 'ScanResult' } as never} />);
+    const { getByText } = render(
+      <ScanResultScreen
+        navigation={navigation}
+        route={{ key: 'k', name: 'ScanResult' } as never}
+      />,
+    );
     fireEvent.press(getByText('Confirmar e adicionar ao diário'));
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { foodLogService } = require('@shared/services/food-log.service');
     await waitFor(() => expect(foodLogService.addMeal).toHaveBeenCalled());
+  });
+
+  it('SCAN_CONFIRM_STALE não chama goBack', async () => {
+    const parentGoBack = jest.fn();
+    const staleNavigation = {
+      navigate: jest.fn(),
+      goBack: jest.fn(),
+      getParent: () => ({ goBack: parentGoBack }),
+    } as never;
+    const confirm = jest.fn(() => Promise.reject(new Error('SCAN_CONFIRM_STALE')));
+    useScannerStore.setState({ confirm });
+    const { getByText } = render(
+      <ScanResultScreen
+        navigation={staleNavigation}
+        route={{ key: 'k', name: 'ScanResult' } as never}
+      />,
+    );
+    fireEvent.press(getByText('Confirmar e adicionar ao diário'));
+    await waitFor(() => expect(confirm).toHaveBeenCalled());
+    expect(parentGoBack).not.toHaveBeenCalled();
   });
 
   describe('convidado (App Store 5.1.1(v))', () => {
@@ -46,7 +84,10 @@ describe('ScanResultScreen', () => {
     const renderGuest = () =>
       render(
         <ScannerGuestContext.Provider value>
-          <ScanResultScreen navigation={guestNavigation} route={{ key: 'k', name: 'ScanResult' } as never} />
+          <ScanResultScreen
+            navigation={guestNavigation}
+            route={{ key: 'k', name: 'ScanResult' } as never}
+          />
         </ScannerGuestContext.Provider>,
       );
 

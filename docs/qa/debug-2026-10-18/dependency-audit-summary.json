@@ -1,0 +1,80 @@
+{
+  "date": "2026-10-18",
+  "command": "npm audit --omit=dev --json",
+  "scope": "Declared production dependency tree; tooling transitively declared in dependencies may still be included. No exploit validation.",
+  "app": {
+    "counts": {
+      "info": 0,
+      "low": 0,
+      "moderate": 25,
+      "high": 38,
+      "critical": 1,
+      "total": 64
+    },
+    "critical": [
+      {
+        "name": "shell-quote",
+        "nodes": [
+          "node_modules/shell-quote"
+        ],
+        "advisories": [
+          {
+            "title": "shell-quote: `quote()` command injection via a line terminator in a token after a `{ comment }` token",
+            "url": "https://github.com/advisories/GHSA-pqg4-j6r4-53mv",
+            "range": ">=1.8.4 <1.11.0"
+          }
+        ]
+      }
+    ]
+  },
+  "backend": {
+    "counts": {
+      "info": 0,
+      "low": 3,
+      "moderate": 1,
+      "high": 7,
+      "critical": 1,
+      "total": 12
+    },
+    "critical": [
+      {
+        "name": "fast-jwt",
+        "nodes": [
+          "node_modules/fast-jwt"
+        ],
+        "advisories": [
+          {
+            "title": "fast-jwt: Verifier cache accepts expired JWTs without iat.",
+            "url": "https://github.com/advisories/GHSA-x937-hj6v-793p",
+            "range": "<=6.3.3"
+          },
+          {
+            "title": "fast-jwt: createVerifier accepts unsigned JWTs when key is '' or null and algorithms is explicitly set",
+            "url": "https://github.com/advisories/GHSA-8wpc-h4q6-8fxv",
+            "range": "<=6.3.0"
+          },
+          {
+            "title": "fast-jwt: Incomplete patch of CVE-2026-34950: Non-whitespace key-prefix re-enables RSA→HS256 algorithm confusion",
+            "url": "https://github.com/advisories/GHSA-ww5h-9m49-7xx4",
+            "range": ">=6.2.0 <=6.2.4"
+          },
+          {
+            "title": "fast-jwt clockTolerance: Infinity silently bypasses both exp and nbf validation (and persists in the verifier cache)",
+            "url": "https://github.com/advisories/GHSA-687g-22h4-j4w4",
+            "range": "<=6.2.4"
+          },
+          {
+            "title": "fast-jwt : Silent claim-validator bypass when JWT payload is a JSON array",
+            "url": "https://github.com/advisories/GHSA-5hjw-83fp-phq9",
+            "range": "<=6.2.4"
+          },
+          {
+            "title": "fast-jwt treats raw public JWK JSON as an HMAC secret, enabling HS256 token forgery",
+            "url": "https://github.com/advisories/GHSA-g3jj-5cmm-3hxx",
+            "range": "=6.2.4"
+          }
+        ]
+      }
+    ]
+  }
+}

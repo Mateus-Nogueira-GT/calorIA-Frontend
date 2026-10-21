@@ -34,7 +34,10 @@ describe('useScannerStore', () => {
   });
 
   it('analyze popula items', async () => {
-    scannerService.analyzePhoto.mockResolvedValue({ items: [item('1'), item('2')] });
+    scannerService.analyzePhoto.mockResolvedValue({
+      items: [item('1'), item('2')],
+      acknowledge: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
+    });
     const { result } = renderHook(() => useScannerStore());
     await act(() => result.current.analyze('data:image/jpeg;base64,AAA'));
     expect(result.current.items).toHaveLength(2);
@@ -61,7 +64,10 @@ describe('useScannerStore', () => {
     foodLogService.addMeal.mockResolvedValue({ id: 'meal' });
     useScannerStore.setState({ items: [{ ...item('1'), fiber: 6 }] });
     await useScannerStore.getState().confirm();
-    expect(foodLogService.addMeal).toHaveBeenCalledWith(expect.objectContaining({ fiber: 6 }));
+    expect(foodLogService.addMeal).toHaveBeenCalledWith(
+      expect.objectContaining({ fiber: 6 }),
+      expect.anything(),
+    );
   });
 
   it('updateItem edita campos', () => {
@@ -121,7 +127,10 @@ describe('useScannerStore', () => {
 });
 describe('scanner request generations', () => {
   it('a reset followed by another scan ignores the older result', async () => {
-    let resolveOld!: (value: { items: ReturnType<typeof item>[] }) => void;
+    let resolveOld!: (value: {
+      items: ReturnType<typeof item>[];
+      acknowledge: () => Promise<void>;
+    }) => void;
     scannerService.analyzePhoto.mockImplementationOnce(
       () =>
         new Promise((resolve) => {
@@ -130,11 +139,115 @@ describe('scanner request generations', () => {
     );
     const old = useScannerStore.getState().analyze('old-photo');
     useScannerStore.getState().reset();
-    scannerService.analyzePhoto.mockResolvedValueOnce({ items: [item('new')] });
+    scannerService.analyzePhoto.mockResolvedValueOnce({
+      items: [item('new')],
+      acknowledge: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
+    });
     await useScannerStore.getState().analyze('new-photo');
-    resolveOld({ items: [item('old')] });
+    resolveOld({
+      items: [item('old')],
+      acknowledge: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
+    });
     await old;
     expect(useScannerStore.getState().image).toBe('new-photo');
     expect(useScannerStore.getState().items[0].id).toBe('new');
+  });
+});
+
+describe('confirm e troca de sessão/tentativa (D01)', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { useAuthStore } = require('@features/auth/store');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { useFoodLogStore } = require('@features/food-log/store');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { todayString } = require('@shared/utils/date');
+  const named = (id: string, name: string) => ({ ...item(id), name });
+  const meal = (id: string, name: string) => ({
+    id,
+    name,
+    calories: 200,
+    protein: 4,
+    carbs: 44,
+    fat: 1,
+    loggedAt: new Date().toISOString(),
+    mealType: 'other',
+  });
+  const deferred = () => {
+    let resolve!: (value: unknown) => void;
+    let reject!: (reason: unknown) => void;
+    const promise = new Promise((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+    return { promise, resolve, reject };
+  };
+  const diary = () => useFoodLogStore.getState().mealsByDate[todayString()] ?? [];
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    useAuthStore.getState().clearToken();
+    useAuthStore.setState({
+      isAuthenticated: true,
+      user: { id: 'old-user', name: 'Old', email: 'old@example.test' },
+    });
+    useScannerStore.setState({ image: null, items: [], isAnalyzing: false, error: null });
+  });
+
+  it('confirmação antiga não entra no diário da conta seguinte nem apaga o scan dela', async () => {
+    const save = deferred();
+    foodLogService.addMeal.mockReturnValueOnce(save.promise);
+    useScannerStore.setState({ items: [named('old-scan', 'Private meal of account A')] });
+    const saving = useScannerStore.getState().confirm();
+    useAuthStore.getState().clearToken();
+    useAuthStore.setState({
+      isAuthenticated: true,
+      user: { id: 'new-user', name: 'New', email: 'new@example.test' },
+    });
+    useScannerStore.setState({
+      image: 'new-account-image',
+      items: [named('new-scan', 'Unsaved scan of account B')],
+    });
+    save.resolve(meal('old-meal', 'Private meal of account A'));
+    await expect(saving).rejects.toThrow('SCAN_CONFIRM_STALE');
+    expect(diary()).toEqual([]);
+    expect(useScannerStore.getState().items.map((entry) => entry.id)).toEqual(['new-scan']);
+    expect(useScannerStore.getState().image).toBe('new-account-image');
+    expect(showAlert).not.toHaveBeenCalled();
+  });
+
+  it('mesma conta, nova análise durante o salvamento: refeição entra no diário e o novo scan fica intacto', async () => {
+    const save = deferred();
+    foodLogService.addMeal.mockReturnValueOnce(save.promise);
+    useScannerStore.setState({ items: [named('first', 'Primeiro')] });
+    const saving = useScannerStore.getState().confirm();
+    useScannerStore.getState().reset();
+    useScannerStore.setState({ image: 'segunda', items: [named('second', 'Segundo')] });
+    save.resolve(meal('first-meal', 'Primeiro'));
+    await expect(saving).rejects.toThrow('SCAN_CONFIRM_STALE');
+    expect(diary().map((entry: { id: string }) => entry.id)).toEqual(['first-meal']);
+    expect(useScannerStore.getState().items.map((entry) => entry.id)).toEqual(['second']);
+    expect(useScannerStore.getState().image).toBe('segunda');
+    expect(showAlert).not.toHaveBeenCalled();
+  });
+
+  it('falha parcial depois da troca de conta não mostra alerta', async () => {
+    const save = deferred();
+    foodLogService.addMeal.mockReturnValueOnce(save.promise);
+    useScannerStore.setState({ items: [named('old-scan', 'Privada')] });
+    const saving = useScannerStore.getState().confirm();
+    useAuthStore.getState().clearToken();
+    save.reject(new Error('network'));
+    await expect(saving).rejects.toThrow('SCAN_CONFIRM_STALE');
+    expect(showAlert).not.toHaveBeenCalled();
+  });
+
+  it('confirm vincula cada salvamento ao dono atual', async () => {
+    foodLogService.addMeal.mockResolvedValue(meal('m', 'Arroz'));
+    useScannerStore.setState({ items: [item('1')] });
+    await useScannerStore.getState().confirm();
+    expect(foodLogService.addMeal).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'Arroz' }),
+      expect.objectContaining({ userId: 'old-user' }),
+    );
   });
 });

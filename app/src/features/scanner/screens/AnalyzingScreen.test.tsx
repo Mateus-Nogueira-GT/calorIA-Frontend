@@ -29,7 +29,10 @@ it('fechar o modal no meio da análise (desmontar) libera o scanner para a próx
   expect(useScannerStore.getState().isAnalyzing).toBe(false);
 
   // 2ª foto: precisa analisar de verdade e navegar para o resultado.
-  scannerService.analyzePhoto.mockResolvedValueOnce({ items: [item] });
+  scannerService.analyzePhoto.mockResolvedValueOnce({
+    items: [item],
+    acknowledge: jest.fn().mockResolvedValue(undefined),
+  });
   const nav = navigation();
   render(<AnalyzingScreen navigation={nav as never} route={route('foto-2')} />);
   await act(async () => {});
@@ -39,7 +42,10 @@ it('fechar o modal no meio da análise (desmontar) libera o scanner para a próx
 });
 
 it('desmontar depois de concluir (ir ao resultado) não cancela nada', async () => {
-  scannerService.analyzePhoto.mockResolvedValueOnce({ items: [item] });
+  scannerService.analyzePhoto.mockResolvedValueOnce({
+    items: [item],
+    acknowledge: jest.fn().mockResolvedValue(undefined),
+  });
   const nav = navigation();
   const screen = render(<AnalyzingScreen navigation={nav as never} route={route('foto')} />);
   await act(async () => {});
