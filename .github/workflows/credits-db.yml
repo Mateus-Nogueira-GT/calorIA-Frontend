@@ -32,3 +32,8 @@ jobs:
         run: npx vitest run src/modules/credits/credits.integration.test.ts
         env:
           TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/caloria_credits_test
+      # Rodam em passos separados: os dois recriam os schemas do mesmo banco.
+      - name: Painel admin (métricas, usuários, convites) em banco descartável
+        run: npx vitest run src/modules/admin/admin.integration.test.ts
+        env:
+          TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/caloria_credits_test
