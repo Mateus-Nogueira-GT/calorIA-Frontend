@@ -5,8 +5,17 @@
 import 'react-native';
 import React from 'react';
 import { act, render } from '@testing-library/react-native';
-import { it, expect } from '@jest/globals';
+import { it, expect, jest } from '@jest/globals';
 import App from '../App';
+
+// expo-updates é módulo nativo (e não é transformado pelo jest): o App só
+// chama a checagem de OTA, que aqui fica desligada.
+jest.mock('expo-updates', () => ({
+  isEnabled: false,
+  checkForUpdateAsync: jest.fn(),
+  fetchUpdateAsync: jest.fn(),
+  reloadAsync: jest.fn(),
+}));
 
 /**
  * O teste original fazia `renderer.create(<App />)` de forma síncrona, sem
