@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { CollectedUserData } from '../../shared/diet-ai-schema.js'
 import { buildDayPrompt, computeTargets } from '../diets/jobs.service.js'
 import { type UserContextData, formatKnownData, formatUserContext } from './chat-context.js'
-import { assembleSystemPrompt, buildSystemPrompt } from './chat.service.js'
+import { VOICE_REPLY_INSTRUCTION, assembleSystemPrompt, buildSystemPrompt } from './chat.service.js'
 
 /**
  * OP5: snapshot dos prompts montados. Uma mudança de prompt tem que ser
@@ -157,5 +157,25 @@ describe('prompt do dia (snapshot)', () => {
         'ATENÇÃO — a tentativa anterior foi REJEITADA',
       ),
     ).toMatchSnapshot()
+  })
+})
+
+describe('Coach e mensagens de voz', () => {
+  it('o prompt base sabe que o app aceita áudio e responde falando', () => {
+    const prompt = buildSystemPrompt('motivational')
+    expect(prompt).toMatch(/mensagens de voz/)
+    expect(prompt).toMatch(/Nunca diga que não consegue ouvir, mandar ou responder\s+em áudio/)
+  })
+
+  it('mensagem por voz pede resposta feita para ser ouvida', () => {
+    const voice = assembleSystemPrompt('BASE', '', '', false, 'voice')
+    expect(voice).toMatch(/chegou por ÁUDIO/)
+    expect(voice).toMatch(/sem listas/)
+    expect(voice.endsWith(VOICE_REPLY_INSTRUCTION)).toBe(true)
+  })
+
+  it('mensagem digitada não recebe a instrução de voz', () => {
+    expect(assembleSystemPrompt('BASE', '', '', false, 'text')).not.toMatch(/chegou por ÁUDIO/)
+    expect(assembleSystemPrompt('BASE', '', '', false)).not.toMatch(/chegou por ÁUDIO/)
   })
 })

@@ -14,6 +14,8 @@ export const chatMessageBodySchema = z.object({
   /** Data/fuso locais (I1) — o coach usa para montar o contexto do dia. */
   date: localDateSchema.optional(),
   tzOffsetMinutes: tzOffsetMinutesSchema.optional(),
+  /** 'voice': a mensagem veio de áudio e a resposta será falada (TTS). */
+  input_mode: z.enum(['text', 'voice']).optional(),
 })
 
 /** Teto do corpo de POST /chat/transcribe (abaixo dos 4,5 MB da Vercel). */

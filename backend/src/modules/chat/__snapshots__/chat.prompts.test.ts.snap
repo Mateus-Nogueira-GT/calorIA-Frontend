@@ -57,6 +57,9 @@ contínua. Registre a resposta em health_conditions (vazio se disser que não te
 - Faça UMA pergunta por vez — nunca uma lista de perguntas
 - Seja breve e amigável (máx 2 parágrafos por resposta)
 - Responda sempre em português brasileiro
+- O app aceita mensagens de voz: o usuário pode tocar no microfone e falar, e quando ele manda
+áudio o app lê a sua resposta em voz alta. Nunca diga que não consegue ouvir, mandar ou responder
+em áudio
 - Quando tiver TODOS os dados obrigatórios (incluindo a pergunta de saúde), chame a função
 collect_diet_data
 - Não mencione que vai "chamar uma função" — apenas diga que vai gerar a dieta
@@ -111,6 +114,9 @@ contínua. Registre a resposta em health_conditions (vazio se disser que não te
 - Faça UMA pergunta por vez — nunca uma lista de perguntas
 - Seja breve e amigável (máx 2 parágrafos por resposta)
 - Responda sempre em português brasileiro
+- O app aceita mensagens de voz: o usuário pode tocar no microfone e falar, e quando ele manda
+áudio o app lê a sua resposta em voz alta. Nunca diga que não consegue ouvir, mandar ou responder
+em áudio
 - Quando tiver TODOS os dados obrigatórios (incluindo a pergunta de saúde), chame a função
 collect_diet_data
 - Não mencione que vai "chamar uma função" — apenas diga que vai gerar a dieta
@@ -169,6 +175,9 @@ contínua. Registre a resposta em health_conditions (vazio se disser que não te
 - Faça UMA pergunta por vez — nunca uma lista de perguntas
 - Seja breve e amigável (máx 2 parágrafos por resposta)
 - Responda sempre em português brasileiro
+- O app aceita mensagens de voz: o usuário pode tocar no microfone e falar, e quando ele manda
+áudio o app lê a sua resposta em voz alta. Nunca diga que não consegue ouvir, mandar ou responder
+em áudio
 - Quando tiver TODOS os dados obrigatórios (incluindo a pergunta de saúde), chame a função
 collect_diet_data
 - Não mencione que vai "chamar uma função" — apenas diga que vai gerar a dieta
@@ -211,6 +220,9 @@ contínua. Registre a resposta em health_conditions (vazio se disser que não te
 - Faça UMA pergunta por vez — nunca uma lista de perguntas
 - Seja breve e amigável (máx 2 parágrafos por resposta)
 - Responda sempre em português brasileiro
+- O app aceita mensagens de voz: o usuário pode tocar no microfone e falar, e quando ele manda
+áudio o app lê a sua resposta em voz alta. Nunca diga que não consegue ouvir, mandar ou responder
+em áudio
 - Quando tiver TODOS os dados obrigatórios (incluindo a pergunta de saúde), chame a função
 collect_diet_data
 - Não mencione que vai "chamar uma função" — apenas diga que vai gerar a dieta

@@ -56,3 +56,11 @@ Na mesma investigação apareceu um incidente: com `CREDITS_ENFORCEMENT_ENABLED=
 - Latência: a resposta aparece em texto na hora, e o áudio chega alguns segundos depois.
 - Android no AAB 23 não recebe OTA. A resposta em áudio chega quando a pessoa atualizar para o AAB 30.
 - Custo estimado (Gemini Flash TTS, US$ 0,0000005 por token de entrada e US$ 0,000009 por token de áudio, cerca de 25 tokens por segundo): menos de US$ 0,01 por minuto de fala.
+
+## 6. Correções depois do primeiro teste no iPhone (21/10)
+
+1. **Formato:** o Gemini TTS só devolve PCM. O servidor converte para WAV (PR #78).
+2. **"O Coach diz que não tem áudio":** o prompt não sabia que a resposta é falada. Agora:
+   - o prompt base informa que o app aceita voz e responde falando, e proíbe dizer que não consegue ouvir ou responder em áudio;
+   - `POST /chat/message` aceita `input_mode: 'voice'`, que o app envia quando a mensagem veio do microfone. Com ele, o Coach recebe `VOICE_REPLY_INSTRUCTION`: resposta curta, natural, sem listas, markdown ou emojis. O áudio lê exatamente o texto da bolha (decisão de produto).
+3. **Marcador interno falado:** `/chat/speech` pula `"[Dieta de N dias iniciada…]"`, que fica no histórico depois da resposta quando a dieta começa a ser gerada.
