@@ -11,6 +11,8 @@ import { getChatHistory } from './chat.service.js'
  * histórico da conversa do próprio usuário — o app não envia texto livre.
  */
 export const SPEECH_MAX_CHARS = 4000
+/** Mensagens internas do histórico, gravadas como do Coach mas não exibidas como resposta. */
+const INTERNAL_MARKER = /^\[Dieta de \d+ dias iniciada/
 const SPEECH_TIMEOUT_MS = 30_000
 /** Estimativa para a cota diária: o provedor cobra por caractere/token de texto. */
 const CHARS_PER_TOKEN = 4
@@ -76,7 +78,11 @@ export async function synthesizeLastReply(
   assertAiTariffConfigured('speech_synthesis')
 
   const { messages } = await getChatHistory(fastify, userId, conversationId)
-  const reply = [...messages].reverse().find((m) => m.role === 'assistant')
+  // A resposta da tela: marcadores internos (ex.: "[Dieta de 7 dias iniciada…]")
+  // ficam no histórico para o modelo, mas não são falados.
+  const reply = [...messages]
+    .reverse()
+    .find((m) => m.role === 'assistant' && !INTERNAL_MARKER.test(m.content.trim()))
   const input = reply ? speechText(reply.content) : ''
   if (!input) throw new AppError(404, 'NO_REPLY_TO_SPEAK', 'Ainda não há resposta para ouvir.')
 

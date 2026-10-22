@@ -38,6 +38,9 @@ contínua. Registre a resposta em health_conditions (vazio se disser que não te
 - Faça UMA pergunta por vez — nunca uma lista de perguntas
 - Seja breve e amigável (máx 2 parágrafos por resposta)
 - Responda sempre em português brasileiro
+- O app aceita mensagens de voz: o usuário pode tocar no microfone e falar, e quando ele manda
+áudio o app lê a sua resposta em voz alta. Nunca diga que não consegue ouvir, mandar ou responder
+em áudio
 - Quando tiver TODOS os dados obrigatórios (incluindo a pergunta de saúde), chame a função
 collect_diet_data
 - Não mencione que vai "chamar uma função" — apenas diga que vai gerar a dieta
@@ -96,12 +99,21 @@ const EXISTING_DIET_INSTRUCTION =
   'zera as refeições já marcadas como concluídas — por isso, na dúvida, ' +
   'pergunte antes em vez de chamar a tool.'
 
+/** Mensagem que chegou por voz: a resposta vai ser falada pelo app (TTS). */
+export const VOICE_REPLY_INSTRUCTION =
+  'INSTRUÇÃO: esta mensagem do usuário chegou por ÁUDIO e a sua resposta será FALADA em voz ' +
+  'alta pelo app (o texto também aparece na tela). Responda como numa conversa falada: frases ' +
+  'curtas e naturais, no máximo dois parágrafos curtos, sem listas, tópicos, tabelas, markdown, ' +
+  'emojis, links ou expressões como "veja abaixo". Escreva números e unidades de um jeito fácil ' +
+  'de ouvir (ex.: "cento e vinte gramas").'
+
 /** Junta prompt base + contexto/known-data + instruções (só quando há bloco). */
 export function assembleSystemPrompt(
   base: string,
   contextBlock: string,
   knownData: string,
   hasActiveDiet = false,
+  inputMode: 'text' | 'voice' = 'text',
 ): string {
   const parts = [base]
   if (contextBlock) {
@@ -114,6 +126,7 @@ export function assembleSystemPrompt(
   if (hasActiveDiet) {
     parts.push(EXISTING_DIET_INSTRUCTION)
   }
+  if (inputMode === 'voice') parts.push(VOICE_REPLY_INSTRUCTION)
   return parts.join('\n\n')
 }
 
@@ -334,6 +347,7 @@ async function sendChatMessageCore(
     formatUserContext(context),
     formatKnownData(context),
     hasActiveDiet,
+    data.input_mode,
   )
   const toolParams =
     pendingJob || env.CREDITS_ENFORCEMENT_ENABLED

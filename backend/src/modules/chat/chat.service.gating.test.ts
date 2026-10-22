@@ -50,3 +50,29 @@ describe('sendChatMessage — gating da tool (C1)', () => {
     expect(params.parallel_tool_calls).toBe(false)
   })
 })
+
+describe('sendChatMessage — mensagem por voz', () => {
+  const systemOf = (calls: { params: Record<string, unknown> }[]) =>
+    (calls[0].params.messages as { role: string; content: string }[])[0].content
+
+  it('input_mode voice: o modelo é avisado de que a resposta será falada', async () => {
+    const { fastify, openaiCalls } = fakeFastify([], {
+      chatCreate: async () => textCompletion('Claro, posso te ajudar.'),
+    })
+    await sendChatMessage(fastify, USER, {
+      message: 'você me responde em áudio?',
+      conversation_id: CONV,
+      input_mode: 'voice',
+    })
+    expect(systemOf(openaiCalls)).toContain('chegou por ÁUDIO')
+  })
+
+  it('mensagem digitada não recebe a instrução de voz, mas sabe que o app tem áudio', async () => {
+    const { fastify, openaiCalls } = fakeFastify([], {
+      chatCreate: async () => textCompletion('ok'),
+    })
+    await sendChatMessage(fastify, USER, { message: 'oi', conversation_id: CONV })
+    expect(systemOf(openaiCalls)).not.toContain('chegou por ÁUDIO')
+    expect(systemOf(openaiCalls)).toContain('mensagens de voz')
+  })
+})

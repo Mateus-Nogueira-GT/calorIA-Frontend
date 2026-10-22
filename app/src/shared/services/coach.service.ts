@@ -112,6 +112,8 @@ export const coachService = {
             conversation_id: conversationId,
             date: request.date,
             tzOffsetMinutes: request.tzOffsetMinutes,
+            // Veio de áudio: o Coach escreve para ser ouvido (a resposta é falada).
+            ...(voice ? { input_mode: 'voice' as const } : {}),
           },
           {
             timeout: 60000,

@@ -94,6 +94,19 @@ describe('synthesizeLastReply', () => {
     expect(fake.logs.some((l) => l.msg === 'ai_usage')).toBe(true)
   })
 
+  it('pula o marcador interno de dieta iniciada e fala a resposta da tela', async () => {
+    const fake = history([
+      { role: 'user', content: 'pode gerar' },
+      { role: 'assistant', content: 'Perfeito! Vou montar sua dieta agora.' },
+      { role: 'assistant', content: '[Dieta de 7 dias iniciada em 21/10 às 22:40]' },
+    ])
+    const fetch = fakeFetch(mp3)
+    await synthesizeLastReply(fake.fastify, USER, CONV, fetch.fn)
+    expect(JSON.parse(String(fetch.calls[0].init.body)).input).toBe(
+      'Perfeito! Vou montar sua dieta agora.',
+    )
+  })
+
   it('conversa de outra conta ou inexistente: 404 sem chamar o provedor', async () => {
     const fake = fakeFastify([['FROM chat_history', []]])
     const fetch = fakeFetch(mp3)

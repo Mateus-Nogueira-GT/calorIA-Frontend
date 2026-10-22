@@ -106,3 +106,35 @@ describe('coachService.speak', () => {
     expect(result).toEqual({ audio: 'SUQz', mimeType: 'audio/mpeg' });
   });
 });
+
+describe('coachService.sendMessage — modo de entrada', () => {
+  const reply = {
+    data: {
+      conversation_id: 'conv-1',
+      message: { role: 'assistant', content: 'ok', created_at: '2026-10-21T00:00:00Z' },
+      diet_generated: false,
+      diet_id: null,
+      diet_job_id: null,
+    },
+  };
+  const messageBody = () =>
+    api.post.mock.calls.find(([url]: [string]) => url === '/chat/message')?.[1];
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    api.post.mockResolvedValue(reply);
+  });
+
+  it('mensagem de voz avisa o servidor com input_mode voice', async () => {
+    await coachService.sendMessage('falado', null, {
+      signal: new AbortController().signal,
+      isValid: () => true,
+    });
+    expect(messageBody()).toMatchObject({ message: 'falado', input_mode: 'voice' });
+  });
+
+  it('mensagem digitada não envia input_mode', async () => {
+    await coachService.sendMessage('digitado', null);
+    expect(messageBody()).not.toHaveProperty('input_mode');
+  });
+});
