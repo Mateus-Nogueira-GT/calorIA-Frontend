@@ -5,22 +5,43 @@ import { registerAdminGuard } from '../../shared/require-admin.js'
 import type { JwtPayload } from '../../shared/types.js'
 import { assertInvitesEnabled, createInvite } from '../credit-invites/credit-invites.service.js'
 import { registerCreditErrors } from '../credits/credits.errors.js'
+import { listInvites } from './admin-invites.service.js'
+import { getOverview } from './admin-overview.service.js'
+import { listUsers } from './admin-users.service.js'
+import {
+  adminOverviewSchema,
+  adminUsersResponseSchema,
+  invitesQuerySchema,
+  periodQuerySchema,
+  usersQuerySchema,
+} from './admin.schemas.js'
 const routes: FastifyPluginAsyncZod = async (f) => {
   registerCreditErrors(f)
   f.addHook('preHandler', async (req) => {
     await req.jwtVerify()
   })
   registerAdminGuard(f)
-  f.addHook('preHandler', async () => assertInvitesEnabled())
+
+  // Métricas (spec 21/10): só leitura e independentes da flag de convites.
   f.get(
-    '/credit-invites',
-    { schema: { querystring: z.object({ cursor: z.string().uuid().optional() }) } },
-    async (req) => {
-      const c = req.query.cursor
-      const items =
-        await f.db`SELECT id,label,CASE WHEN status='active' AND expires_at<=now() THEN 'expired' ELSE status END AS status,grant_units,expires_at,created_at,claimed_by FROM credit_invites WHERE (${c ?? null}::uuid IS NULL OR (created_at,id)<(SELECT created_at,id FROM credit_invites WHERE id=${c ?? null})) ORDER BY created_at DESC,id DESC LIMIT 51`
-      return { items: items.slice(0, 50), next_cursor: items.length > 50 ? items[49].id : null }
-    },
+    '/overview',
+    { schema: { querystring: periodQuerySchema, response: { 200: adminOverviewSchema } } },
+    (req) => getOverview(f, req.query.days),
+  )
+  f.get(
+    '/users',
+    { schema: { querystring: usersQuerySchema, response: { 200: adminUsersResponseSchema } } },
+    (req) => listUsers(f, (req.user as JwtPayload).sub, req.query),
+  )
+
+  await f.register(invitesRoutes)
+}
+
+/** Convites: dependem de CREDIT_INVITES_ENABLED (escopo próprio, herda JWT e guard). */
+const invitesRoutes: FastifyPluginAsyncZod = async (f) => {
+  f.addHook('preHandler', async () => assertInvitesEnabled())
+  f.get('/credit-invites', { schema: { querystring: invitesQuerySchema } }, (req) =>
+    listInvites(f, req.query),
   )
   f.post(
     '/credit-invites',
