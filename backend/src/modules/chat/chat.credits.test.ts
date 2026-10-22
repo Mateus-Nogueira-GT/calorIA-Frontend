@@ -46,7 +46,10 @@ describe('AI wallet integration boundary', () => {
       KEY,
     )
     expect(source.openaiCalls).toHaveLength(1)
-    expect(source.openaiCalls[0].params.tools).toBeUndefined()
+    // Geração de dieta liberada sem custo (21/10): a tool continua disponível.
+    expect(source.openaiCalls[0].params.tools).toBeDefined()
+    const system = (source.openaiCalls[0].params.messages as { content: string }[])[0].content
+    expect(system).not.toContain('temporariamente indisponível')
     expect(
       transaction.calls.find((c) => c.sql.includes('INSERT INTO chat_history'))?.params,
     ).toContain(

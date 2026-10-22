@@ -349,14 +349,15 @@ async function sendChatMessageCore(
     hasActiveDiet,
     data.input_mode,
   )
-  const toolParams =
-    pendingJob || env.CREDITS_ENFORCEMENT_ENABLED
-      ? {}
-      : {
-          tools: [COLLECT_DIET_DATA_TOOL],
-          tool_choice: 'auto' as const,
-          parallel_tool_calls: false,
-        }
+  // Geração de dieta é gratuita também com a carteira ligada (decisão de 21/10;
+  // ver AI_FEATURE_TARIFFS): a tool só sai quando já há geração em voo.
+  const toolParams = pendingJob
+    ? {}
+    : {
+        tools: [COLLECT_DIET_DATA_TOOL],
+        tool_choice: 'auto' as const,
+        parallel_tool_calls: false,
+      }
 
   // ── Chamada à OpenAI com suporte a function calling ──────────────────────
   const baseParams = {
@@ -366,9 +367,7 @@ async function sendChatMessageCore(
     messages: [
       {
         role: 'system' as const,
-        content: env.CREDITS_ENFORCEMENT_ENABLED
-          ? `${systemPrompt}\nA geração de novos planos está temporariamente indisponível. Responda dúvidas normalmente, mas não prometa iniciar uma dieta.`
-          : systemPrompt,
+        content: systemPrompt,
       },
       ...windowedHistory(history),
     ],
