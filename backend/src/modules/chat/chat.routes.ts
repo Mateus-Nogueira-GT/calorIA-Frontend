@@ -167,6 +167,7 @@ Envia uma mensagem para o assistente de dietas com IA.
           200: speechResponseSchema,
           401: errorSchema,
           404: errorSchema.describe('CONVERSATION_NOT_FOUND | NO_REPLY_TO_SPEAK'),
+          409: errorSchema.describe('SPEECH_REPLY_CHANGED'),
           429: errorSchema.describe('TOO_MANY_REQUESTS | AI_QUOTA_EXCEEDED'),
           502: errorSchema.describe('SPEECH_FAILED — rede/timeout/5xx do provedor'),
           503: errorSchema.describe('SPEECH_UNAVAILABLE — recurso desligado ou recusado'),
@@ -175,7 +176,15 @@ Envia uma mensagem para o assistente de dietas com IA.
     },
     async (request, reply) => {
       const { sub: userId } = request.user as JwtPayload
-      return reply.send(await synthesizeLastReply(fastify, userId, request.body.conversation_id))
+      return reply.send(
+        await synthesizeLastReply(
+          fastify,
+          userId,
+          request.body.conversation_id,
+          undefined,
+          request.body.expected_reply,
+        ),
+      )
     },
   )
 

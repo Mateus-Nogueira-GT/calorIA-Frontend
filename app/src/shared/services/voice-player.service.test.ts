@@ -1,5 +1,5 @@
 import { setAudioModeAsync } from 'expo-audio';
-import { playSpeech, saveSpeech, stopSpeech } from './voice-player.service';
+import { clearSpeechCache, playSpeech, saveSpeech, stopSpeech } from './voice-player.service';
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const audio = require('expo-audio');
@@ -56,6 +56,44 @@ it('stopSpeech para e libera; chamar sem player é seguro', async () => {
   await playSpeech('file:///cache/a.mp3', jest.fn());
   const player = lastPlayer();
   stopSpeech();
+  expect(player.pause).toHaveBeenCalled();
+  expect(player.remove).toHaveBeenCalled();
+});
+
+it('clearSpeechCache remove áudios do Coach e preserva outros arquivos', async () => {
+  const uri = await saveSpeech('UklG', 'audio/wav');
+
+  const other = new fs.File('file:///cache/recording.m4a');
+  clearSpeechCache();
+  expect(
+    fs.__files.some(
+      (f: { uri: string; delete: jest.Mock }) => f.uri === uri && f.delete.mock.calls.length > 0,
+    ),
+  ).toBe(true);
+  expect(other.delete).not.toHaveBeenCalled();
+});
+
+it('stopSpeech tolera player já liberado e tenta cada liberação', async () => {
+  await playSpeech('file:///cache/a.mp3', jest.fn());
+  const player = lastPlayer();
+  player.pause.mockImplementationOnce(() => {
+    throw new Error('released');
+  });
+  player.remove.mockImplementationOnce(() => {
+    throw new Error('released');
+  });
+  expect(() => stopSpeech()).not.toThrow();
+  expect(player.remove).toHaveBeenCalled();
+  expect(() => stopSpeech()).not.toThrow();
+});
+
+it('falha ao remover listener não impede liberar o player', async () => {
+  await playSpeech('file:///cache/a.mp3', jest.fn());
+  const player = lastPlayer();
+  player.addListener.mock.results[0].value.remove.mockImplementationOnce(() => {
+    throw new Error('released');
+  });
+  expect(() => stopSpeech()).not.toThrow();
   expect(player.pause).toHaveBeenCalled();
   expect(player.remove).toHaveBeenCalled();
 });

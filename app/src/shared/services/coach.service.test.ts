@@ -95,13 +95,13 @@ describe('coachService.speak', () => {
     jest.clearAllMocks();
   });
 
-  it('pede /chat/speech só com o id da conversa e repassa a vinculação ao dono', async () => {
+  it('pede /chat/speech com o id e a resposta esperada e repassa a vinculação ao dono', async () => {
     api.post.mockResolvedValue({ data: { audio: 'SUQz', mimeType: 'audio/mpeg' } });
     const signal = new AbortController().signal;
-    const result = await coachService.speak('conv-1', { signal });
+    const result = await coachService.speak('conv-1', { signal }, 'Beba água.');
     const [url, body, config] = api.post.mock.calls[0];
     expect(url).toBe('/chat/speech');
-    expect(body).toEqual({ conversation_id: 'conv-1' });
+    expect(body).toEqual({ conversation_id: 'conv-1', expected_reply: 'Beba água.' });
     expect(config).toMatchObject({ timeout: 40000, signal });
     expect(result).toEqual({ audio: 'SUQz', mimeType: 'audio/mpeg' });
   });

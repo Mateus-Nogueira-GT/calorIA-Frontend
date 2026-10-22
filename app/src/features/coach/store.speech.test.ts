@@ -1,13 +1,21 @@
 import { useCoachStore } from './store';
 import { useAuthStore } from '@features/auth/store';
 import { coachService } from '@shared/services/coach.service';
-import { playSpeech, saveSpeech, stopSpeech } from '@shared/services/voice-player.service';
+import {
+  clearSpeechCache,
+  deleteSpeech,
+  playSpeech,
+  saveSpeech,
+  stopSpeech,
+} from '@shared/services/voice-player.service';
 
 jest.mock('@shared/services/coach.service', () => ({
   coachService: { getHistory: jest.fn(), sendMessage: jest.fn(), speak: jest.fn() },
 }));
 jest.mock('@shared/services/voice-player.service', () => ({
   isSpeechSupported: true,
+  clearSpeechCache: jest.fn(),
+  deleteSpeech: jest.fn(),
   saveSpeech: jest.fn(),
   playSpeech: jest.fn(),
   stopSpeech: jest.fn(),
@@ -63,6 +71,7 @@ describe('resposta do Coach em áudio', () => {
     expect(speak).toHaveBeenCalledWith(
       'conv-1',
       expect.objectContaining({ caloriaOwner: expect.objectContaining({ userId: 'user-A' }) }),
+      'Beba água.',
     );
     expect(save).toHaveBeenCalledWith('UklG', 'audio/wav');
     expect(replyMessage()?.audioUri).toBe('file:///cache/reply.mp3');
@@ -125,12 +134,57 @@ describe('resposta do Coach em áudio', () => {
     expect(useCoachStore.getState().speakingMessageId).toBeNull();
   });
 
-  it('clear (logout) para a reprodução', async () => {
+  it('clear (logout) limpa os áudios e a reprodução', async () => {
     await useCoachStore.getState().sendMessage('pergunta', voice());
     await flush();
     (stopSpeech as jest.Mock).mockClear();
     useCoachStore.getState().clear();
-    expect(stopSpeech).toHaveBeenCalled();
+    expect(clearSpeechCache).toHaveBeenCalled();
     expect(useCoachStore.getState().speakingMessageId).toBeNull();
   });
+});
+
+it('nova mensagem digitada invalida o áudio pendente da resposta anterior', async () => {
+  const audio = deferred<{ audio: string; mimeType: string }>();
+  speak.mockReturnValueOnce(audio.promise);
+  await useCoachStore.getState().sendMessage('primeira pergunta', voice());
+  send.mockResolvedValueOnce({
+    ...reply,
+    message: { ...reply.message, id: 'conv-1-10', content: 'Outra resposta.' },
+  });
+  await useCoachStore.getState().sendMessage('segunda pergunta');
+  audio.resolve({ audio: 'SUQz', mimeType: 'audio/mpeg' });
+  await flush();
+  expect(save).not.toHaveBeenCalled();
+  expect(play).not.toHaveBeenCalled();
+});
+
+it('clear enquanto salva remove o arquivo que chegou tarde', async () => {
+  const saved = deferred<string>();
+  save.mockReturnValueOnce(saved.promise);
+  await useCoachStore.getState().sendMessage('pergunta', voice());
+  await flush();
+  useCoachStore.getState().clear();
+  saved.resolve('file:///cache/late.wav');
+  await flush();
+  expect(deleteSpeech).toHaveBeenCalledWith('file:///cache/late.wav');
+  expect(play).not.toHaveBeenCalled();
+});
+
+it('dois áudios em sequência: só a resposta mais recente é salva e reproduzida', async () => {
+  const firstAudio = deferred<{ audio: string; mimeType: string }>();
+  speak.mockReturnValueOnce(firstAudio.promise);
+  await useCoachStore.getState().sendMessage('primeira', voice());
+  send.mockResolvedValueOnce({
+    ...reply,
+    message: { ...reply.message, id: 'conv-1-10', content: 'Outra resposta.' },
+  });
+  await useCoachStore.getState().sendMessage('segunda', voice());
+  await flush();
+  firstAudio.resolve({ audio: 'old', mimeType: 'audio/wav' });
+  await flush();
+  expect(save).toHaveBeenCalledTimes(1);
+  expect(save).toHaveBeenCalledWith('UklG', 'audio/wav');
+  expect(replyMessage()?.audioUri).toBeUndefined();
+  expect(useCoachStore.getState().speakingMessageId).toBe('conv-1-10');
 });
