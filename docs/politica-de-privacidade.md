@@ -69,6 +69,10 @@ funcionamento do app:
   provedores de inteligência artificial para ser convertido em texto (transcrição).
   **O CalorIA não armazena o áudio** — o arquivo temporário é apagado do seu aparelho
   após o envio. O que guardamos é apenas o texto transcrito, como mensagem do chat.
+- **Resposta do mentor em áudio:** quando você fala com o mentor, a resposta dele também
+  é lida em voz alta. O texto da resposta é enviado ao nosso provedor de inteligência
+  artificial para gerar o áudio, que é tocado no seu aparelho e fica apenas no cache
+  temporário do app; **não armazenamos esse áudio em nossos servidores**.
 
 O acesso à câmera, à galeria e ao microfone só ocorre mediante sua permissão, concedida
 no sistema operacional, e pode ser revogado a qualquer momento nas configurações do
@@ -161,6 +165,14 @@ A comunicação entre o aplicativo e nossos servidores ocorre por conexão cript
 (HTTPS). Senhas são armazenadas de forma cifrada pelo provedor de autenticação. Adotamos
 medidas técnicas e administrativas razoáveis para proteger as informações, reconhecendo
 que nenhum sistema é completamente imune a incidentes.
+
+**Acesso administrativo.** Um número restrito de administradores do CalorIA, autorizados
+individualmente, acessa uma área interna para operar o serviço: acompanhar o uso do
+aplicativo, os créditos e os convites. Nessa área são exibidos apenas dados de conta —
+nome, e-mail, datas de cadastro e de última atividade, saldo de créditos e quantidades de
+uso (por exemplo, número de fotos analisadas e de mensagens enviadas). **Dados de saúde,
+refeições registradas, fotos e o conteúdo das conversas com o mentor não são exibidos
+nessa área.** As buscas feitas pelos administradores são registradas para auditoria.
 
 ## 9. Menores de idade
 
