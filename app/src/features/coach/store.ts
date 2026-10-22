@@ -12,6 +12,8 @@ import {
   isCurrentOwner,
 } from '@shared/services/session-owner';
 import {
+  clearSpeechCache,
+  deleteSpeech,
   isSpeechSupported,
   playSpeech,
   saveSpeech,
@@ -445,7 +447,7 @@ export const useCoachStore = create<CoachState>()(
         messageRequestId++;
         speechRequest++;
         speechAutoplay++;
-        stopSpeech();
+        clearSpeechCache();
         dietSession++;
         dietLoops.clear();
         dietRetries.clear();
@@ -494,17 +496,26 @@ async function speakReply(messageId: string, conversationId: string): Promise<vo
   const owner = captureSessionOwner();
   const request = ++speechRequest;
   const autoplay = speechAutoplay;
+  const expectedReply = useCoachStore.getState().messages.find((m) => m.id === messageId)?.content;
+  if (!expectedReply) return;
   const stillValid = () =>
     isCurrentOwner(owner) &&
     request === speechRequest &&
     useCoachStore.getState().conversationId === conversationId &&
-    useCoachStore.getState().messages.some((m) => m.id === messageId);
+    useCoachStore.getState().messages.slice(-1)[0]?.id === messageId;
   const binding = bindRequestToOwner(owner);
   try {
-    const { audio, mimeType } = await coachService.speak(conversationId, binding.config);
+    const { audio, mimeType } = await coachService.speak(
+      conversationId,
+      binding.config,
+      expectedReply,
+    );
     if (!stillValid()) return;
     const uri = await saveSpeech(audio, mimeType);
-    if (!stillValid()) return;
+    if (!stillValid()) {
+      deleteSpeech(uri);
+      return;
+    }
     useCoachStore.setState((state) => ({
       messages: state.messages.map((m) => (m.id === messageId ? { ...m, audioUri: uri } : m)),
     }));

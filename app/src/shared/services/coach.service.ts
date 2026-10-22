@@ -150,14 +150,17 @@ export const coachService = {
   },
 
   /**
-   * Última resposta do Coach em áudio (MP3 base64). O texto vem do histórico
+   * Última resposta do Coach em áudio (WAV/MP3 base64). O texto vem do histórico
    * no servidor; `config` leva a vinculação ao dono da sessão.
    */
-  speak: (conversationId: string, config?: AxiosRequestConfig) =>
+  speak: (conversationId: string, config?: AxiosRequestConfig, expectedReply?: string) =>
     api
       .post<{ audio: string; mimeType: 'audio/wav' | 'audio/mpeg' }>(
         '/chat/speech',
-        { conversation_id: conversationId },
+        {
+          conversation_id: conversationId,
+          ...(expectedReply ? { expected_reply: expectedReply } : {}),
+        },
         { timeout: SPEECH_TIMEOUT_MS, ...config },
       )
       .then((r) => r.data),

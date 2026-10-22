@@ -65,6 +65,8 @@ export const transcribeResponseSchema = z.object({
 
 export const speechBodySchema = z.object({
   conversation_id: z.string().uuid(),
+  // Só compara com o histórico autenticado; nunca é enviado diretamente ao TTS.
+  expected_reply: z.string().min(1).max(100_000).optional(),
 })
 
 export const speechResponseSchema = z.object({

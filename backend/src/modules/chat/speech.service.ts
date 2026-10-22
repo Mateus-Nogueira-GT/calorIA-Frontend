@@ -4,6 +4,7 @@ import { assertAiTariffConfigured } from '../../shared/credit-ai-policy.js'
 import { env } from '../../shared/env.js'
 import { AppError } from '../../shared/errors.js'
 import { getChatHistory } from './chat.service.js'
+import { isInternalChatMarker } from './history-markers.js'
 
 /**
  * Resposta falada do Coach (TTS via OpenRouter /audio/speech, compatível com a
@@ -11,8 +12,6 @@ import { getChatHistory } from './chat.service.js'
  * histórico da conversa do próprio usuário — o app não envia texto livre.
  */
 export const SPEECH_MAX_CHARS = 4000
-/** Mensagens internas do histórico, gravadas como do Coach mas não exibidas como resposta. */
-const INTERNAL_MARKER = /^\[Dieta de \d+ dias iniciada/
 const SPEECH_TIMEOUT_MS = 30_000
 /** Estimativa para a cota diária: o provedor cobra por caractere/token de texto. */
 const CHARS_PER_TOKEN = 4
@@ -73,6 +72,7 @@ export async function synthesizeLastReply(
   userId: string,
   conversationId: string,
   fetchImpl: typeof fetch = fetch,
+  expectedReply?: string,
 ): Promise<{ audio: string; mimeType: SpeechMimeType }> {
   if (!env.COACH_SPEECH_ENABLED) throw unavailable()
   assertAiTariffConfigured('speech_synthesis')
@@ -82,9 +82,12 @@ export async function synthesizeLastReply(
   // ficam no histórico para o modelo, mas não são falados.
   const reply = [...messages]
     .reverse()
-    .find((m) => m.role === 'assistant' && !INTERNAL_MARKER.test(m.content.trim()))
+    .find((m) => m.role === 'assistant' && !isInternalChatMarker(m.content))
   const input = reply ? speechText(reply.content) : ''
   if (!input) throw new AppError(404, 'NO_REPLY_TO_SPEAK', 'Ainda não há resposta para ouvir.')
+
+  if (expectedReply !== undefined && reply?.content !== expectedReply)
+    throw new AppError(409, 'SPEECH_REPLY_CHANGED', 'A resposta da conversa já mudou.')
 
   await checkDailyQuota(fastify, userId)
 
@@ -129,6 +132,27 @@ export async function synthesizeLastReply(
   }
   if (bytes.byteLength === 0) throw failed()
 
+  // A resposta efetiva prevalece sobre response_format (roteamento/fallback do provedor).
+  const contentType = res.headers.get('content-type')
+  const mediaType = contentType?.split(';')[0].trim().toLowerCase()
+  let mimeType: SpeechMimeType
+  let audio: Buffer = Buffer.from(bytes)
+  if (mediaType === 'audio/mpeg' || mediaType === 'audio/mp3') {
+    mimeType = 'audio/mpeg'
+  } else if (mediaType === 'audio/wav' || mediaType === 'audio/x-wav') {
+    mimeType = 'audio/wav'
+  } else if (mediaType === 'audio/pcm' || mediaType === 'audio/x-pcm') {
+    audio = pcmToWav(audio, pcmRate(contentType))
+    mimeType = 'audio/wav'
+  } else if (!mediaType || mediaType === 'application/octet-stream') {
+    // Sem formato declarado, mantém compatibilidade com o formato solicitado.
+    if (format === 'pcm') audio = pcmToWav(audio, pcmRate(contentType))
+    mimeType = format === 'pcm' ? 'audio/wav' : 'audio/mpeg'
+  } else {
+    fastify.log.error({ contentType, model }, 'Formato de voz não suportado')
+    throw failed()
+  }
+
   const tokens = Math.ceil(input.length / CHARS_PER_TOKEN)
   logAiUsage(fastify, {
     feature: 'speech',
@@ -138,8 +162,5 @@ export async function synthesizeLastReply(
     usage: { prompt_tokens: tokens, completion_tokens: 0, total_tokens: tokens },
   })
 
-  if (format === 'mp3')
-    return { audio: Buffer.from(bytes).toString('base64'), mimeType: 'audio/mpeg' }
-  const wav = pcmToWav(Buffer.from(bytes), pcmRate(res.headers.get('content-type')))
-  return { audio: wav.toString('base64'), mimeType: 'audio/wav' }
+  return { audio: audio.toString('base64'), mimeType }
 }

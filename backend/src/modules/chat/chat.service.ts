@@ -11,6 +11,7 @@ import { type CreditTransaction, runCreditOperation } from '../credits/credits.s
 import { createDietJob, getPendingJob } from '../diets/jobs.service.js'
 import { fetchUserContext, formatKnownData, formatUserContext } from './chat-context.js'
 import type { ChatMessageBody, ChatResponse } from './chat.schemas.js'
+import { DIET_STARTED_MARKER_PREFIX } from './history-markers.js'
 
 // ─── System prompt ─────────────────────────────────────────────────────────
 
@@ -177,7 +178,7 @@ export function formatDietStartedMarker(now: Date, tzOffsetMinutes?: number): st
   const mm = String(local.getUTCMonth() + 1).padStart(2, '0')
   const hh = String(local.getUTCHours()).padStart(2, '0')
   const mi = String(local.getUTCMinutes()).padStart(2, '0')
-  return `[Dieta de 7 dias iniciada em ${dd}/${mm} às ${hh}:${mi}]`
+  return `${DIET_STARTED_MARKER_PREFIX}${dd}/${mm} às ${hh}:${mi}]`
 }
 
 // ─── Tool definition para coleta de dados ─────────────────────────────────

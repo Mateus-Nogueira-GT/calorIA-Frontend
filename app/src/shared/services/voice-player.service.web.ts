@@ -10,3 +10,7 @@ export async function saveSpeech(_base64: string, _mimeType: SpeechMimeType): Pr
 export function stopSpeech(): void {}
 
 export async function playSpeech(_uri: string, _onEnd: () => void): Promise<void> {}
+
+export function deleteSpeech(_uri: string): void {}
+
+export function clearSpeechCache(): void {}

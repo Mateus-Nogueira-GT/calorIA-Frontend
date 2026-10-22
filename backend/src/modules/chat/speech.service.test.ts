@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { env } from '../../shared/env.js'
 import { fakeFastify } from '../../shared/testing/fake-fastify.js'
+import { formatDietStartedMarker } from './chat.service.js'
 import { SPEECH_MAX_CHARS, pcmToWav, speechText, synthesizeLastReply } from './speech.service.js'
 
 const USER = '11111111-1111-1111-1111-111111111111'
@@ -98,7 +99,7 @@ describe('synthesizeLastReply', () => {
     const fake = history([
       { role: 'user', content: 'pode gerar' },
       { role: 'assistant', content: 'Perfeito! Vou montar sua dieta agora.' },
-      { role: 'assistant', content: '[Dieta de 7 dias iniciada em 21/10 às 22:40]' },
+      { role: 'assistant', content: formatDietStartedMarker(new Date('2026-10-21T22:40:00Z')) },
     ])
     const fetch = fakeFetch(mp3)
     await synthesizeLastReply(fake.fastify, USER, CONV, fetch.fn)
@@ -181,6 +182,60 @@ describe('synthesizeLastReply', () => {
       fakeFetch(() => mp3('audio/pcm;rate=16000')).fn,
     )
     expect(wavInfo(result.audio).rate).toBe(16000)
+  })
+
+  it('respeita MP3 do provedor mesmo quando pediu PCM', async () => {
+    const fake = history([{ role: 'assistant', content: 'Oi.' }])
+    const result = await synthesizeLastReply(
+      fake.fastify,
+      USER,
+      CONV,
+      fakeFetch(() => mp3('audio/mpeg')).fn,
+    )
+    expect(result).toEqual({ audio: Buffer.from(PCM).toString('base64'), mimeType: 'audio/mpeg' })
+  })
+
+  it('recusa resposta diferente da exibida antes de chamar o provedor', async () => {
+    const fake = history([{ role: 'assistant', content: 'Segunda resposta.' }])
+    const fetch = fakeFetch(mp3)
+    await expect(
+      synthesizeLastReply(fake.fastify, USER, CONV, fetch.fn, 'Primeira resposta.'),
+    ).rejects.toMatchObject({ statusCode: 409, code: 'SPEECH_REPLY_CHANGED' })
+    expect(fetch.calls).toHaveLength(0)
+  })
+
+  it('PCM declarado prevalece sobre a configuração MP3', async () => {
+    env.OPENAI_TTS_FORMAT = 'mp3'
+    const result = await synthesizeLastReply(
+      history([{ role: 'assistant', content: 'Oi.' }]).fastify,
+      USER,
+      CONV,
+      fakeFetch(mp3).fn,
+    )
+    expect(result.mimeType).toBe('audio/wav')
+    expect(wavInfo(result.audio).data).toEqual([...PCM])
+  })
+
+  it('WAV pronto não recebe outro cabeçalho e formato desconhecido falha', async () => {
+    const fake = history([{ role: 'assistant', content: 'Oi.' }])
+    const wav = pcmToWav(Buffer.from(PCM), 24000)
+    const result = await synthesizeLastReply(
+      fake.fastify,
+      USER,
+      CONV,
+      fakeFetch(() => new Response(wav, { headers: { 'Content-Type': 'audio/wav' } })).fn,
+    )
+    expect(result).toEqual({ audio: wav.toString('base64'), mimeType: 'audio/wav' })
+    await expect(
+      synthesizeLastReply(fake.fastify, USER, CONV, fakeFetch(() => mp3('text/html')).fn),
+    ).rejects.toMatchObject({ code: 'SPEECH_FAILED' })
+  })
+
+  it('aceita a resposta esperada quando corresponde ao histórico', async () => {
+    const fake = history([{ role: 'assistant', content: 'Oi.' }])
+    await expect(
+      synthesizeLastReply(fake.fastify, USER, CONV, fakeFetch(mp3).fn, 'Oi.'),
+    ).resolves.toMatchObject({ mimeType: 'audio/wav' })
   })
 
   it('formato mp3 configurado: repassa o MP3 sem converter', async () => {

@@ -7,19 +7,19 @@ import {
 } from 'fastify-type-provider-zod'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AppError } from '../../shared/errors.js'
-import { fakeFastify } from '../../shared/testing/fake-fastify.js'
+import { type DbRoute, fakeFastify } from '../../shared/testing/fake-fastify.js'
 import chatRoutes from './chat.routes.js'
 import { TRANSCRIBE_AUDIO_MAX_CHARS, TRANSCRIBE_BODY_LIMIT } from './chat.schemas.js'
 
 const USER = '11111111-1111-1111-1111-111111111111'
 
 /** App mínimo: JWT simétrico, db falso e o mesmo tratamento de erro do server.ts. */
-async function buildTestApp() {
+async function buildTestApp(routes: DbRoute[] = []) {
   const app = Fastify().withTypeProvider<ZodTypeProvider>()
   app.setValidatorCompiler(validatorCompiler)
   app.setSerializerCompiler(serializerCompiler)
   await app.register(fastifyJwt, { secret: 'test-secret' })
-  app.decorate('db', fakeFastify().fastify.db)
+  app.decorate('db', fakeFastify(routes).fastify.db)
   app.setErrorHandler((error: FastifyError, _request, reply) => {
     if (error instanceof AppError)
       return reply.status(error.statusCode).send({ error: error.code, message: error.message })
@@ -166,6 +166,42 @@ describe('POST /chat/speech', () => {
       payload: { conversation_id: 'nao-e-uuid' },
     })
     expect(res.statusCode).toBe(400)
+  })
+
+  it('resposta esperada diferente → 409 sem chamar o provedor', async () => {
+    const fetchSpy = vi.fn()
+    vi.stubGlobal('fetch', fetchSpy)
+    const { app, auth } = await buildTestApp([
+      [
+        'FROM chat_history',
+        [{ messages: [{ role: 'assistant', content: 'Segunda resposta.' }], status: 'collecting' }],
+      ],
+    ])
+    const res = await app.inject({
+      method: 'POST',
+      url: '/chat/speech',
+      headers: auth,
+      payload: {
+        conversation_id: '22222222-2222-2222-2222-222222222222',
+        expected_reply: 'Primeira resposta.',
+      },
+    })
+    expect(res.statusCode).toBe(409)
+    expect(res.json().error).toBe('SPEECH_REPLY_CHANGED')
+    expect(fetchSpy).not.toHaveBeenCalled()
+    await app.close()
+  })
+
+  it('resposta esperada vazia → 400', async () => {
+    const { app, auth } = await buildTestApp()
+    const res = await app.inject({
+      method: 'POST',
+      url: '/chat/speech',
+      headers: auth,
+      payload: { conversation_id: '22222222-2222-2222-2222-222222222222', expected_reply: '' },
+    })
+    expect(res.statusCode).toBe(400)
+    await app.close()
   })
 
   it('conversa que não é do usuário → 404 sem chamar o provedor', async () => {
