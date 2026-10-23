@@ -1,11 +1,7 @@
 import axios from 'axios';
 import api from './api';
 import { notifyCreditChange } from './credits.service';
-import {
-  beginRequest,
-  finishRequest,
-  isDefinitiveRejection,
-} from './operation-requests';
+import { beginRequest, finishRequest, isDefinitiveRejection } from './operation-requests';
 import { bindRequestToOwner, captureSessionOwner, isCurrentOwner } from './session-owner';
 
 export interface ScanItem {
@@ -17,6 +13,8 @@ export interface ScanItem {
   fat: number;
   /** Fibra (g). null/ausente = sem dado. */
   fiber?: number | null;
+  /** Peso estimado/revisado da quantidade do item. Ausente em resultados antigos. */
+  weightGrams?: number | null;
   confidence: number;
   uncertain?: boolean;
 }
@@ -47,6 +45,7 @@ function normalize(data: unknown): ScanResponse {
           carbs: d.carbs ?? 0,
           fat: d.fat ?? 0,
           fiber: d.fiber ?? null,
+          weightGrams: d.weightGrams ?? null,
           confidence: d.confidence ?? 1,
         },
       ],
@@ -62,8 +61,7 @@ export const scannerService = {
     const owner = captureSessionOwner();
     const userId = owner.userId;
     const request = await beginRequest('photo', image);
-    if (!isCurrentOwner(owner) || signal?.aborted)
-      throw new axios.CanceledError();
+    if (!isCurrentOwner(owner) || signal?.aborted) throw new axios.CanceledError();
     const cancelPending = () => {
       if (!isCurrentOwner(owner)) return;
       const cancellation = bindRequestToOwner(owner);

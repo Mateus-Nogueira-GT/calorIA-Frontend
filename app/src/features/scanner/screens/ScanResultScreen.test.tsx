@@ -105,3 +105,44 @@ describe('ScanResultScreen', () => {
     });
   });
 });
+
+it('mostra alimentos separados e revisa peso, nutrientes e total pela mesma ação do store', () => {
+  useScannerStore.setState({
+    items: [
+      {
+        id: 'rice',
+        name: 'Arroz',
+        weightGrams: 200,
+        calories: 260,
+        protein: 5,
+        carbs: 56,
+        fat: 1,
+        confidence: 0.8,
+      },
+      {
+        id: 'chicken',
+        name: 'Frango',
+        weightGrams: 200,
+        calories: 330,
+        protein: 62,
+        carbs: 0,
+        fat: 7,
+        confidence: 0.8,
+      },
+    ],
+    invalidWeightIds: [],
+  });
+  const tree = render(
+    <ScanResultScreen navigation={navigation} route={{ key: 'k', name: 'ScanResult' } as never} />,
+  );
+  expect(tree.getAllByText('Peso estimado: 200 g')).toHaveLength(2);
+  expect(tree.getByText('Total: 590 kcal')).toBeTruthy();
+  fireEvent.press(tree.getByLabelText('Editar Arroz'));
+  fireEvent.changeText(tree.getByTestId('scan-item-weightGrams'), '100');
+  expect(tree.getByTestId('scan-item-calories').props.value).toBe('130');
+  expect(tree.getByText('Total: 460 kcal')).toBeTruthy();
+  fireEvent.press(tree.getByText('Concluir'));
+  expect(tree.getByText('Peso estimado: 100 g')).toBeTruthy();
+  expect(tree.getByText('130 kcal')).toBeTruthy();
+  expect(tree.getByText('330 kcal')).toBeTruthy();
+});

@@ -117,13 +117,18 @@ describe('AI wallet integration boundary', () => {
             message: {
               parsed: {
                 is_food: true,
-                name: 'Arroz',
-                calories: 100,
-                protein: 2,
-                carbs: 20,
-                fat: 1,
-                fiber: 1,
-                confidence: 0.9,
+                items: [
+                  {
+                    weightGrams: 100,
+                    name: 'Arroz',
+                    calories: 100,
+                    protein: 2,
+                    carbs: 20,
+                    fat: 1,
+                    fiber: 1,
+                    confidence: 0.9,
+                  },
+                ],
               },
             },
           },

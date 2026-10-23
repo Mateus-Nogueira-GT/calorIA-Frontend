@@ -12,6 +12,7 @@ type Props = ScannerStackScreenProps<'ScanResult'>;
 
 export function ScanResultScreen({ navigation }: Props): React.JSX.Element {
   const items = useScannerStore((s) => s.items);
+  const invalidWeightIds = useScannerStore((s) => s.invalidWeightIds);
   const error = useScannerStore((s) => s.error);
   const updateItem = useScannerStore((s) => s.updateItem);
   const removeItem = useScannerStore((s) => s.removeItem);
@@ -52,6 +53,12 @@ export function ScanResultScreen({ navigation }: Props): React.JSX.Element {
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.content}>
+        {items.length > 0 ? (
+          <Text style={styles.portionNote}>
+            Estimativa visual da quantidade inteira fotografada. Confira o peso e ajuste para a
+            porção que você vai consumir. Os nutrientes acompanham o peso de cada alimento.
+          </Text>
+        ) : null}
         {items.length === 0 ? (
           <Text style={styles.empty}>Não detectei alimentos. Adicione manualmente.</Text>
         ) : null}
@@ -74,7 +81,11 @@ export function ScanResultScreen({ navigation }: Props): React.JSX.Element {
             </Button>
           </>
         ) : (
-          <Button onPress={onConfirm} loading={saving} disabled={items.length === 0}>
+          <Button
+            onPress={onConfirm}
+            loading={saving}
+            disabled={items.length === 0 || invalidWeightIds.length > 0}
+          >
             Confirmar e adicionar ao diário
           </Button>
         )}
@@ -86,6 +97,11 @@ export function ScanResultScreen({ navigation }: Props): React.JSX.Element {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.brandBackground },
   content: { ...screenShellStyle, padding: spacing.lg },
+  portionNote: {
+    fontSize: typography.fontSize.sm,
+    color: colors.brandTextMuted,
+    marginBottom: spacing.md,
+  },
   empty: {
     fontSize: typography.fontSize.base,
     color: colors.brandTextMuted,

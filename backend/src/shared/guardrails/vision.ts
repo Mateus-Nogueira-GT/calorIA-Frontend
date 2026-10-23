@@ -8,14 +8,17 @@ export const VISION_MAX_KCAL = 3000
 export const VISION_UNCERTAIN_BELOW = 0.5
 const KCAL_MISMATCH_TOLERANCE = 0.25
 
-export function sanitizeVisionResult(a: {
-  calories: number
-  protein: number
-  carbs: number
-  fat: number
-  fiber?: number
-  confidence: number
-}): {
+export function sanitizeVisionResult(
+  a: {
+    calories: number
+    protein: number
+    carbs: number
+    fat: number
+    fiber?: number
+    confidence: number
+  },
+  maxCalories = VISION_MAX_KCAL,
+): {
   calories: number
   protein: number
   carbs: number
@@ -37,13 +40,13 @@ export function sanitizeVisionResult(a: {
   ) {
     calories = Math.round(expected)
   }
-  if (calories > VISION_MAX_KCAL) {
-    const factor = VISION_MAX_KCAL / calories
+  if (calories > maxCalories) {
+    const factor = maxCalories / calories
     protein = Math.round(protein * factor)
     carbs = Math.round(carbs * factor)
     fat = Math.round(fat * factor)
     if (fiber != null) fiber = Math.round(fiber * factor)
-    calories = VISION_MAX_KCAL
+    calories = maxCalories
   }
 
   const confidence = Math.min(1, Math.max(0, a.confidence))

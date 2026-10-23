@@ -18,6 +18,8 @@ export interface Meal {
 }
 
 export interface AddMealPayload {
+  /** Peso revisado no scanner; persistido em meal_items.quantity_g. */
+  weightGrams?: number;
   name: string;
   calories: number;
   protein: number;
@@ -63,6 +65,5 @@ export const foodLogService = {
   /** Corrige uma refeição (ex.: a IA errou). A data não muda. */
   updateMeal: (id: string, data: Omit<AddMealPayload, 'date'>) =>
     api.patch<Meal>(`/food-log/${id}`, data).then((r) => r.data),
-  deleteMeal: (id: string) =>
-    api.delete(`/food-log/${id}`).then((r) => r.data),
+  deleteMeal: (id: string) => api.delete(`/food-log/${id}`).then((r) => r.data),
 };

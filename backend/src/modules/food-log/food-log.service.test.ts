@@ -122,3 +122,25 @@ describe('updateMealBodySchema', () => {
     expect(updateMealBodySchema.safeParse(body).success).toBe(true)
   })
 })
+
+describe('peso revisado do scanner', () => {
+  it('grava as gramas recebidas na coluna quantity_g existente', async () => {
+    const { fastify, calls } = fakeFastify([
+      [COLS, [{ n: 2 }]],
+      ['INSERT INTO meals', [{ id: MEAL, logged_at: '2026-10-22 12:00:00+00' }]],
+    ])
+    await addMeal(fastify, USER, { ...body, weightGrams: 250 })
+    expect(calls.find((c) => c.sql.includes('INSERT INTO meal_items'))?.params).toEqual(
+      expect.arrayContaining([250]),
+    )
+  })
+  it('edição de cliente sem campo peso preserva a quantidade salva', async () => {
+    const { fastify, calls } = fakeFastify([
+      [COLS, [{ n: 2 }]],
+      ['UPDATE meals', [{ id: MEAL, logged_at: '2026-10-22 12:00:00+00', meal_type: 'lunch' }]],
+      ['SELECT quantity_g', [{ quantity_g: '275.5' }]],
+    ])
+    await updateMeal(fastify, USER, MEAL, body)
+    expect(calls.find((c) => c.sql.includes('INSERT INTO meal_items'))?.params).toContain(275.5)
+  })
+})

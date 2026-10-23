@@ -1,6 +1,7 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors, typography, spacing } from '@theme';
+import { roundScanAmount } from '@shared/utils/scan-portion';
 import { ScanItemRow } from './ScanItemRow';
 import type { ScanItem } from '@shared/services/scanner.service';
 
@@ -11,17 +12,22 @@ interface Props {
   onAddManual: () => void;
 }
 
-export function ScanResultList({ items, onChange, onRemove, onAddManual }: Props): React.JSX.Element {
+export function ScanResultList({
+  items,
+  onChange,
+  onRemove,
+  onAddManual,
+}: Props): React.JSX.Element {
   const totalKcal = items.reduce((acc, i) => acc + (i.calories || 0), 0);
   return (
     <View>
       {items.map((i) => (
         <ScanItemRow key={i.id} item={i} onChange={onChange} onRemove={onRemove} />
       ))}
-      <Pressable onPress={onAddManual} style={styles.add} accessibilityRole='button'>
+      <Pressable onPress={onAddManual} style={styles.add} accessibilityRole="button">
         <Text style={styles.addText}>＋ Adicionar item</Text>
       </Pressable>
-      <Text style={styles.total}>Total: {totalKcal} kcal</Text>
+      <Text style={styles.total}>Total: {roundScanAmount(totalKcal)} kcal</Text>
     </View>
   );
 }

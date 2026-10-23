@@ -5,6 +5,7 @@ import { scannerService } from '@shared/services/scanner.service';
 import type { ScanItem } from '@shared/services/scanner.service';
 import { foodLogService } from '@shared/services/food-log.service';
 import { useFoodLogStore } from '@features/food-log/store';
+import { isValidScanWeight, roundScanAmount, scaleScanPortion } from '@shared/utils/scan-portion';
 import { todayString } from '@shared/utils/date';
 import { showAlert } from '@shared/utils/show-alert';
 import { captureSessionOwner, isCurrentOwner } from '@shared/services/session-owner';
@@ -13,6 +14,7 @@ interface ScannerState {
   image: string | null;
   items: ScanItem[];
   isAnalyzing: boolean;
+  invalidWeightIds: string[];
   error: string | null;
 
   analyze: (image: string, options?: { guest?: boolean }) => Promise<void>;
@@ -28,6 +30,7 @@ interface ScannerState {
 const initialState = {
   image: null as string | null,
   items: [] as ScanItem[],
+  invalidWeightIds: [] as string[],
   isAnalyzing: false,
   error: null as string | null,
 };
@@ -56,7 +59,7 @@ export const useScannerStore = create<ScannerState>((set, get) => ({
         request !== analysisGeneration
       )
         return;
-      set({ items: res.items, isAnalyzing: false });
+      set({ items: res.items, invalidWeightIds: [], isAnalyzing: false });
       void res.acknowledge?.();
     } catch (e) {
       if (
@@ -82,9 +85,34 @@ export const useScannerStore = create<ScannerState>((set, get) => ({
   },
 
   updateItem: (id, patch) =>
-    set((s) => ({ items: s.items.map((i) => (i.id === id ? { ...i, ...patch } : i)) })),
+    set((s) => {
+      if (!s.items.some((item) => item.id === id)) return {};
+      if (patch.weightGrams != null && !isValidScanWeight(patch.weightGrams)) {
+        // Mantém a última porção válida para poder corrigir o campo sem perder a base.
+        return { invalidWeightIds: [...new Set([...s.invalidWeightIds, id])] };
+      }
+      return {
+        invalidWeightIds:
+          patch.weightGrams === undefined
+            ? s.invalidWeightIds
+            : s.invalidWeightIds.filter((value) => value !== id),
+        items: s.items.map((item) =>
+          item.id !== id
+            ? item
+            : {
+                ...item,
+                ...(patch.weightGrams != null ? scaleScanPortion(item, patch.weightGrams) : {}),
+                ...patch,
+              },
+        ),
+      };
+    }),
 
-  removeItem: (id) => set((s) => ({ items: s.items.filter((i) => i.id !== id) })),
+  removeItem: (id) =>
+    set((s) => ({
+      items: s.items.filter((i) => i.id !== id),
+      invalidWeightIds: s.invalidWeightIds.filter((value) => value !== id),
+    })),
 
   addManualItem: () =>
     set((s) => ({
@@ -104,6 +132,13 @@ export const useScannerStore = create<ScannerState>((set, get) => ({
     })),
 
   confirm: async () => {
+    if (
+      get().invalidWeightIds.length > 0 ||
+      get().items.some((item) => item.weightGrams != null && !isValidScanWeight(item.weightGrams))
+    ) {
+      showAlert('Confira o peso', 'Informe um peso entre 0,1 g e 100.000 g em cada item editado.');
+      throw new Error('SCAN_CONFIRM_INVALID_WEIGHT');
+    }
     const valid = get().items.filter((i) => i.name.trim().length > 0);
     // M7: sem itens válidos o fluxo caía direto no reset e o modal fechava como
     // se tivesse salvo — o usuário acreditava ter registrado a refeição.
@@ -124,11 +159,12 @@ export const useScannerStore = create<ScannerState>((set, get) => ({
           .addMeal(
             {
               name: i.name.trim(),
-              calories: i.calories,
-              protein: i.protein,
-              carbs: i.carbs,
-              fat: i.fat,
-              fiber: i.fiber ?? null,
+              calories: roundScanAmount(i.calories),
+              protein: roundScanAmount(i.protein),
+              carbs: roundScanAmount(i.carbs),
+              fat: roundScanAmount(i.fat),
+              fiber: i.fiber == null ? null : roundScanAmount(i.fiber),
+              ...(i.weightGrams != null ? { weightGrams: i.weightGrams } : {}),
             },
             owner,
           )
