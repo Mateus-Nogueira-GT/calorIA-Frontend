@@ -26,6 +26,7 @@ export const listMealsQuerySchema = z.object({
 })
 
 export const addMealBodySchema = z.object({
+  weightGrams: z.number().finite().min(0.1).max(100_000).optional(),
   name: z.string().min(1, 'Nome é obrigatório').max(120),
   calories: z.number().min(0),
   protein: z.number().min(0),

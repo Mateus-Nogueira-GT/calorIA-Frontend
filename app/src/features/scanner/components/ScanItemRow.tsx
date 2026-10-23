@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { colors, typography, spacing, radius } from '@theme';
+import { isValidScanWeight, roundScanAmount, scaleScanPortion } from '@shared/utils/scan-portion';
 import { ConfidenceBadge } from './ConfidenceBadge';
 import type { ScanItem } from '@shared/services/scanner.service';
 
@@ -11,6 +12,7 @@ interface Props {
 }
 
 const NUM_FIELDS: { key: keyof ScanItem; label: string }[] = [
+  { key: 'weightGrams', label: 'Peso (g)' },
   { key: 'calories', label: 'Calorias (kcal)' },
   { key: 'protein', label: 'Proteína (g)' },
   { key: 'carbs', label: 'Carboidratos (g)' },
@@ -23,11 +25,11 @@ type DraftState = Record<string, string>;
 /** Linha de leitura: macros por extenso; fibra só quando existe o dado. */
 export function macroSummary(item: ScanItem): string {
   const parts = [
-    `Proteína ${item.protein}g`,
-    `Carboidratos ${item.carbs}g`,
-    `Gordura ${item.fat}g`,
+    `Proteína ${roundScanAmount(item.protein)}g`,
+    `Carboidratos ${roundScanAmount(item.carbs)}g`,
+    `Gordura ${roundScanAmount(item.fat)}g`,
   ];
-  if (item.fiber != null) parts.push(`Fibra ${item.fiber}g`);
+  if (item.fiber != null) parts.push(`Fibra ${roundScanAmount(item.fiber)}g`);
   return parts.join(' · ');
 }
 
@@ -37,6 +39,10 @@ export function macroSummary(item: ScanItem): string {
  * letras devolve undefined: não altera o valor (não vira "sem dado" calado).
  */
 function parseField(key: keyof ScanItem, raw: string): number | null | undefined {
+  if (key === 'weightGrams') {
+    const parsedWeight = Number(raw.trim().replace(',', '.'));
+    return isValidScanWeight(parsedWeight) ? parsedWeight : 0;
+  }
   const parsed = parseFloat(raw.replace(',', '.'));
   if (!isNaN(parsed)) return parsed;
   if (key !== 'fiber') return 0;
@@ -47,6 +53,7 @@ export function ScanItemRow({ item, onChange, onRemove }: Props): React.JSX.Elem
   // Feedback 2026-10-12: os campos já eram editáveis, mas nada dizia isso.
   // Agora o item aparece em leitura com um botão "Editar" explícito; o item
   // manual (sem nome) já nasce em edição.
+  const [weightTouched, setWeightTouched] = useState(false);
   const [editing, setEditing] = useState(item.name.trim() === '');
   const [drafts, setDrafts] = useState<DraftState>(() =>
     Object.fromEntries(
@@ -54,31 +61,42 @@ export function ScanItemRow({ item, onChange, onRemove }: Props): React.JSX.Elem
     ),
   );
 
+  const weightError =
+    (weightTouched || item.weightGrams != null) &&
+    !isValidScanWeight(Number(drafts.weightGrams?.replace(',', '.')));
+
   return (
     <View style={styles.card}>
       <View style={styles.headerRow}>
         {editing ? (
           <TextInput
-            testID='scan-item-name'
+            testID="scan-item-name"
             style={styles.nameInput}
             value={item.name}
-            placeholder='Nome do alimento'
+            placeholder="Nome do alimento"
             placeholderTextColor={colors.brandTextMuted}
             onChangeText={(name) => onChange(item.id, { name })}
           />
         ) : (
           <View style={styles.readInfo}>
             <Text style={styles.readName}>{item.name}</Text>
+            <Text style={styles.readWeight}>
+              {item.weightGrams == null
+                ? 'Peso não informado'
+                : `Peso estimado: ${roundScanAmount(item.weightGrams)} g`}
+            </Text>
             <Text style={styles.readMacros}>{macroSummary(item)}</Text>
           </View>
         )}
-        {editing ? null : <Text style={styles.readKcal}>{`${item.calories} kcal`}</Text>}
+        {editing ? null : (
+          <Text style={styles.readKcal}>{`${roundScanAmount(item.calories)} kcal`}</Text>
+        )}
         <Pressable
-          testID='scan-item-remove'
+          testID="scan-item-remove"
           onPress={() => onRemove(item.id)}
           hitSlop={8}
-          accessibilityRole='button'
-          accessibilityLabel='Remover'
+          accessibilityRole="button"
+          accessibilityLabel="Remover"
         >
           <Text style={styles.remove}>✕</Text>
         </Pressable>
@@ -92,10 +110,30 @@ export function ScanItemRow({ item, onChange, onRemove }: Props): React.JSX.Elem
                 testID={`scan-item-${f.key}`}
                 style={styles.macroInput}
                 value={drafts[f.key as string] ?? ''}
-                keyboardType='numeric'
+                accessibilityLabel={f.label}
+                keyboardType="numeric"
                 onChangeText={(v) => {
                   setDrafts((prev) => ({ ...prev, [f.key]: v }));
+                  if (f.key === 'weightGrams') setWeightTouched(true);
                   const value = parseField(f.key, v);
+                  if (
+                    f.key === 'weightGrams' &&
+                    typeof value === 'number' &&
+                    isValidScanWeight(value)
+                  ) {
+                    const scaled = scaleScanPortion(item, value);
+                    setDrafts((prev) => ({
+                      ...prev,
+                      ...Object.fromEntries(
+                        Object.entries(scaled)
+                          .filter(([key]) => key !== 'weightGrams')
+                          .map(([key, amount]) => [
+                            key,
+                            typeof amount === 'number' ? String(roundScanAmount(amount)) : '',
+                          ]),
+                      ),
+                    }));
+                  }
                   if (value !== undefined) {
                     onChange(item.id, { [f.key]: value } as Partial<ScanItem>);
                   }
@@ -105,9 +143,15 @@ export function ScanItemRow({ item, onChange, onRemove }: Props): React.JSX.Elem
           ))}
         </View>
       ) : null}
+      {editing && weightError ? (
+        <Text style={styles.weightError} accessibilityRole="alert">
+          Informe um peso entre 0,1 g e 100.000 g.
+        </Text>
+      ) : null}
       <Pressable
+        disabled={editing && weightError}
         onPress={() => setEditing((e) => !e)}
-        accessibilityRole='button'
+        accessibilityRole="button"
         accessibilityLabel={editing ? 'Concluir edição' : `Editar ${item.name || 'item'}`}
         style={styles.editBtn}
         hitSlop={8}
@@ -116,7 +160,7 @@ export function ScanItemRow({ item, onChange, onRemove }: Props): React.JSX.Elem
       </Pressable>
       <ConfidenceBadge confidence={item.confidence} />
       {item.uncertain ? (
-        <Text style={styles.uncertain} accessibilityRole='text'>
+        <Text style={styles.uncertain} accessibilityRole="text">
           Estimativa incerta — confira os valores
         </Text>
       ) : null}
@@ -132,7 +176,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
     gap: 10,
   },
-  headerRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  headerRow: { flexDirection: 'row', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 },
   nameInput: {
     flex: 1,
     fontSize: typography.fontSize.md,
@@ -142,7 +186,11 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.brandDivider,
     paddingVertical: spacing.xs,
   },
-  remove: { fontSize: typography.fontSize.md, color: colors.brandTextMuted, paddingHorizontal: spacing.xs },
+  remove: {
+    fontSize: typography.fontSize.md,
+    color: colors.brandTextMuted,
+    paddingHorizontal: spacing.xs,
+  },
   macrosRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   macroField: { flexGrow: 1, flexBasis: '45%' },
   macroLabel: { fontSize: typography.fontSize.xs, color: colors.brandTextMuted, marginBottom: 2 },
@@ -155,7 +203,13 @@ const styles = StyleSheet.create({
     color: colors.brandText,
   },
   uncertain: { fontSize: typography.fontSize.xs, color: colors.warning },
-  readInfo: { flex: 1 },
+  readInfo: { flexGrow: 1, flexBasis: '65%', minWidth: 0 },
+  readWeight: {
+    fontSize: typography.fontSize.sm,
+    color: colors.brandTextMuted,
+    marginTop: spacing.xs,
+  },
+  weightError: { fontSize: typography.fontSize.sm, color: colors.error },
   readName: {
     fontSize: typography.fontSize.md,
     fontFamily: typography.fontFamily.semiBold,

@@ -251,3 +251,75 @@ describe('confirm e troca de sessão/tentativa (D01)', () => {
     );
   });
 });
+
+describe('porções do scanner até a escrita no diário', () => {
+  beforeEach(() => {
+    useScannerStore.getState().reset();
+    jest.clearAllMocks();
+    foodLogService.addMeal.mockResolvedValue({ id: 'saved' });
+  });
+  it('revisa gramas e envia nutrientes proporcionais de cada alimento', async () => {
+    useScannerStore.setState({
+      items: [
+        { ...item('arroz'), weightGrams: 200, calories: 260, fiber: 2 },
+        {
+          ...item('frango'),
+          name: 'Frango',
+          weightGrams: 200,
+          calories: 330,
+          protein: 62,
+          carbs: 0,
+          fat: 7,
+          fiber: 0,
+        },
+      ],
+    });
+    useScannerStore.getState().updateItem('arroz', { weightGrams: 100 });
+    await useScannerStore.getState().confirm();
+    expect(foodLogService.addMeal).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        name: 'Arroz',
+        weightGrams: 100,
+        calories: 130,
+        protein: 2,
+        carbs: 22,
+        fiber: 1,
+      }),
+      expect.anything(),
+    );
+    expect(foodLogService.addMeal).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ name: 'Frango', weightGrams: 200, calories: 330, protein: 62 }),
+      expect.anything(),
+    );
+  });
+  it('peso inválido bloqueia confirmação e sua correção usa a última base válida', async () => {
+    useScannerStore.setState({ items: [{ ...item('rice'), weightGrams: 200 }] });
+    useScannerStore.getState().updateItem('rice', { weightGrams: 0 });
+    await expect(useScannerStore.getState().confirm()).rejects.toThrow(
+      'SCAN_CONFIRM_INVALID_WEIGHT',
+    );
+    expect(foodLogService.addMeal).not.toHaveBeenCalled();
+    useScannerStore.getState().updateItem('rice', { weightGrams: 100 });
+    expect(useScannerStore.getState().items[0].calories).toBe(100);
+    expect(useScannerStore.getState().invalidWeightIds).toEqual([]);
+    await expect(useScannerStore.getState().confirm()).resolves.toBeUndefined();
+  });
+  it('falha parcial conserva peso revisado e retry não duplica alimento salvo', async () => {
+    useScannerStore.setState({
+      items: [
+        { ...item('1'), weightGrams: 100 },
+        { ...item('2'), weightGrams: 250 },
+      ],
+    });
+    foodLogService.addMeal
+      .mockResolvedValueOnce({ id: 'saved-1' })
+      .mockRejectedValueOnce(new Error('offline'));
+    await expect(useScannerStore.getState().confirm()).rejects.toThrow('SCAN_CONFIRM_PARTIAL');
+    expect(useScannerStore.getState().items).toMatchObject([{ id: '2', weightGrams: 250 }]);
+    await useScannerStore.getState().confirm();
+    expect(foodLogService.addMeal).toHaveBeenCalledTimes(3);
+    expect(foodLogService.addMeal.mock.calls[2][0].weightGrams).toBe(250);
+  });
+});

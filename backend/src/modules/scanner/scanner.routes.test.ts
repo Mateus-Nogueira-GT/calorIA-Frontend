@@ -15,12 +15,18 @@ const USER = '11111111-1111-1111-1111-111111111111'
 const IMG = 'data:image/jpeg;base64,AAAA'
 const analysis = {
   is_food: true,
-  name: 'Arroz e feijão',
-  calories: 500,
-  protein: 20,
-  carbs: 80,
-  fat: 8,
-  confidence: 0.9,
+  items: [
+    {
+      weightGrams: 400,
+      fiber: 7,
+      name: 'Arroz e feijão',
+      calories: 500,
+      protein: 20,
+      carbs: 80,
+      fat: 8,
+      confidence: 0.9,
+    },
+  ],
 }
 
 /** App mínimo: JWT simétrico, rate limit, db/openai falsos e o error handler do server.ts. */

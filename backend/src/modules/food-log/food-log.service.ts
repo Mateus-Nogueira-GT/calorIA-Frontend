@@ -68,7 +68,10 @@ export async function listMeals(
   }))
 }
 
-type MealValues = Pick<AddMealBody, 'name' | 'calories' | 'protein' | 'carbs' | 'fat' | 'fiber'>
+type MealValues = Pick<
+  AddMealBody,
+  'name' | 'calories' | 'protein' | 'carbs' | 'fat' | 'fiber' | 'weightGrams'
+>
 
 /** Item único da refeição do diário livre; fibra só se a coluna existir. */
 async function insertMealItem(
@@ -80,13 +83,13 @@ async function insertMealItem(
   if (withFiber) {
     await sql`
       INSERT INTO meal_items (meal_id, food_name, quantity_g, calories, protein_g, carbs_g, fat_g, fiber_g, source)
-      VALUES (${mealId}, ${data.name}, 100, ${data.calories}, ${data.protein}, ${data.carbs}, ${data.fat}, ${data.fiber ?? null}, 'manual')
+      VALUES (${mealId}, ${data.name}, ${data.weightGrams ?? 100}, ${data.calories}, ${data.protein}, ${data.carbs}, ${data.fat}, ${data.fiber ?? null}, 'manual')
     `
     return
   }
   await sql`
     INSERT INTO meal_items (meal_id, food_name, quantity_g, calories, protein_g, carbs_g, fat_g, source)
-    VALUES (${mealId}, ${data.name}, 100, ${data.calories}, ${data.protein}, ${data.carbs}, ${data.fat}, 'manual')
+    VALUES (${mealId}, ${data.name}, ${data.weightGrams ?? 100}, ${data.calories}, ${data.protein}, ${data.carbs}, ${data.fat}, 'manual')
   `
 }
 
@@ -143,8 +146,17 @@ export async function updateMeal(
 
     // Mesmo modelo do POST: um item com os valores informados; o trigger
     // recalcula os totais da refeição.
+    // PATCHs antigos não conhecem peso; preserva a quantidade já revisada no scanner.
+    let weightGrams = data.weightGrams
+    if (weightGrams === undefined) {
+      const [existing] = await sql<{ quantity_g: string }[]>`
+        SELECT quantity_g FROM meal_items WHERE meal_id = ${mealId}
+        ORDER BY created_at ASC LIMIT 1
+      `
+      if (existing) weightGrams = Number(existing.quantity_g)
+    }
     await sql`DELETE FROM meal_items WHERE meal_id = ${mealId}`
-    await insertMealItem(sql, mealId, data, withFiber)
+    await insertMealItem(sql, mealId, { ...data, weightGrams }, withFiber)
 
     return {
       id: meal.id,

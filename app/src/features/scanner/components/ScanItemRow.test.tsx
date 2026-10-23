@@ -2,7 +2,15 @@ import React from 'react';
 import { render, fireEvent } from '@testing-library/react-native';
 import { ScanItemRow } from './ScanItemRow';
 
-const item = { id: '1', name: 'Arroz', calories: 200, protein: 4, carbs: 44, fat: 1, confidence: 0.9 };
+const item = {
+  id: '1',
+  name: 'Arroz',
+  calories: 200,
+  protein: 4,
+  carbs: 44,
+  fat: 1,
+  confidence: 0.9,
+};
 
 /** Renderiza e toca em "Editar" — os campos só existem no modo de edição. */
 function renderEditing(props: Partial<React.ComponentProps<typeof ScanItemRow>> = {}) {
@@ -127,4 +135,31 @@ describe('ScanItemRow', () => {
     rerender(<ScanItemRow item={item} onChange={() => {}} onRemove={() => {}} />);
     expect(queryByText('Estimativa incerta — confira os valores')).toBeNull();
   });
+});
+
+it('mostra o peso estimado e permite editar gramas', () => {
+  const onChange = jest.fn();
+  const { getByText, getByTestId } = render(
+    <ScanItemRow item={{ ...item, weightGrams: 200 }} onChange={onChange} onRemove={() => {}} />,
+  );
+  expect(getByText('Peso estimado: 200 g')).toBeTruthy();
+  fireEvent.press(getByText('Editar'));
+  fireEvent.changeText(getByTestId('scan-item-weightGrams'), '100,5');
+  expect(onChange).toHaveBeenCalledWith('1', { weightGrams: 100.5 });
+});
+
+it('resultado antigo sem peso informa a ausência, sem inventar 100 g', () => {
+  const tree = render(<ScanItemRow item={item} onChange={() => {}} onRemove={() => {}} />);
+  expect(tree.getByText('Peso não informado')).toBeTruthy();
+  expect(tree.queryByText('Peso estimado: 100 g')).toBeNull();
+});
+
+it('peso apagado mostra erro e impede concluir a edição', () => {
+  const onChange = jest.fn();
+  const tree = renderEditing({ item: { ...item, weightGrams: 200 }, onChange });
+  fireEvent.changeText(tree.getByTestId('scan-item-weightGrams'), '');
+  expect(onChange).toHaveBeenCalledWith('1', { weightGrams: 0 });
+  expect(tree.getByRole('alert')).toBeTruthy();
+  fireEvent.press(tree.getByText('Concluir'));
+  expect(tree.getByTestId('scan-item-weightGrams')).toBeTruthy();
 });

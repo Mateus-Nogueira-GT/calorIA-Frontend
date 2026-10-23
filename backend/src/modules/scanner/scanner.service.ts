@@ -1,28 +1,38 @@
 import { createHash, randomUUID } from 'node:crypto'
 import type { FastifyInstance } from 'fastify'
 import { zodResponseFormat } from 'openai/helpers/zod.js'
+import { z } from 'zod'
 import { buildModelsField, checkDailyQuota, logAiUsage } from '../../shared/ai-usage.js'
 import { assertAiTariffConfigured } from '../../shared/credit-ai-policy.js'
 import { env } from '../../shared/env.js'
 import { AppError } from '../../shared/errors.js'
-import { sanitizeVisionResult } from '../../shared/guardrails/index.js'
+import { VISION_MAX_KCAL, sanitizeVisionResult } from '../../shared/guardrails/index.js'
 import { runCreditOperation } from '../credits/credits.service.js'
-import { type ScanItem, type ScanResponse, visionAnalysisSchema } from './scanner.schemas.js'
+import {
+  type ScanResponse,
+  scanItemSchema,
+  visionAnalysisSchema,
+  visionItemSchema,
+} from './scanner.schemas.js'
 
-const VISION_SYSTEM_PROMPT = `Você é um nutricionista especialista em análise visual de alimentos.
-Receberá a foto de um prato/refeição e deve estimar os valores nutricionais do que está visível.
+import { SCANNER_ANALYSIS_VERSION, VISION_SYSTEM_PROMPT } from './scanner.prompt.js'
 
-## REGRAS
-- Identifique o prato com um nome curto em português (ex: "Arroz, feijão e frango grelhado").
-- Estime os totais da PORÇÃO INTEIRA visível na foto (não por 100g).
-- calories em kcal; protein, carbs, fat e fiber (fibra alimentar) em gramas. Use números inteiros ou com 1 casa decimal.
-- confidence é a sua confiança na estimativa, entre 0 e 1 (ex: 0.82).
-- Se a imagem NÃO contiver comida (pessoa, paisagem, objeto, etc.), retorne is_food=false
-  e zere os demais valores.
-- Baseie-se em alimentos brasileiros comuns quando houver ambiguidade.`
-
-type CachedItem = Omit<ScanItem, 'id'>
-type CacheResult = { notFood: true } | { notFood: false; item: CachedItem }
+const cacheSchema = z.discriminatedUnion('notFood', [
+  z.object({ version: z.literal(2), notFood: z.literal(true) }),
+  z.object({
+    version: z.literal(2),
+    notFood: z.literal(false),
+    items: z
+      .array(
+        scanItemSchema
+          .omit({ id: true })
+          .extend({ weightGrams: visionItemSchema.shape.weightGrams }),
+      )
+      .min(1)
+      .max(20),
+  }),
+])
+type CacheResult = z.infer<typeof cacheSchema>
 
 async function readCache(fastify: FastifyInstance, hash: string): Promise<CacheResult | null> {
   try {
@@ -30,7 +40,8 @@ async function readCache(fastify: FastifyInstance, hash: string): Promise<CacheR
       SELECT result FROM scan_cache
       WHERE image_hash = ${hash} AND created_at > NOW() - interval '24 hours'
     `
-    return row?.result ?? null
+    const cached = cacheSchema.safeParse(row?.result)
+    return cached.success ? cached.data : null
   } catch (err) {
     fastify.log.warn(err, 'Falha ao ler scan_cache — seguindo sem cache')
     return null
@@ -94,13 +105,14 @@ async function analyzePhotoCore(
   await checkDailyQuota(fastify, userId)
 
   // OP3: a mesma foto reenviada não paga uma chamada nova.
-  const hash = createHash('sha256').update(imageDataUrl).digest('hex')
+  const hash = createHash('sha256')
+    .update(`${SCANNER_ANALYSIS_VERSION}:${imageDataUrl}`)
+    .digest('hex')
   const cached = await readCache(fastify, hash)
   if (cached) {
     if (cached.notFood)
       throw new AppError(422, 'NOT_FOOD', 'Não identificamos comida nesta imagem.')
-    // Cache anterior à fibra não tem o campo — "sem dado", não 0 g.
-    return { items: [{ id: randomUUID(), ...cached.item, fiber: cached.item.fiber ?? null }] }
+    return { items: cached.items.map((item) => ({ id: randomUUID(), ...item })) }
   }
 
   let analysis: import('./scanner.schemas.js').VisionAnalysis
@@ -136,18 +148,24 @@ async function analyzePhotoCore(
     })
     const parsed = completion.choices[0].message.parsed
     if (!parsed) throw new Error('OpenAI retornou análise vazia')
-    analysis = parsed
+    analysis = visionAnalysisSchema.parse(parsed)
+    if (analysis.is_food && analysis.items.length === 0) throw new Error('Análise sem alimentos')
   } catch (err) {
     fastify.log.error({ err }, 'Erro ao analisar foto via Vision')
     throw new AppError(502, 'VISION_ERROR', 'Não foi possível analisar a imagem. Tente novamente.')
   }
 
   if (!analysis.is_food) {
-    writeCache(fastify, hash, { notFood: true })
+    writeCache(fastify, hash, { version: 2, notFood: true })
     throw new AppError(422, 'NOT_FOOD', 'Não identificamos comida nesta imagem.')
   }
 
-  const item: CachedItem = { name: analysis.name, ...sanitizeVisionResult(analysis) }
-  writeCache(fastify, hash, { notFood: false, item })
-  return { items: [{ id: randomUUID(), ...item }] }
+  const items = analysis.items.map((item) => ({
+    name: item.name,
+    weightGrams: item.weightGrams,
+    // Uma panela pode exceder o teto de uma porção sem ser uma saída absurda.
+    ...sanitizeVisionResult(item, Math.max(VISION_MAX_KCAL, item.weightGrams * 9)),
+  }))
+  writeCache(fastify, hash, { version: 2, notFood: false, items })
+  return { items: items.map((item) => ({ id: randomUUID(), ...item })) }
 }

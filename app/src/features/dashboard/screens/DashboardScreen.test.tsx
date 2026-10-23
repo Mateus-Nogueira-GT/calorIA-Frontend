@@ -1,5 +1,5 @@
 import React from 'react';
-import { render } from '@testing-library/react-native';
+import { act, render } from '@testing-library/react-native';
 import { Dimensions, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
@@ -159,4 +159,15 @@ it('total com decimal (450.5) não conta como número longo', () => {
   expect(
     StyleSheet.flatten(getByTestId('dashboard-calorie-summary').props.style).flexDirection,
   ).not.toBe('column');
+});
+
+it('primeiro render sem dieta mostra zero com linha que comporta o glifo e a saudação', async () => {
+  const { getByText, unmount } = renderDashboard();
+  const zero = StyleSheet.flatten(getByText('0').props.style);
+  const greeting = StyleSheet.flatten(getByText('Olá, Joao').props.style);
+  expect(zero.lineHeight).toBeGreaterThanOrEqual(zero.fontSize * 1.2);
+  expect(greeting.lineHeight).toBeGreaterThanOrEqual(greeting.fontSize * 1.2);
+  // Drena o carregamento do diário sem confundir teste de estilo com medição CoreText.
+  await act(async () => {});
+  unmount();
 });
