@@ -24,9 +24,9 @@ export function applyPendingUpdate(windowMs: number = LAUNCH_WINDOW_MS): Promise
   inFlight = (async () => {
     try {
       const check = await Updates.checkForUpdateAsync();
-      if (!check.isAvailable || Date.now() > deadline) return false;
+      if (!check.isAvailable || Date.now() >= deadline) return false;
       const fetched = await Updates.fetchUpdateAsync();
-      if (!fetched.isNew || Date.now() > deadline) return false;
+      if (!fetched.isNew || Date.now() >= deadline) return false;
       await Updates.reloadAsync();
       return true;
     } catch {

@@ -62,3 +62,14 @@ it('em desenvolvimento não faz nada', async () => {
   await expect(applyPendingUpdate()).resolves.toBe(false);
   expect(check).not.toHaveBeenCalled();
 });
+
+it('download no limite da janela não recarrega a navegação recém-liberada', async () => {
+  const now = jest.spyOn(Date, 'now');
+  now.mockReturnValueOnce(0).mockReturnValueOnce(1000).mockReturnValue(6000);
+  try {
+    await expect(applyPendingUpdate(6000)).resolves.toBe(false);
+    expect(reload).not.toHaveBeenCalled();
+  } finally {
+    now.mockRestore();
+  }
+});
