@@ -91,3 +91,28 @@ it('changing account removes the previous ledger while requesting the new ledger
   );
   expect(screen.queryByText('Créditos de boas-vindas')).toBeNull();
 });
+
+it('mostra lançamento de liberação da equipe e crédito ilimitado no lugar do saldo', async () => {
+  (creditsService.wallet as jest.Mock).mockResolvedValue({
+    ...wallet,
+    enforcement_enabled: true,
+    unlimited: true,
+  });
+  ledger.mockResolvedValue({
+    items: [
+      {
+        id: 'g1',
+        units: 50,
+        kind: 'grant',
+        operation_id: null,
+        created_at: '2026-10-15T12:00:00Z',
+      },
+    ],
+    next_cursor: null,
+  });
+  const screen = render(<CreditsScreen />);
+  expect(await screen.findByText('Créditos ilimitados')).toBeTruthy();
+  expect(screen.getByText('Créditos liberados pela equipe')).toBeTruthy();
+  expect(screen.queryByText(/créditos disponíveis/)).toBeNull();
+  expect(screen.queryByText(/Foto: 3 créditos/)).toBeNull();
+});

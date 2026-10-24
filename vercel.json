@@ -5,6 +5,12 @@
     { "source": "/api/(.*)", "destination": "/api/handler" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
+  "headers": [
+    {
+      "source": "/.well-known/apple-app-site-association",
+      "headers": [{ "key": "Content-Type", "value": "application/json" }]
+    }
+  ],
   "functions": {
     "api/handler.js": {
       "maxDuration": 300,

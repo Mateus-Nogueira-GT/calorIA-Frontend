@@ -7,12 +7,14 @@ export interface Wallet {
   units_per_credit: number;
   enforcement_enabled: boolean;
   invites_enabled: boolean;
+  /** Ausente em backend antigo. */
+  unlimited?: boolean;
   policy: { photo_units: number; message_units: number; welcome_units: number; version: string };
 }
 export interface LedgerEntry {
   id: string;
   units: number;
-  kind: 'welcome' | 'debit';
+  kind: 'welcome' | 'debit' | 'grant';
   operation_id: string | null;
   created_at: string;
 }

@@ -5,14 +5,21 @@ import { registerAdminGuard } from '../../shared/require-admin.js'
 import type { JwtPayload } from '../../shared/types.js'
 import { assertInvitesEnabled, createInvite } from '../credit-invites/credit-invites.service.js'
 import { registerCreditErrors } from '../credits/credits.errors.js'
+import { grantCredits, setUnlimited } from '../credits/credit-grants.service.js'
 import { listInvites } from './admin-invites.service.js'
 import { getOverview } from './admin-overview.service.js'
 import { listUsers } from './admin-users.service.js'
 import {
   adminOverviewSchema,
   adminUsersResponseSchema,
+  errorSchema,
+  grantBodySchema,
+  grantResponseSchema,
   invitesQuerySchema,
   periodQuerySchema,
+  unlimitedBodySchema,
+  unlimitedResponseSchema,
+  userIdParamsSchema,
   usersQuerySchema,
 } from './admin.schemas.js'
 const routes: FastifyPluginAsyncZod = async (f) => {
@@ -32,6 +39,49 @@ const routes: FastifyPluginAsyncZod = async (f) => {
     '/users',
     { schema: { querystring: usersQuerySchema, response: { 200: adminUsersResponseSchema } } },
     (req) => listUsers(f, (req.user as JwtPayload).sub, req.query),
+  )
+
+  // Liberação manual e ilimitado (spec C7): independem da flag de convites.
+  f.post(
+    '/users/:id/credits',
+    {
+      schema: {
+        params: userIdParamsSchema,
+        body: grantBodySchema,
+        response: {
+          200: grantResponseSchema,
+          400: errorSchema.describe('Chave de idempotência ausente ou inválida'),
+          404: errorSchema.describe('Usuário não encontrado'),
+          409: errorSchema.describe('Chave já usada em outra liberação'),
+          422: errorSchema.describe('Liberação inválida'),
+        },
+      },
+    },
+    (req) =>
+      grantCredits(
+        f,
+        (req.user as JwtPayload).sub,
+        req.params.id,
+        req.body.credits,
+        typeof req.headers['idempotency-key'] === 'string'
+          ? req.headers['idempotency-key']
+          : undefined,
+        req.body.note,
+      ),
+  )
+  f.put(
+    '/users/:id/unlimited',
+    {
+      schema: {
+        params: userIdParamsSchema,
+        body: unlimitedBodySchema,
+        response: {
+          200: unlimitedResponseSchema,
+          404: errorSchema.describe('Usuário não encontrado'),
+        },
+      },
+    },
+    (req) => setUnlimited(f, (req.user as JwtPayload).sub, req.params.id, req.body.unlimited),
   )
 
   await f.register(invitesRoutes)

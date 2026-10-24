@@ -101,3 +101,13 @@ it('ignores initial malformed invitation links', async () => {
   expect(await screen.findByText('Welcome route')).toBeTruthy();
   await waitFor(() => expect(useInviteStore.getState().token).toBeNull());
 });
+it('universal link do domínio oficial recebido com o app aberto entrega o token ao store', async () => {
+  let handler: (event: { url: string }) => void = () => {};
+  jest.spyOn(Linking, 'addEventListener').mockImplementation((_type, listener) => {
+    handler = listener as typeof handler;
+    return { remove: jest.fn() } as unknown as ReturnType<typeof Linking.addEventListener>;
+  });
+  render(<RootNavigator />);
+  act(() => handler({ url: `https://app.caloriaoficial.com.br/convite#${token}` }));
+  await waitFor(() => expect(useInviteStore.getState().token).toBe(token));
+});

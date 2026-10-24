@@ -47,6 +47,7 @@ if (url && !['localhost', '127.0.0.1', '[::1]'].includes(new URL(url).hostname))
     for (const migration of [
       '20261016012212_credits_and_invites.sql',
       '20261021204335_credits_deletion_key_fix.sql',
+      '20261023120000_credit_grants_unlimited.sql',
       '024_admin_indexes.sql',
     ])
       await db.unsafe(
@@ -171,6 +172,7 @@ if (url && !['localhost', '127.0.0.1', '[::1]'].includes(new URL(url).hostname))
       expect(o.credits).toEqual({
         welcomeAutoUnits: { value: 75, previous: 0 },
         welcomeInviteUnits: { value: 75, previous: 0 },
+        manualUnits: { value: 0, previous: 0 },
         consumedPhotoUnits: { value: 15, previous: 0 },
         consumedMessageUnits: { value: 0, previous: 0 },
         totalBalanceUnits: 60,
@@ -286,6 +288,71 @@ if (url && !['localhost', '127.0.0.1', '[::1]'].includes(new URL(url).hostname))
         admin_user_search: Record<string, unknown>
       }
       expect(entry.admin_user_search).toEqual({ adminId: ADMIN, q: 'bruna', results: 1 })
+    })
+  })
+
+  describe('liberação manual e ilimitado', () => {
+    const post = (id: string, body: unknown, key: string | undefined, headers = adminAuth) =>
+      app.inject({
+        method: 'POST',
+        url: `/admin/users/${id}/credits`,
+        headers: key ? { ...headers, 'idempotency-key': key } : headers,
+        payload: body as never,
+      })
+    const put = (id: string, body: unknown, headers = adminAuth) =>
+      app.inject({
+        method: 'PUT',
+        url: `/admin/users/${id}/unlimited`,
+        headers,
+        payload: body as never,
+      })
+
+    it('não-admin → 404 nas duas rotas (fail-closed)', async () => {
+      expect((await post(C, { credits: 5 }, 'grant-key-00000001', userAuth)).statusCode).toBe(404)
+      expect((await put(C, { unlimited: true }, userAuth)).statusCode).toBe(404)
+    })
+
+    it('admin libera créditos; a resposta passa no schema e repetir a chave não duplica', async () => {
+      const res = await post(C, { credits: 10, note: 'cortesia' }, 'grant-key-00000002')
+      expect(res.statusCode).toBe(200)
+      expect(res.json()).toEqual({ balance_units: 50, available_units: 50, unlimited: false })
+      const again = await post(C, { credits: 10, note: 'cortesia' }, 'grant-key-00000002')
+      expect(again.statusCode).toBe(200)
+      expect(again.json().balance_units).toBe(50)
+    })
+
+    it('sem chave → 400; nota > 100 e créditos fora de 1..1000 → 400; usuário inexistente → 404', async () => {
+      expect((await post(C, { credits: 5 }, undefined)).statusCode).toBe(400)
+      expect(
+        (await post(C, { credits: 5, note: 'x'.repeat(101) }, 'grant-key-00000003')).statusCode,
+      ).toBe(400)
+      expect((await post(C, { credits: 0 }, 'grant-key-00000004')).statusCode).toBe(400)
+      expect((await post(C, { credits: 1001 }, 'grant-key-00000005')).statusCode).toBe(400)
+      expect((await post(randomUUID(), { credits: 5 }, 'grant-key-00000006')).statusCode).toBe(404)
+    })
+
+    it('mesma chave com outro valor → 409', async () => {
+      await post(C, { credits: 5 }, 'grant-key-00000007')
+      expect((await post(C, { credits: 6 }, 'grant-key-00000007')).statusCode).toBe(409)
+    })
+
+    it('PUT unlimited liga e a lista de usuários traz o campo', async () => {
+      const res = await put(C, { unlimited: true })
+      expect(res.statusCode).toBe(200)
+      expect(res.json()).toEqual({ unlimited: true })
+      const { items } = (await get('/users')).json()
+      expect(items.find((u: { id: string }) => u.id === C).unlimited).toBe(true)
+      expect(items.find((u: { id: string }) => u.id === B).unlimited).toBe(false)
+      expect((await put(randomUUID(), { unlimited: true })).statusCode).toBe(404)
+      expect((await put(C, { unlimited: 'sim' })).statusCode).toBe(400)
+    })
+
+    it('visão geral conta a liberação em manual e não em auto/invite', async () => {
+      await post(C, { credits: 10 }, 'grant-key-00000008')
+      const { credits } = (await get('/overview?days=30')).json()
+      expect(credits.manualUnits).toEqual({ value: 50, previous: 0 })
+      expect(credits.welcomeAutoUnits.value).toBe(75)
+      expect(credits.welcomeInviteUnits.value).toBe(0)
     })
   })
 

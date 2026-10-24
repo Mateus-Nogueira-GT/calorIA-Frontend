@@ -10,6 +10,7 @@ import {
 import { formatCredits } from '@shared/services/credits.service';
 import { colors, radius, spacing } from '@theme';
 import { formatDate, formatInt } from '../format';
+import { UserCreditsSheet } from './UserCreditsSheet';
 import { PeriodSelector } from './OverviewTab';
 
 export const SEARCH_DEBOUNCE_MS = 300;
@@ -21,15 +22,38 @@ const SORTS: { value: AdminUserSort; label: string }[] = [
   { value: 'ai_usage', label: 'Mais uso de IA' },
 ];
 
-function UserRow({ user, days }: { user: AdminUserRow; days: AdminPeriod }): React.JSX.Element {
+function UserRow({
+  user,
+  days,
+  onPress,
+}: {
+  user: AdminUserRow;
+  days: AdminPeriod;
+  onPress: () => void;
+}): React.JSX.Element {
   const tags = [
     user.has_active_diet ? 'Dieta ativa' : null,
     user.joined_by_invite ? 'Entrou por convite' : null,
     user.current_streak > 0 ? `${user.current_streak} dias seguidos` : null,
   ].filter(Boolean);
   return (
-    <View style={styles.row} accessible>
-      <Text variant="label">{user.name || 'Sem nome'}</Text>
+    <Pressable
+      style={styles.row}
+      accessible
+      accessibilityRole="button"
+      accessibilityHint="Abre a liberação de créditos"
+      onPress={onPress}
+    >
+      <View style={styles.nameLine}>
+        <Text variant="label">{user.name || 'Sem nome'}</Text>
+        {user.unlimited && (
+          <View style={styles.badge}>
+            <Text variant="caption" style={styles.badgeText}>
+              Ilimitado
+            </Text>
+          </View>
+        )}
+      </View>
       <Text variant="caption" selectable>
         {user.email ?? 'sem e-mail'}
       </Text>
@@ -42,7 +66,7 @@ function UserRow({ user, days }: { user: AdminUserRow; days: AdminPeriod }): Rea
         {formatInt(user.messages)} mensagens em {days} dias
       </Text>
       {tags.length > 0 && <Text variant="caption">{tags.join(' · ')}</Text>}
-    </View>
+    </Pressable>
   );
 }
 
@@ -55,6 +79,7 @@ export function UsersTab(): React.JSX.Element {
   const [cursor, setCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [selected, setSelected] = useState<AdminUserRow | null>(null);
   const version = useRef(0);
 
   // Busca só com 2+ caracteres, depois de uma pausa na digitação.
@@ -120,8 +145,19 @@ export function UsersTab(): React.JSX.Element {
       )}
       {!error && items.length === 0 && !loading && <Text>Nenhum usuário encontrado.</Text>}
       {items.map((user) => (
-        <UserRow key={user.id} user={user} days={days} />
+        <UserRow key={user.id} user={user} days={days} onPress={() => setSelected(user)} />
       ))}
+      {selected && (
+        <UserCreditsSheet
+          user={selected}
+          onClose={() => setSelected(null)}
+          onUpdated={(patch) => {
+            // Reflete o novo saldo na linha sem perder as páginas já carregadas.
+            setItems((old) => old.map((u) => (u.id === selected.id ? { ...u, ...patch } : u)));
+            setSelected((old) => (old ? { ...old, ...patch } : old));
+          }}
+        />
+      )}
       {loading && <Text>Carregando…</Text>}
       {cursor && !loading && (
         <Button variant="secondary" onPress={() => void load(cursor)}>
@@ -145,6 +181,14 @@ const styles = StyleSheet.create({
   },
   sortSelected: { backgroundColor: colors.brandAnchor, borderColor: colors.brandAnchor },
   sortTextSelected: { color: colors.brandBackground },
+  nameLine: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  badge: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: radius.pill,
+    backgroundColor: colors.brandAnchor,
+  },
+  badgeText: { color: colors.brandBackground },
   row: {
     paddingVertical: spacing.md,
     borderBottomWidth: 1,

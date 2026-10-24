@@ -14,6 +14,12 @@
         <category android:name="android.intent.category.BROWSABLE"/>
         <data android:scheme="caloria"/>
       </intent-filter>
+      <intent-filter android:autoVerify="true">
+        <action android:name="android.intent.action.VIEW"/>
+        <category android:name="android.intent.category.DEFAULT"/>
+        <category android:name="android.intent.category.BROWSABLE"/>
+        <data android:scheme="https" android:host="app.caloriaoficial.com.br" android:pathPrefix="/convite"/>
+      </intent-filter>
     </activity>
     <meta-data android:name="expo.modules.updates.ENABLED" android:value="true"/>
     <meta-data android:name="expo.modules.updates.EXPO_UPDATES_CHECK_ON_LAUNCH" android:value="ALWAYS"/>

@@ -15,5 +15,14 @@
 	<array>
 		<string>Default</string>
 	</array>
+	<!--
+	  Universal Links: https://app.caloriaoficial.com.br/convite#token abre o app
+	  instalado. O EAS sincroniza a capability Associated Domains com o App ID.
+	  O arquivo apple-app-site-association é servido pelo site no mesmo domínio.
+	-->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:app.caloriaoficial.com.br</string>
+	</array>
 </dict>
 </plist>

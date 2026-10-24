@@ -27,6 +27,7 @@ const data = {
   credits: {
     welcomeAutoUnits: m(750),
     welcomeInviteUnits: m(150),
+    manualUnits: m(100),
     consumedPhotoUnits: m(4500),
     consumedMessageUnits: m(1600),
     totalBalanceUnits: 9000,
@@ -45,6 +46,14 @@ const data = {
 beforeEach(() => {
   jest.clearAllMocks();
   overview.mockResolvedValue(data);
+});
+
+it('payload de backend antigo, sem manualUnits, renderiza sem quebrar', async () => {
+  const { manualUnits: _omit, ...credits } = data.credits;
+  overview.mockResolvedValue({ ...data, credits });
+  const screen = render(<OverviewTab />);
+  await screen.findByText('Usuários');
+  expect(screen.getByLabelText(/^Liberados manualmente: 0 créditos/)).toBeTruthy();
 });
 
 it('mostra os cinco blocos com comparação ao período anterior', async () => {
