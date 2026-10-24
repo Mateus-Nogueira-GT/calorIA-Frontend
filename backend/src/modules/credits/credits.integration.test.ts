@@ -516,6 +516,7 @@ if (url && !['localhost', '127.0.0.1', '[::1]'].includes(new URL(url).hostname))
         balance_units: 75,
         reserved_units: 0,
         available_units: 75,
+        unlimited: false,
       })
       expect(await welcomeRows(id)).toEqual([{ units: 75, invite_id: null }])
     })

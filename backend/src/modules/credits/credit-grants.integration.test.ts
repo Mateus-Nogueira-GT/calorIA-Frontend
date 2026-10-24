@@ -3,7 +3,9 @@ import { readFile } from 'node:fs/promises'
 import type { FastifyInstance } from 'fastify'
 import postgres from 'postgres'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { env } from '../../shared/env.js'
 import { grantCredits, setUnlimited } from './credit-grants.service.js'
+import { runCreditOperation, wallet } from './credits.service.js'
 
 const url = process.env.TEST_DATABASE_URL
 if (url && !['localhost', '127.0.0.1', '[::1]'].includes(new URL(url).hostname))
@@ -161,6 +163,93 @@ if (url && !['localhost', '127.0.0.1', '[::1]'].includes(new URL(url).hostname))
       expect(off.unlimited_by).toBe(admin)
       await expect(setUnlimited(f, admin, randomUUID(), true)).rejects.toMatchObject({
         code: 'USER_NOT_FOUND',
+      })
+    })
+  })
+  describe('conta ilimitada', () => {
+    const f = { db, log: { error: () => {}, warn: () => {} } } as unknown as FastifyInstance
+    const old = env.CREDITS_ENFORCEMENT_ENABLED
+    beforeAll(() => {
+      env.CREDITS_ENFORCEMENT_ENABLED = true
+    })
+    afterAll(() => {
+      env.CREDITS_ENFORCEMENT_ENABLED = old
+    })
+    beforeEach(async () => {
+      await db`TRUNCATE credit_cancellations,credit_conversation_leases,credit_operations CASCADE`
+      await db`INSERT INTO profiles(id) VALUES(${user}),(${admin})`
+    })
+    const input = () => ({
+      userId: user,
+      key: randomUUID(),
+      payload: { image: 'test' },
+      type: 'photo' as const,
+      costUnits: 15,
+    })
+    const walletRow = async () =>
+      (await db`SELECT balance_units,reserved_units FROM credit_wallets WHERE user_id=${user}`)[0]
+
+    it('usa IA com saldo 0 sem criar operação nem débito', async () => {
+      await db`INSERT INTO credit_wallets(user_id,balance_units) VALUES(${user},0)`
+      await setUnlimited(f, admin, user, true)
+      let calls = 0
+      const persisted: unknown[] = []
+      const out = await runCreditOperation(
+        f,
+        { ...input(), type: 'chat', costUnits: 2, conversationId: randomUUID() },
+        async () => {
+          calls++
+          return { ok: true }
+        },
+        async (_tx, result) => {
+          persisted.push(result)
+        },
+      )
+      expect(out).toEqual({ result: { ok: true }, receipt: null })
+      expect(calls).toBe(1)
+      expect(persisted).toEqual([{ ok: true }])
+      expect(await db`SELECT 1 FROM credit_operations`).toHaveLength(0)
+      expect(await db`SELECT 1 FROM credit_conversation_leases`).toHaveLength(0)
+      expect(await db`SELECT 1 FROM credit_ledger WHERE kind='debit'`).toHaveLength(0)
+      expect(await walletRow()).toEqual({ balance_units: 0, reserved_units: 0 })
+    })
+
+    it('operação reservada antes de ligar o ilimitado é debitada normalmente', async () => {
+      await db`INSERT INTO credit_wallets(user_id,balance_units) VALUES(${user},75)`
+      let release!: () => void
+      const gate = new Promise<void>((r) => {
+        release = r
+      })
+      let started!: () => void
+      const reserved = new Promise<void>((r) => {
+        started = r
+      })
+      const run = runCreditOperation(f, input(), async () => {
+        started()
+        await gate
+        return { ok: true }
+      })
+      await reserved
+      expect(await walletRow()).toEqual({ balance_units: 75, reserved_units: 15 })
+      await setUnlimited(f, admin, user, true)
+      release()
+      const out = await run
+      expect(out.receipt).toMatchObject({ charged_units: 15, balance_units: 60 })
+      expect(await walletRow()).toEqual({ balance_units: 60, reserved_units: 0 })
+      expect(await db`SELECT units FROM credit_ledger WHERE kind='debit'`).toEqual([{ units: -15 }])
+      const [op] = await db`SELECT state FROM credit_operations`
+      expect(op.state).toBe('succeeded')
+    })
+
+    it('wallet() informa o ilimitado', async () => {
+      await db`INSERT INTO credit_wallets(user_id,balance_units) VALUES(${user},0)`
+      expect((await wallet(f, user)).unlimited).toBe(false)
+      await setUnlimited(f, admin, user, true)
+      expect(await wallet(f, user)).toEqual({
+        balance_units: 0,
+        reserved_units: 0,
+        available_units: 0,
+        unlimited: true,
       })
     })
   })

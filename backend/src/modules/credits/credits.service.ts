@@ -42,17 +42,18 @@ export async function ensureWallet(tx: CreditTransaction, userId: string): Promi
 }
 export async function wallet(fastify: FastifyInstance, userId: string) {
   if (!env.CREDITS_ENFORCEMENT_ENABLED && !env.CREDIT_INVITES_ENABLED)
-    return { balance_units: 0, reserved_units: 0, available_units: 0 }
+    return { balance_units: 0, reserved_units: 0, available_units: 0, unlimited: false }
   const [row] = await fastify.db.begin(async (tx) => {
     await ensureWallet(tx, userId)
     return tx<
-      { balance_units: number; reserved_units: number }[]
-    >`SELECT balance_units,reserved_units FROM credit_wallets WHERE user_id=${userId}`
+      { balance_units: number; reserved_units: number; unlimited: boolean }[]
+    >`SELECT balance_units,reserved_units,unlimited FROM credit_wallets WHERE user_id=${userId}`
   })
   return {
     balance_units: row?.balance_units ?? 0,
     reserved_units: row?.reserved_units ?? 0,
     available_units: (row?.balance_units ?? 0) - (row?.reserved_units ?? 0),
+    unlimited: row?.unlimited ?? false,
   }
 }
 /** Fencing and release share one transaction: a late provider completion can never debit after recovery. */
@@ -100,11 +101,13 @@ export async function runCreditOperation<T>(
   infer: () => Promise<T>,
   persist?: (tx: CreditTransaction, result: T) => Promise<void>,
 ): Promise<{ result: T; receipt: CreditReceipt | null }> {
-  if (!env.CREDITS_ENFORCEMENT_ENABLED) {
+  // Sem cobrança: cobrança desligada ou conta ilimitada. Nenhuma linha de crédito é criada.
+  const uncharged = async () => {
     const result = await infer()
     await persist?.(fastify.db, result)
     return { result, receipt: null }
   }
+  if (!env.CREDITS_ENFORCEMENT_ENABLED) return uncharged()
   const key = validateIdempotencyKey(input.key)
   const expected =
     input.type === 'photo' ? CREDIT_POLICY.photo_units : 2 * CREDIT_POLICY.message_units
@@ -123,13 +126,14 @@ export async function runCreditOperation<T>(
   const id = randomUUID()
   const fence = randomUUID()
   let existing: Operation<T> | undefined
+  let unlimited = false
   try {
     await reconcileCreditOperations(fastify, input.userId)
     await fastify.db.begin(async (tx) => {
       await ensureWallet(tx, input.userId)
       const [w] = await tx<
-        { balance_units: number; reserved_units: number }[]
-      >`SELECT balance_units,reserved_units FROM credit_wallets WHERE user_id=${input.userId} FOR UPDATE`
+        { balance_units: number; reserved_units: number; unlimited: boolean }[]
+      >`SELECT balance_units,reserved_units,unlimited FROM credit_wallets WHERE user_id=${input.userId} FOR UPDATE`
       ;[existing] = await tx<
         Operation<T>[]
       >`SELECT * FROM credit_operations WHERE user_id=${input.userId} AND idempotency_key=${key}`
@@ -144,6 +148,11 @@ export async function runCreditOperation<T>(
             'IDEMPOTENCY_CONFLICT',
             'Esta tentativa pertence a outra operação.',
           )
+        return
+      }
+      // Operação já reservada antes de ligar o ilimitado segue o fluxo acima e é debitada.
+      if (w.unlimited) {
+        unlimited = true
         return
       }
       if (w.balance_units - w.reserved_units < input.costUnits)
@@ -169,6 +178,7 @@ export async function runCreditOperation<T>(
     fastify.log.error({ err }, 'Credit reservation failed')
     throw new AppError(503, 'CREDITS_UNAVAILABLE', 'Não foi possível consultar os créditos.')
   }
+  if (unlimited) return uncharged()
   if (existing) {
     if (existing.state === 'succeeded')
       return { result: existing.result, receipt: existing.receipt }
