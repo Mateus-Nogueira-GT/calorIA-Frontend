@@ -73,3 +73,11 @@ it('D07: nova consulta depois de falha não inventa zero e mostra que está cons
   expect(screen.queryByText(/0 créditos disponíveis/)).toBeNull();
   expect(screen.getByText('Consultando saldo…')).toBeTruthy();
 });
+
+it('conta ilimitada: mostra "Créditos ilimitados" e esconde a linha de preços', async () => {
+  read.mockResolvedValueOnce({ ...wallet(true), unlimited: true });
+  const screen = render(<CreditBalance onPress={() => {}} />);
+  await act(async () => {});
+  expect(screen.getByText('Créditos ilimitados')).toBeTruthy();
+  expect(screen.queryByText(/Foto: 3 créditos/)).toBeNull();
+});

@@ -36,6 +36,7 @@ if (url && !['localhost', '127.0.0.1', '[::1]'].includes(new URL(url).hostname))
     for (const migration of [
       '20261016012212_credits_and_invites.sql',
       '20261021204335_credits_deletion_key_fix.sql',
+      '20261023120000_credit_grants_unlimited.sql',
     ])
       await db.unsafe(
         await readFile(
@@ -515,6 +516,7 @@ if (url && !['localhost', '127.0.0.1', '[::1]'].includes(new URL(url).hostname))
         balance_units: 75,
         reserved_units: 0,
         available_units: 75,
+        unlimited: false,
       })
       expect(await welcomeRows(id)).toEqual([{ units: 75, invite_id: null }])
     })

@@ -86,6 +86,7 @@ export const adminOverviewSchema = z.object({
   credits: z.object({
     welcomeAutoUnits: metricSchema,
     welcomeInviteUnits: metricSchema,
+    manualUnits: metricSchema,
     consumedPhotoUnits: metricSchema,
     consumedMessageUnits: metricSchema,
     totalBalanceUnits: z.number(),
@@ -135,6 +136,7 @@ export const adminUserRowSchema = z.object({
   has_active_diet: z.boolean(),
   current_streak: z.number().int(),
   joined_by_invite: z.boolean(),
+  unlimited: z.boolean(),
 })
 export type AdminUserRow = z.infer<typeof adminUserRowSchema>
 
@@ -148,3 +150,18 @@ export const invitesQuerySchema = z.object({
   cursor: z.string().uuid().optional(),
   status: z.enum(inviteStatuses).optional(),
 })
+
+// ─── Liberação manual de créditos e acesso ilimitado ────────────────────────
+
+export const userIdParamsSchema = z.object({ id: z.string().uuid() })
+export const grantBodySchema = z.object({
+  credits: z.number().int().min(1).max(1000),
+  note: z.string().trim().max(100).optional(),
+})
+export const grantResponseSchema = z.object({
+  balance_units: z.number(),
+  available_units: z.number(),
+  unlimited: z.boolean(),
+})
+export const unlimitedBodySchema = z.object({ unlimited: z.boolean() })
+export const unlimitedResponseSchema = z.object({ unlimited: z.boolean() })

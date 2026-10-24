@@ -34,17 +34,13 @@ const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 // (rota registrada no próprio AuthStack quando deslogado).
 const linking: LinkingOptions<RootStackParamList> = {
   /**
-   * Só o esquema próprio. 'https://caloria.app' estava declarado aqui mas
-   * nunca funcionou em NENHUMA das duas plataformas, porque link https exige
-   * verificação de domínio que não existe:
-   *
-   *   - iOS: entitlement com.apple.developer.associated-domains + o arquivo
-   *     apple-app-site-association servido no domínio;
-   *   - Android: intent-filter com android:scheme="https" e autoVerify, mais
-   *     o assetlinks.json no domínio. O AndroidManifest só declara o
-   *     intent-filter do esquema "caloria".
-   *
-   * Para religar, fazer os dois lados acima e devolver o prefixo aqui.
+   * Só o esquema próprio. O link https://app.caloriaoficial.com.br/convite#token
+   * é reivindicado pelo app (entitlement associated-domains no iOS; intent-filter
+   * com autoVerify no Android; AASA e assetlinks.json servidos no domínio), mas
+   * NÃO passa pelo React Navigation: o token vem no fragmento e é lido por
+   * inviteTokenFromURL, no efeito `receive` abaixo, alimentado por
+   * Linking.getInitialURL e pelo evento 'url'. Por isso o prefixo https não
+   * entra aqui.
    */
   prefixes: ['caloria://'],
   filter: (url) => !url.startsWith('caloria://invite/'),

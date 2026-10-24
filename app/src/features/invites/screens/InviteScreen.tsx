@@ -8,8 +8,13 @@ import { useCreditsStore } from '@features/credits/store';
 import { formatCredits } from '@shared/services/credits.service';
 import { colors, spacing } from '@theme';
 
+const APP_STORE_URL = 'https://apps.apple.com/app/id6806420106';
+const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=br.com.caloriaoficial.app';
+
 const buttonLabels = {
   openApp: 'Abrir no aplicativo',
+  appStore: 'Baixar na App Store',
+  playStore: 'Baixar no Google Play',
   switchAccount: 'Usar outra conta',
   checkInvite: 'Conferir convite',
   continue: 'Continuar',
@@ -186,6 +191,12 @@ export function InviteScreen({ token, onAuthenticate, onDone }: Props): React.JS
                     Se o aplicativo ainda não estiver instalado, conclua o resgate aqui e depois
                     entre na mesma conta. A instalação não transfere o link automaticamente.
                   </Text>
+                  <Button variant="secondary" onPress={() => void Linking.openURL(APP_STORE_URL)}>
+                    {buttonLabels.appStore}
+                  </Button>
+                  <Button variant="secondary" onPress={() => void Linking.openURL(PLAY_STORE_URL)}>
+                    {buttonLabels.playStore}
+                  </Button>
                 </>
               )}
             </>

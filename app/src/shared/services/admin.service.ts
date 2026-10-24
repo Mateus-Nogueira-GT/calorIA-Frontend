@@ -41,6 +41,8 @@ export interface AdminOverview {
   credits: {
     welcomeAutoUnits: Metric;
     welcomeInviteUnits: Metric;
+    /** Ausente em backends anteriores à liberação manual. */
+    manualUnits?: Metric;
     consumedPhotoUnits: Metric;
     consumedMessageUnits: Metric;
     totalBalanceUnits: number;
@@ -77,6 +79,7 @@ export interface AdminUserRow {
   has_active_diet: boolean;
   current_streak: number;
   joined_by_invite: boolean;
+  unlimited: boolean;
 }
 
 export const adminService = {
@@ -104,6 +107,19 @@ export const adminService = {
         { label: label.trim() || undefined },
         { headers: { 'Idempotency-Key': key } },
       )
+      .then((r) => r.data),
+  /** A chave vale por abertura do sheet: reenvio da mesma confirmação credita uma vez. */
+  grantCredits: (userId: string, credits: number, note: string | undefined, key: string) =>
+    api
+      .post<{ balance_units: number; available_units: number; unlimited: boolean }>(
+        `/admin/users/${userId}/credits`,
+        { credits, note },
+        { headers: { 'Idempotency-Key': key } },
+      )
+      .then((r) => r.data),
+  setUnlimited: (userId: string, unlimited: boolean) =>
+    api
+      .put<{ unlimited: boolean }>(`/admin/users/${userId}/unlimited`, { unlimited })
       .then((r) => r.data),
   revokeInvite: (id: string) =>
     api.post<CreditInvite>(`/admin/credit-invites/${id}/revoke`, {}).then((r) => r.data),
