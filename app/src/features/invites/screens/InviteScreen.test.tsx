@@ -1,4 +1,5 @@
 import React from 'react';
+import { Linking, Platform } from 'react-native';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { InviteScreen } from './InviteScreen';
 import api from '@shared/services/api';
@@ -149,4 +150,29 @@ it('D08: falha de rede mantém o resgate disponível para nova tentativa', async
   fireEvent.press(await screen.findByText('Confirmar e receber créditos'));
   await screen.findByText(/Tente novamente para confirmar/);
   await waitFor(() => expect(isActionable(claimButton(screen))).toBe(true));
+});
+
+describe('botões das lojas', () => {
+  const original = Platform.OS;
+  afterEach(() => {
+    Platform.OS = original;
+  });
+  it('na web oferece App Store e Google Play', async () => {
+    Platform.OS = 'web';
+    const open = jest.spyOn(Linking, 'openURL').mockResolvedValue(undefined);
+    const screen = render(<InviteScreen {...props()} />);
+    fireEvent.press(await screen.findByText('Baixar na App Store'));
+    expect(open).toHaveBeenLastCalledWith('https://apps.apple.com/app/id6806420106');
+    fireEvent.press(screen.getByText('Baixar no Google Play'));
+    expect(open).toHaveBeenLastCalledWith(
+      'https://play.google.com/store/apps/details?id=br.com.caloriaoficial.app',
+    );
+  });
+  it.each(['ios', 'android'] as const)('no %s não mostra os botões de loja', async (os) => {
+    Platform.OS = os;
+    const screen = render(<InviteScreen {...props()} />);
+    await screen.findByText('Confirmar e receber créditos');
+    expect(screen.queryByText('Baixar na App Store')).toBeNull();
+    expect(screen.queryByText('Baixar no Google Play')).toBeNull();
+  });
 });
