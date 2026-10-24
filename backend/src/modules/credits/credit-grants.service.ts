@@ -39,6 +39,14 @@ export async function grantCredits(
       ON CONFLICT (actor_id, idempotency_key) DO NOTHING RETURNING id`
     if (inserted.length)
       await tx`UPDATE credit_wallets SET balance_units=balance_units+${units} WHERE user_id=${userId}`
+    else {
+      // Chave já usada por este admin: só é repetição legítima se for a mesma operação.
+      const [prev] = await tx<
+        { user_id: string; units: number }[]
+      >`SELECT user_id,units FROM credit_ledger WHERE actor_id=${adminId} AND idempotency_key=${idempotencyKey}`
+      if (prev && (prev.user_id !== userId || prev.units !== units))
+        throw new AppError(409, 'IDEMPOTENCY_CONFLICT', 'Esta tentativa pertence a outra operação.')
+    }
     const [row] = await tx<
       { balance_units: number; reserved_units: number; unlimited: boolean }[]
     >`SELECT balance_units,reserved_units,unlimited FROM credit_wallets WHERE user_id=${userId}`
@@ -62,7 +70,7 @@ export async function setUnlimited(
     await ensureWallet(tx, userId)
     await tx`SELECT user_id FROM credit_wallets WHERE user_id=${userId} FOR UPDATE`
     if (unlimited)
-      await tx`UPDATE credit_wallets SET unlimited=true,unlimited_by=${adminId},unlimited_since=now() WHERE user_id=${userId}`
+      await tx`UPDATE credit_wallets SET unlimited=true,unlimited_by=${adminId},unlimited_since=now() WHERE user_id=${userId} AND NOT unlimited`
     else await tx`UPDATE credit_wallets SET unlimited=false WHERE user_id=${userId}`
     return { unlimited }
   })

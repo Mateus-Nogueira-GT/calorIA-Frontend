@@ -100,6 +100,22 @@ if (url && !['localhost', '127.0.0.1', '[::1]'].includes(new URL(url).hostname))
       expect(await rows('grant')).toHaveLength(1)
     })
 
+    it('recusa reutilizar a chave com outro usuário ou outra quantidade', async () => {
+      const other = randomUUID()
+      await db`INSERT INTO auth.users(id) VALUES(${other})`
+      await db`INSERT INTO profiles(id) VALUES(${user}),(${admin}),(${other})`
+      await grantCredits(f, admin, user, 50, 'chave-conf-1234567890')
+      await expect(
+        grantCredits(f, admin, other, 50, 'chave-conf-1234567890'),
+      ).rejects.toMatchObject({ statusCode: 409, code: 'IDEMPOTENCY_CONFLICT' })
+      await expect(grantCredits(f, admin, user, 60, 'chave-conf-1234567890')).rejects.toMatchObject(
+        { statusCode: 409, code: 'IDEMPOTENCY_CONFLICT' },
+      )
+      // a transação do conflito foi revertida: a carteira do outro usuário nem chega a existir
+      expect(await db`SELECT 1 FROM credit_wallets WHERE user_id=${other}`).toHaveLength(0)
+      expect(await db`SELECT 1 FROM credit_ledger WHERE kind='grant'`).toHaveLength(1)
+    })
+
     it('cria a carteira com boas-vindas: 75 + 250 = 325', async () => {
       await profile()
       const out = await grantCredits(f, admin, user, 50, 'chave-tres-1234567890')
@@ -133,6 +149,11 @@ if (url && !['localhost', '127.0.0.1', '[::1]'].includes(new URL(url).hostname))
       expect(on.unlimited).toBe(true)
       expect(on.unlimited_by).toBe(admin)
       expect(on.unlimited_since).toBeInstanceOf(Date)
+      await setUnlimited(f, randomUUID(), user, true)
+      const [again] =
+        await db`SELECT unlimited_by,unlimited_since FROM credit_wallets WHERE user_id=${user}`
+      expect(again.unlimited_by).toBe(admin)
+      expect(again.unlimited_since).toEqual(on.unlimited_since)
       expect(await setUnlimited(f, admin, user, false)).toEqual({ unlimited: false })
       const [off] =
         await db`SELECT unlimited,unlimited_by,unlimited_since FROM credit_wallets WHERE user_id=${user}`
