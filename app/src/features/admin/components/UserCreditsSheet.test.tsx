@@ -52,10 +52,18 @@ it.each(['0', '1001'])('recusa %s no campo livre', async (value) => {
   expect(grant).not.toHaveBeenCalled();
 });
 
+it('credita 15 pelo atalho', async () => {
+  const { screen } = setup();
+  fireEvent.press(screen.getByText('15'));
+  fireEvent.press(screen.getByText('Confirmar liberação'));
+  await flush();
+  expect(grant).toHaveBeenCalledWith('u1', 15, undefined, expect.any(String));
+});
+
 it('nova tentativa após falha reaproveita a mesma chave', async () => {
   grant.mockRejectedValueOnce(new Error('offline'));
   const { screen } = setup();
-  fireEvent.press(screen.getByText('10'));
+  fireEvent.press(screen.getByText('15'));
   fireEvent.press(screen.getByText('Confirmar liberação'));
   await flush();
   expect(screen.getByText('Não foi possível liberar os créditos. Tente novamente.')).toBeTruthy();
@@ -67,7 +75,7 @@ it('nova tentativa após falha reaproveita a mesma chave', async () => {
 it('mostra a mensagem de conflito de idempotência', async () => {
   grant.mockRejectedValueOnce({ response: { data: { error: 'IDEMPOTENCY_CONFLICT' } } });
   const { screen } = setup();
-  fireEvent.press(screen.getByText('10'));
+  fireEvent.press(screen.getByText('15'));
   fireEvent.press(screen.getByText('Confirmar liberação'));
   await flush();
   expect(

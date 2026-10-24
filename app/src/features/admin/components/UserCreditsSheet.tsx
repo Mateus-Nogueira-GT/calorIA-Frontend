@@ -14,7 +14,7 @@ import { adminService, AdminUserRow } from '@shared/services/admin.service';
 import { newOperationKey } from '@shared/services/credits.service';
 import { colors, radius, spacing } from '@theme';
 
-const PRESETS = [10, 50, 100];
+const PRESETS = [15, 50, 100];
 const MAX_CREDITS = 1000;
 const AMOUNT_ERROR = 'Informe de 1 a 1.000 créditos';
 const CONFLICT_MESSAGE =
@@ -75,6 +75,7 @@ export function UserCreditsSheet({ user, onClose, onUpdated }: Props): React.JSX
   async function toggleUnlimited(next: boolean): Promise<void> {
     if (busy.current) return;
     busy.current = true;
+    setSaving(true);
     setError(null);
     try {
       const result = await adminService.setUnlimited(user.id, next);
@@ -84,6 +85,7 @@ export function UserCreditsSheet({ user, onClose, onUpdated }: Props): React.JSX
       setError(UNLIMITED_MESSAGE);
     } finally {
       busy.current = false;
+      setSaving(false);
     }
   }
 
@@ -144,7 +146,7 @@ export function UserCreditsSheet({ user, onClose, onUpdated }: Props): React.JSX
               maxLength={100}
             />
             {error && <Text accessibilityRole="alert">{error}</Text>}
-            <Button loading={saving} onPress={() => void confirm()}>
+            <Button loading={saving} disabled={saving} onPress={() => void confirm()}>
               Confirmar liberação
             </Button>
             <View style={styles.switchRow}>
