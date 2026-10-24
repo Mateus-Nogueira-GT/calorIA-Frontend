@@ -7,7 +7,7 @@
     "android": "react-native run-android",
     "ios": "react-native run-ios",
     "web": "webpack serve --config web/webpack.config.js",
-    "build:web": "webpack --config web/webpack.config.js",
+    "build:web": "webpack --config web/webpack.config.js && node scripts/copy-well-known.js",
     "lint": "eslint src --ext .ts,.tsx",
     "type-check": "tsc --noEmit",
     "test": "jest",
@@ -102,7 +102,8 @@
     ],
     "roots": [
       "<rootDir>/__tests__",
-      "<rootDir>/src"
+      "<rootDir>/src",
+      "<rootDir>/scripts"
     ],
     "testPathIgnorePatterns": [
       "/node_modules/",
