@@ -15,6 +15,12 @@ const buttonLabels = {
   retry: 'Tentar novamente',
 } as const;
 
+const ENTRY_LABELS: Record<LedgerEntry['kind'], string> = {
+  welcome: 'Créditos de boas-vindas',
+  grant: 'Créditos liberados pela equipe',
+  debit: 'Uso de IA',
+};
+
 export function CreditsScreen(): React.JSX.Element {
   const { wallet, loading, error, load } = useCreditsStore();
   const [entries, setEntries] = useState<LedgerEntry[]>([]);
@@ -74,13 +80,17 @@ export function CreditsScreen(): React.JSX.Element {
       )}
       {wallet && (
         <>
-          <Text
-            variant="heading2"
-            accessibilityLabel={`${formatCredits(wallet.available_units)} créditos disponíveis`}
-          >
-            {formatCredits(wallet.available_units)} créditos disponíveis
-          </Text>
-          {wallet.reserved_units > 0 && (
+          {wallet.unlimited ? (
+            <Text variant="heading2">Créditos ilimitados</Text>
+          ) : (
+            <Text
+              variant="heading2"
+              accessibilityLabel={`${formatCredits(wallet.available_units)} créditos disponíveis`}
+            >
+              {formatCredits(wallet.available_units)} créditos disponíveis
+            </Text>
+          )}
+          {!wallet.unlimited && wallet.reserved_units > 0 && (
             <Text>
               {formatCredits(wallet.reserved_units)} em processamento. O saldo será atualizado ao
               concluir.
@@ -112,7 +122,7 @@ export function CreditsScreen(): React.JSX.Element {
       )}
       {entries.map((entry) => (
         <View key={entry.id} style={styles.entry}>
-          <Text>{entry.kind === 'welcome' ? 'Créditos de boas-vindas' : 'Uso de IA'}</Text>
+          <Text>{ENTRY_LABELS[entry.kind] ?? 'Uso de IA'}</Text>
           <Text>
             {entry.units > 0 ? '+' : ''}
             {formatCredits(entry.units)} créditos ·{' '}

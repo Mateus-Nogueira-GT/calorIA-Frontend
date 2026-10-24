@@ -27,6 +27,7 @@ const data = {
   credits: {
     welcomeAutoUnits: m(750),
     welcomeInviteUnits: m(150),
+    manualUnits: m(100),
     consumedPhotoUnits: m(4500),
     consumedMessageUnits: m(1600),
     totalBalanceUnits: 9000,

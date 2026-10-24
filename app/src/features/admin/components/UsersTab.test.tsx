@@ -3,7 +3,9 @@ import { act, fireEvent, render } from '@testing-library/react-native';
 import { adminService } from '@shared/services/admin.service';
 import { SEARCH_DEBOUNCE_MS, UsersTab } from './UsersTab';
 
-jest.mock('@shared/services/admin.service', () => ({ adminService: { users: jest.fn() } }));
+jest.mock('@shared/services/admin.service', () => ({
+  adminService: { users: jest.fn(), grantCredits: jest.fn(), setUnlimited: jest.fn() },
+}));
 const users = adminService.users as jest.Mock;
 const row = (id: string, extra: Record<string, unknown> = {}) => ({
   id,
@@ -17,6 +19,7 @@ const row = (id: string, extra: Record<string, unknown> = {}) => ({
   has_active_diet: true,
   current_streak: 4,
   joined_by_invite: false,
+  unlimited: false,
   ...extra,
 });
 
@@ -74,4 +77,13 @@ it('ordenação e paginação', async () => {
   expect(users).toHaveBeenLastCalledWith(
     expect.objectContaining({ sort: 'low_balance', cursor: undefined }),
   );
+});
+
+it('mostra o selo Ilimitado e abre o sheet ao tocar na linha', async () => {
+  users.mockResolvedValue({ items: [row('a', { unlimited: true })], next_cursor: null });
+  const screen = render(<UsersTab />);
+  await flush();
+  expect(screen.getByText('Ilimitado')).toBeTruthy();
+  fireEvent.press(screen.getByText('Pessoa a'));
+  expect(screen.getByText('Confirmar liberação')).toBeTruthy();
 });

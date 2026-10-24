@@ -153,6 +153,11 @@ export function OverviewTab(): React.JSX.Element {
               compare: data.credits.welcomeInviteUnits,
             },
             {
+              label: 'Liberados manualmente',
+              value: `${formatCredits(data.credits.manualUnits.value)} créditos`,
+              compare: data.credits.manualUnits,
+            },
+            {
               label: 'Gastos em fotos',
               value: `${formatCredits(data.credits.consumedPhotoUnits.value)} créditos`,
               compare: data.credits.consumedPhotoUnits,
