@@ -62,7 +62,8 @@ export function UserCreditsSheet({ user, onClose, onUpdated }: Props): React.JSX
         note.trim() || undefined,
         key.current,
       );
-      onUpdated({ balance_units: result.balance_units, unlimited: result.unlimited });
+      // A linha da lista mostra o disponível (saldo - reservado), não o saldo total.
+      onUpdated({ balance_units: result.available_units, unlimited: result.unlimited });
       onClose();
     } catch (e) {
       const code = (e as { response?: { data?: { error?: string } } })?.response?.data?.error;

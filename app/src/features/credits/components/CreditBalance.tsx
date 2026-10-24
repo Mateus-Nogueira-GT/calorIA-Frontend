@@ -26,7 +26,7 @@ export function CreditBalance({ onPress }: { onPress: () => void }): React.JSX.E
               : // D07: sem carteira o saldo é desconhecido — nunca mostrar zero.
                 'Consultando saldo…'}
       </Text>
-      {wallet?.enforcement_enabled && (
+      {wallet?.enforcement_enabled && !wallet.unlimited && (
         <Text variant="caption">Foto: 3 créditos · 5 mensagens: 1 crédito</Text>
       )}
     </Pressable>

@@ -154,8 +154,8 @@ export function OverviewTab(): React.JSX.Element {
             },
             {
               label: 'Liberados manualmente',
-              value: `${formatCredits(data.credits.manualUnits.value)} créditos`,
-              compare: data.credits.manualUnits,
+              value: `${formatCredits(data.credits.manualUnits?.value ?? 0)} créditos`,
+              compare: data.credits.manualUnits ?? { value: 0, previous: 0 },
             },
             {
               label: 'Gastos em fotos',

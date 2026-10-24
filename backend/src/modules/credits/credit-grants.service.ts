@@ -69,9 +69,12 @@ export async function setUnlimited(
     await assertUserExists(tx, userId)
     await ensureWallet(tx, userId)
     await tx`SELECT user_id FROM credit_wallets WHERE user_id=${userId} FOR UPDATE`
-    if (unlimited)
-      await tx`UPDATE credit_wallets SET unlimited=true,unlimited_by=${adminId},unlimited_since=now() WHERE user_id=${userId} AND NOT unlimited`
-    else await tx`UPDATE credit_wallets SET unlimited=false WHERE user_id=${userId}`
+    const changed = unlimited
+      ? await tx`UPDATE credit_wallets SET unlimited=true,unlimited_by=${adminId},unlimited_since=now() WHERE user_id=${userId} AND NOT unlimited`
+      : await tx`UPDATE credit_wallets SET unlimited=false WHERE user_id=${userId} AND unlimited`
+    // Auditoria: uma linha por mudança efetiva, nos dois sentidos.
+    if (changed.count > 0)
+      f.log.info({ admin_set_unlimited: { adminId, userId, unlimited } }, 'admin_set_unlimited')
     return { unlimited }
   })
 }

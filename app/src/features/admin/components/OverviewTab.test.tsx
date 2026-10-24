@@ -48,6 +48,14 @@ beforeEach(() => {
   overview.mockResolvedValue(data);
 });
 
+it('payload de backend antigo, sem manualUnits, renderiza sem quebrar', async () => {
+  const { manualUnits: _omit, ...credits } = data.credits;
+  overview.mockResolvedValue({ ...data, credits });
+  const screen = render(<OverviewTab />);
+  await screen.findByText('Usuários');
+  expect(screen.getByLabelText(/^Liberados manualmente: 0 créditos/)).toBeTruthy();
+});
+
 it('mostra os cinco blocos com comparação ao período anterior', async () => {
   const screen = render(<OverviewTab />);
   expect(overview).toHaveBeenCalledWith(30);

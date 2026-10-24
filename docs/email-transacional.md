@@ -23,7 +23,7 @@ Espere o provedor marcar o domínio como verificado antes de seguir.
 
 ## Modelo versionado
 
-`backend/supabase/templates/recovery.html` é a fonte do e-mail "Redefinir senha". Edite o arquivo, rode `npx vitest run src/shared/email-templates.test.ts` e cole o conteúdo de novo no painel. A variável `{{ .ConfirmationURL }}` não pode mudar: o fluxo atual abre `/reset-password` por ela.
+`backend/supabase/templates/recovery.html` é a fonte do e-mail "Redefinir senha". Edite o arquivo, rode `cd backend && npx vitest run src/shared/email-templates.test.ts` e cole o conteúdo de novo no painel. A variável `{{ .ConfirmationURL }}` não pode mudar: o fluxo atual abre `/reset-password` por ela.
 
 ## Passos no painel do Supabase
 

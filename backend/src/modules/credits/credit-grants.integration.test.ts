@@ -67,6 +67,20 @@ if (url && !['localhost', '127.0.0.1', '[::1]'].includes(new URL(url).hostname))
     expect(r.actor_id).toBeNull()
   })
 
+  it('exclusão de conta anula a nota do grant; só é permitido anular a nota', async () => {
+    const [row] = await grant(10, 'k-note')
+    await expect(db`UPDATE credit_ledger SET note='outra' WHERE id=${row.id}`).rejects.toThrow(
+      'credit ledger is append only',
+    )
+    await db`UPDATE credit_ledger SET note=NULL WHERE id=${row.id}`
+    const [cleared] = await db`SELECT note FROM credit_ledger WHERE id=${row.id}`
+    expect(cleared.note).toBeNull()
+    const [row2] = await grant(10, 'k-note-2')
+    await db`DELETE FROM auth.users WHERE id=${user}`
+    const [gone] = await db`SELECT user_id,note FROM credit_ledger WHERE id=${row2.id}`
+    expect(gone).toEqual({ user_id: null, note: null })
+  })
+
   it('idempotency_key é única por actor e carteira nasce sem ilimitado', async () => {
     await grant(10, 'same')
     await expect(grant(10, 'same')).rejects.toMatchObject({ code: '23505' })
@@ -79,7 +93,7 @@ if (url && !['localhost', '127.0.0.1', '[::1]'].includes(new URL(url).hostname))
   })
 
   describe('serviço', () => {
-    const f = { db } as unknown as FastifyInstance
+    const f = { db, log: { info: () => {} } } as unknown as FastifyInstance
     const profile = () => db`INSERT INTO profiles(id) VALUES(${user}),(${admin})`
     const rows = (kind: string) =>
       db`SELECT actor_id,note FROM credit_ledger WHERE user_id=${user} AND kind=${kind}`
@@ -167,7 +181,7 @@ if (url && !['localhost', '127.0.0.1', '[::1]'].includes(new URL(url).hostname))
     })
   })
   describe('conta ilimitada', () => {
-    const f = { db, log: { error: () => {}, warn: () => {} } } as unknown as FastifyInstance
+    const f = { db, log: { error: () => {}, warn: () => {}, info: () => {} } } as unknown as FastifyInstance
     const old = env.CREDITS_ENFORCEMENT_ENABLED
     beforeAll(() => {
       env.CREDITS_ENFORCEMENT_ENABLED = true

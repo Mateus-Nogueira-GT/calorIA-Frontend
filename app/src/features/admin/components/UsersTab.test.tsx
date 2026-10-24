@@ -87,3 +87,19 @@ it('mostra o selo Ilimitado e abre o sheet ao tocar na linha', async () => {
   fireEvent.press(screen.getByText('Pessoa a'));
   expect(screen.getByText('Confirmar liberação')).toBeTruthy();
 });
+
+it('após liberar, a linha mostra o disponível (não o saldo total com reserva)', async () => {
+  (adminService.grantCredits as jest.Mock).mockResolvedValue({
+    balance_units: 400,
+    available_units: 350,
+    unlimited: false,
+  });
+  const screen = render(<UsersTab />);
+  await flush();
+  fireEvent.press(screen.getByText('Pessoa a'));
+  fireEvent.press(screen.getByText('50'));
+  fireEvent.press(screen.getByText('Confirmar liberação'));
+  await flush();
+  expect(screen.getByText(/Saldo 70 créditos/)).toBeTruthy();
+  expect(screen.queryByText(/Saldo 80 créditos/)).toBeNull();
+});

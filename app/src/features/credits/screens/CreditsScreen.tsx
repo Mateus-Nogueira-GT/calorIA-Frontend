@@ -97,10 +97,12 @@ export function CreditsScreen(): React.JSX.Element {
             </Text>
           )}
           {wallet.enforcement_enabled ? (
-            <Text>
-              Foto: 3 créditos. Cada 5 mensagens, contando você e o coach: 1 crédito (0,2 por
-              mensagem).
-            </Text>
+            !wallet.unlimited && (
+              <Text>
+                Foto: 3 créditos. Cada 5 mensagens, contando você e o coach: 1 crédito (0,2 por
+                mensagem).
+              </Text>
+            )
           ) : (
             <Text>A cobrança por créditos ainda não está ativa.</Text>
           )}

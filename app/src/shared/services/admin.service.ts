@@ -41,7 +41,8 @@ export interface AdminOverview {
   credits: {
     welcomeAutoUnits: Metric;
     welcomeInviteUnits: Metric;
-    manualUnits: Metric;
+    /** Ausente em backends anteriores à liberação manual. */
+    manualUnits?: Metric;
     consumedPhotoUnits: Metric;
     consumedMessageUnits: Metric;
     totalBalanceUnits: number;
