@@ -93,6 +93,8 @@ async function credits(f: FastifyInstance, days: number): Promise<AdminOverview[
        (SELECT coalesce(sum(units) FILTER (WHERE kind = 'welcome' AND invite_id IS NULL AND created_at >= w.prev AND created_at < w.cur), 0) FROM l) AS auto_prev,
        (SELECT coalesce(sum(units) FILTER (WHERE kind = 'welcome' AND invite_id IS NOT NULL AND created_at >= w.cur), 0) FROM l) AS invite_cur,
        (SELECT coalesce(sum(units) FILTER (WHERE kind = 'welcome' AND invite_id IS NOT NULL AND created_at >= w.prev AND created_at < w.cur), 0) FROM l) AS invite_prev,
+       (SELECT coalesce(sum(units) FILTER (WHERE kind = 'grant' AND created_at >= w.cur), 0) FROM l) AS manual_cur,
+       (SELECT coalesce(sum(units) FILTER (WHERE kind = 'grant' AND created_at >= w.prev AND created_at < w.cur), 0) FROM l) AS manual_prev,
        (SELECT coalesce(-sum(units) FILTER (WHERE kind = 'debit' AND type = 'photo' AND created_at >= w.cur), 0) FROM l) AS photo_cur,
        (SELECT coalesce(-sum(units) FILTER (WHERE kind = 'debit' AND type = 'photo' AND created_at >= w.prev AND created_at < w.cur), 0) FROM l) AS photo_prev,
        (SELECT coalesce(-sum(units) FILTER (WHERE kind = 'debit' AND type = 'chat' AND created_at >= w.cur), 0) FROM l) AS message_cur,
@@ -106,6 +108,7 @@ async function credits(f: FastifyInstance, days: number): Promise<AdminOverview[
   return {
     welcomeAutoUnits: metric(row, 'auto'),
     welcomeInviteUnits: metric(row, 'invite'),
+    manualUnits: metric(row, 'manual'),
     consumedPhotoUnits: metric(row, 'photo'),
     consumedMessageUnits: metric(row, 'message'),
     totalBalanceUnits: n(row.total_balance),

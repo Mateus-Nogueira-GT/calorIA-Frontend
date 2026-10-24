@@ -65,7 +65,8 @@ export async function listUsers(
               coalesce(ai.tokens, 0)::bigint AS ai_tokens,
               EXISTS (SELECT 1 FROM diets d WHERE d.user_id = p.id AND d.status = 'active') AS has_active_diet,
               coalesce((SELECT max(s.current_streak) FROM streaks s WHERE s.user_id = p.id), 0)::int AS current_streak,
-              EXISTS (SELECT 1 FROM credit_welcome_claims wc WHERE wc.user_id = p.id) AS joined_by_invite
+              EXISTS (SELECT 1 FROM credit_welcome_claims wc WHERE wc.user_id = p.id) AS joined_by_invite,
+              coalesce(cw.unlimited, false) AS unlimited
          FROM profiles p
          LEFT JOIN auth.users u ON u.id = p.id
          LEFT JOIN credit_wallets cw ON cw.user_id = p.id
