@@ -5,7 +5,8 @@
       "namespace": "android_app",
       "package_name": "br.com.caloriaoficial.app",
       "sha256_cert_fingerprints": [
-        "61:9A:6D:AB:D9:2E:01:DE:70:89:40:41:E0:7A:FF:54:A6:40:95:70:BF:66:9C:DF:18:27:A8:4B:4F:FC:3F:B8"
+        "61:9A:6D:AB:D9:2E:01:DE:70:89:40:41:E0:7A:FF:54:A6:40:95:70:BF:66:9C:DF:18:27:A8:4B:4F:FC:3F:B8",
+        "6A:2B:86:D9:02:4B:B9:64:84:71:78:0F:56:E9:64:11:17:80:F8:19:57:EE:E8:75:8A:85:B1:2D:8F:1D:7D:D2"
       ]
     }
   }
