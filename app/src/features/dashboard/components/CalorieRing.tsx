@@ -2,6 +2,7 @@ import React from 'react';
 import { Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { Text } from '@shared/components';
 import { colors, typography } from '@theme';
+import { formatGoalPercent } from '@shared/utils/calories';
 
 interface Props {
   current: number;
@@ -77,8 +78,7 @@ export function CalorieRing({ current, goal, size = 120 }: Props): React.JSX.Ele
   const hasGoal = goal !== null && goal > 0;
   const rawPercent = hasGoal ? current / goal : 0;
   const percent = hasGoal ? Math.min(Math.max(rawPercent, 0), 1) : 0;
-  const displayPercent = hasGoal ? Math.round(Math.max(rawPercent, 0) * 100) : 0;
-  const pctLabel = !hasGoal ? '--' : displayPercent > 999 ? '999%+' : `${displayPercent}%`;
+  const pctLabel = formatGoalPercent(current, goal);
   const angle = Math.round(percent * 360);
   const strokeWidth = Math.round(size * 0.085);
   const innerSize = size - strokeWidth * 2;

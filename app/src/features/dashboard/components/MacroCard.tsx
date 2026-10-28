@@ -2,6 +2,7 @@ import React from 'react';
 import { StyleSheet, View, useWindowDimensions } from 'react-native';
 import { Text } from '@shared/components';
 import { colors, typography, spacing, radius } from '@theme';
+import { formatGoalPercent } from '@shared/utils/calories';
 
 interface Props {
   label: string;
@@ -18,7 +19,7 @@ export function MacroCard({ label, current, goal, unit = 'g', color }: Props): R
   // trocar uma mentira por outra — o card diz que a meta não existe ainda.
   const hasGoal = goal !== null && goal > 0;
   const pct = hasGoal ? Math.min(Math.max(current / goal, 0), 1) : 0;
-  const pctLabel = hasGoal ? `${Math.round((current / goal) * 100)}%` : '--';
+  const pctLabel = formatGoalPercent(current, goal);
 
   return (
     <View testID={`macro-card-${label}`} style={[styles.container, stack && styles.stacked]}>
@@ -26,8 +27,9 @@ export function MacroCard({ label, current, goal, unit = 'g', color }: Props): R
         <Text style={styles.label}>{label}</Text>
         {hasGoal ? <Text style={[styles.percent, { color }]}>{pctLabel}</Text> : null}
       </View>
-      <Text style={[styles.value, { color }]}>
-        {current}
+      {/* Registro antigo de 999.999 g estourava a largura do card. */}
+      <Text style={[styles.value, { color }]} numberOfLines={1} adjustsFontSizeToFit>
+        {current.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}
         {unit}
       </Text>
       <Text style={styles.goal}>{hasGoal ? `Meta ${goal}${unit}` : 'Sem meta'}</Text>

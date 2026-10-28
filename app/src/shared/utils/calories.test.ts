@@ -1,5 +1,11 @@
 import { describe, it, expect } from '@jest/globals';
-import { getDailyCalorieGoal, getDailyFiberGoal, sumCalories, getDayTotals } from './calories';
+import {
+  formatGoalPercent,
+  getDailyCalorieGoal,
+  getDailyFiberGoal,
+  sumCalories,
+  getDayTotals,
+} from './calories';
 import type { DietPlan } from '@shared/services/diet.service';
 import type { Meal } from '@shared/services/food-log.service';
 
@@ -95,5 +101,22 @@ describe('fibra nos totais do dia', () => {
     expect(getDailyFiberGoal({ meals: [withFiber, { fiber: 3 } as never] } as never)).toBe(8);
     expect(getDailyFiberGoal({ meals: [{ fiber: null } as never] } as never)).toBeNull();
     expect(getDailyFiberGoal(null)).toBeNull();
+  });
+});
+
+describe('formatGoalPercent', () => {
+  it('sem meta devolve --', () => {
+    expect(formatGoalPercent(500, null)).toBe('--');
+    expect(formatGoalPercent(500, 0)).toBe('--');
+  });
+  it('arredonda o percentual', () => {
+    expect(formatGoalPercent(847, 1695)).toBe('50%');
+  });
+  it('999% ainda aparece; acima disso vira 999%+', () => {
+    expect(formatGoalPercent(999, 100)).toBe('999%');
+    expect(formatGoalPercent(999999, 1695)).toBe('999%+');
+  });
+  it('negativo vira 0%', () => {
+    expect(formatGoalPercent(-10, 100)).toBe('0%');
   });
 });

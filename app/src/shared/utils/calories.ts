@@ -76,3 +76,14 @@ export function getDailyFiberGoal(plan: DietPlan | null | undefined): number | n
   if (known.length === 0) return null;
   return Math.round(known.reduce((acc, m) => acc + (m.fiber ?? 0), 0));
 }
+
+/**
+ * Rótulo "N% da meta" único para anel, resumo e cards de macro. Antes só o anel
+ * tinha teto: um registro de 999.999 kcal mostrava "999%+" no anel e "58997%"
+ * ao lado, na mesma tela.
+ */
+export function formatGoalPercent(current: number, goal: number | null): string {
+  if (goal === null || goal <= 0) return '--';
+  const percent = Math.round(Math.max(current / goal, 0) * 100);
+  return percent > 999 ? '999%+' : `${percent}%`;
+}
