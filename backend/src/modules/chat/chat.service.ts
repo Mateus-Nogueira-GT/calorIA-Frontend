@@ -11,7 +11,7 @@ import { type CreditTransaction, runCreditOperation } from '../credits/credits.s
 import { createDietJob, getPendingJob } from '../diets/jobs.service.js'
 import { fetchUserContext, formatKnownData, formatUserContext } from './chat-context.js'
 import type { ChatMessageBody, ChatResponse } from './chat.schemas.js'
-import { DIET_STARTED_MARKER_PREFIX } from './history-markers.js'
+import { DIET_STARTED_MARKER_PREFIX, isInternalChatMarker } from './history-markers.js'
 
 // ─── System prompt ─────────────────────────────────────────────────────────
 
@@ -618,7 +618,12 @@ export async function getChatHistory(
   `
 
   if (!row) throw new AppError(404, 'CONVERSATION_NOT_FOUND', 'Conversa não encontrada')
-  return { messages: normalizeHistory(row.messages), status: row.status }
+  // Leitura para o usuário: os marcadores continuam no banco e no histórico do
+  // modelo (loadHistory), mas apareciam como balões do coach entre colchetes.
+  const messages = normalizeHistory(row.messages).filter(
+    (m) => typeof m.content !== 'string' || !isInternalChatMarker(m.content),
+  )
+  return { messages, status: row.status }
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

@@ -552,7 +552,31 @@ const failDietJob = (message: string) =>
   }));
 const markDietJobSlow = () =>
   useCoachStore.setState((st) => (st.dietJob ? { dietJob: { ...st.dietJob, slow: true } } : {}));
-const onDietJobCompleted = () => useDietStore.getState().loadCurrent();
+/**
+ * Feedback de 27/10: a dieta nova ficava pronta e nada aparecia no chat — o
+ * usuário achou que o coach tinha parado e só descobriu o plano na tela Hoje.
+ * Só escreve na conversa que pediu este job; a mensagem é local (ao recarregar
+ * o histórico ela some, e a dieta já está visível na aba).
+ */
+async function onDietJobCompleted(jobId: string): Promise<void> {
+  await useDietStore.getState().loadCurrent();
+  const { messages } = useCoachStore.getState();
+  const readyId = `diet-ready-${jobId}`;
+  if (!messages.some((m) => m.dietJobId === jobId) || messages.some((m) => m.id === readyId)) {
+    return;
+  }
+  const meals = useDietStore.getState().plan?.meals.length ?? 0;
+  const content = meals
+    ? `Pronto! Sua nova dieta está no ar, com ${meals} refeições por dia. Toque abaixo para ver.`
+    : 'Pronto! Sua nova dieta está no ar. Toque abaixo para ver.';
+  useCoachStore.setState((st) => ({
+    messages: [
+      ...st.messages,
+      // dietGenerated liga o botão "Ver minha dieta" que o chat já tem.
+      { id: readyId, role: 'coach', content, timestamp: new Date(), dietGenerated: true },
+    ],
+  }));
+}
 
 async function driveDietJob(jobId: string): Promise<void> {
   const session = dietSession;
@@ -585,7 +609,7 @@ async function driveDietJob(jobId: string): Promise<void> {
       if (stale()) return false;
       if (r && r.status === 'completed') {
         applyJobStatus(r);
-        await onDietJobCompleted();
+        await onDietJobCompleted(jobId);
         return false;
       }
       if (r && r.status === 'failed') {
@@ -613,7 +637,7 @@ async function driveDietJob(jobId: string): Promise<void> {
         return;
       }
       applyJobStatus(s);
-      if (s.status === 'completed') return onDietJobCompleted();
+      if (s.status === 'completed') return onDietJobCompleted(jobId);
       if (s.status === 'failed') return; // mensagem do servidor já aplicada
       // OP1: 200 sem avanço = outro step em voo no servidor. Espera antes
       // de pedir de novo, em vez de bater no rate limit.
@@ -642,7 +666,7 @@ async function driveDietJob(jobId: string): Promise<void> {
         networkMisses = 0;
         if (g.status === 'completed') {
           applyJobStatus(g);
-          return onDietJobCompleted();
+          return onDietJobCompleted(jobId);
         }
         if (isStaleFailure(g) && !staleReopened) {
           if (!(await reopenStale())) return;
