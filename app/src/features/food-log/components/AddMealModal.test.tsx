@@ -97,4 +97,77 @@ describe('AddMealModal', () => {
       expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ mealType: 'dinner' })),
     );
   });
+  describe('limites e aviso de meta (feedback 27/10)', () => {
+    const goals = { calories: 1695, protein: 167, carbs: 148, fat: 47 };
+    const dayTotals = { calories: 300, protein: 20, carbs: 30, fat: 10, fiber: 2 };
+
+    function fill(utils: ReturnType<typeof render>, calories: string) {
+      fireEvent.changeText(utils.getByTestId('meal-name-input'), 'Rodízio');
+      fireEvent.changeText(utils.getByTestId('meal-calories-input'), calories);
+    }
+
+    it('valor acima do teto mostra o erro no campo e não envia', () => {
+      const onSubmit = jest.fn();
+      const utils = render(<AddMealModal visible onClose={() => {}} onSubmit={onSubmit} />);
+      fill(utils, '999999');
+      expect(utils.getByText('Máximo de 5.000 kcal por refeição')).toBeTruthy();
+      fireEvent.press(utils.getByText('Salvar refeição'));
+      expect(onSubmit).not.toHaveBeenCalled();
+    });
+
+    it('refeição muito acima da meta pede confirmação; revisar não salva', () => {
+      const onSubmit = jest.fn();
+      const utils = render(
+        <AddMealModal visible onClose={() => {}} onSubmit={onSubmit} goals={goals} dayTotals={dayTotals} />,
+      );
+      fill(utils, '1200');
+      fireEvent.press(utils.getByText('Salvar refeição'));
+      expect(utils.getByText('Essa refeição está bem acima da sua meta')).toBeTruthy();
+      expect(utils.getByText(/1\.500 kcal hoje \(88% da meta de 1\.695 kcal\)/)).toBeTruthy();
+      expect(onSubmit).not.toHaveBeenCalled();
+      fireEvent.press(utils.getByText('Revisar valores'));
+      expect(utils.getByTestId('meal-calories-input').props.value).toBe('1200');
+      expect(onSubmit).not.toHaveBeenCalled();
+    });
+
+    it('"Salvar mesmo assim" salva', async () => {
+      const onSubmit = jest.fn().mockResolvedValue(undefined);
+      const utils = render(
+        <AddMealModal visible onClose={() => {}} onSubmit={onSubmit} goals={goals} dayTotals={dayTotals} />,
+      );
+      fill(utils, '1200');
+      fireEvent.press(utils.getByText('Salvar refeição'));
+      fireEvent.press(utils.getByText('Salvar mesmo assim'));
+      await waitFor(() =>
+        expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ calories: 1200 })),
+      );
+    });
+
+    it('sem meta salva direto', async () => {
+      const onSubmit = jest.fn().mockResolvedValue(undefined);
+      const utils = render(<AddMealModal visible onClose={() => {}} onSubmit={onSubmit} />);
+      fill(utils, '1200');
+      fireEvent.press(utils.getByText('Salvar refeição'));
+      await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    });
+
+    it('na edição, o dia desconta a própria refeição', async () => {
+      const onSubmit = jest.fn().mockResolvedValue(undefined);
+      // Dia de 2.400 kcal que já inclui os 450 do Frango: trocar 450 por 460
+      // dá 2.410 (142%), abaixo de 150%; somar sem descontar daria 2.860.
+      const utils = render(
+        <AddMealModal
+          visible
+          onClose={() => {}}
+          onSubmit={onSubmit}
+          initialMeal={existing}
+          goals={goals}
+          dayTotals={{ ...dayTotals, calories: 2400 }}
+        />,
+      );
+      fireEvent.changeText(utils.getByTestId('meal-calories-input'), '460');
+      fireEvent.press(utils.getByText('Salvar alterações'));
+      await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    });
+  });
 });

@@ -14,6 +14,15 @@ import { colors, typography, spacing, radius } from '@theme';
 import { AddMealPayload, AppMealType, Meal } from '@shared/services/food-log.service';
 import { showAlert } from '@shared/utils/show-alert';
 import { getMealGroupFor } from '@shared/utils/date';
+import type { DayTotals } from '@shared/utils/calories';
+import {
+  checkAgainstGoals,
+  GoalWarning,
+  MEAL_LIMITS,
+  MealField,
+  MealGoals,
+  mealLimitMessage,
+} from '../meal-limits';
 
 interface Props {
   visible: boolean;
@@ -21,10 +30,16 @@ interface Props {
   onSubmit: (data: AddMealPayload) => Promise<void>;
   /** Modo edição: abre preenchido com esta refeição. */
   initialMeal?: Meal;
+  /** Metas do dia; sem elas (sem dieta) não há aviso de exagero. */
+  goals?: MealGoals;
+  /** O que já foi consumido no dia (inclui a refeição em edição, se houver). */
+  dayTotals?: DayTotals;
 }
 
 const saveMealLabel = 'Salvar refeição';
 const saveChangesLabel = 'Salvar alterações';
+const reviewLabel = 'Revisar valores';
+const saveAnywayLabel = 'Salvar mesmo assim';
 const sheetMaxHeight: DimensionValue = '80%';
 
 const MEAL_TYPES: { value: AppMealType; label: string }[] = [
@@ -72,7 +87,16 @@ function initialType(meal?: Meal): AppMealType {
   return GROUP_TO_TYPE[getMealGroupFor(meal.mealType, meal.loggedAt)] ?? 'lunch';
 }
 
-export function AddMealModal({ visible, onClose, onSubmit, initialMeal }: Props): React.JSX.Element {
+const fmt = (n: number) => n.toLocaleString('pt-BR');
+
+export function AddMealModal({
+  visible,
+  onClose,
+  onSubmit,
+  initialMeal,
+  goals,
+  dayTotals,
+}: Props): React.JSX.Element {
   const [name, setName] = useState(initialMeal?.name ?? '');
   const [mealType, setMealType] = useState<AppMealType>(initialType(initialMeal));
   const [calories, setCalories] = useState(toField(initialMeal?.calories));
@@ -82,6 +106,7 @@ export function AddMealModal({ visible, onClose, onSubmit, initialMeal }: Props)
   const [fiber, setFiber] = useState(toField(initialMeal?.fiber));
   const [fieldError, setFieldError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [goalWarning, setGoalWarning] = useState<GoalWarning | null>(null);
 
   const parsed = {
     calories: parseMacro(calories),
@@ -90,8 +115,19 @@ export function AddMealModal({ visible, onClose, onSubmit, initialMeal }: Props)
     fat: parseMacro(fat),
   };
   const parsedFiber = parseFiber(fiber);
+  const overLimit = (field: MealField, value: number | null | undefined) =>
+    value != null && value > MEAL_LIMITS[field] ? mealLimitMessage(field) : undefined;
+  const limitErrors = {
+    calories: overLimit('calories', parsed.calories),
+    protein: overLimit('protein', parsed.protein),
+    carbs: overLimit('carbs', parsed.carbs),
+    fat: overLimit('fat', parsed.fat),
+    fiber: overLimit('fiber', parsedFiber),
+  };
   const hasInvalidNumber =
-    Object.values(parsed).some((v) => v === null) || parsedFiber === undefined;
+    Object.values(parsed).some((v) => v === null) ||
+    parsedFiber === undefined ||
+    Object.values(limitErrors).some(Boolean);
 
   // O mesmo modal serve para registrar e editar: ao abrir para outra refeição,
   // os campos têm que refletir ESSA refeição, não o que ficou da anterior.
@@ -105,17 +141,35 @@ export function AddMealModal({ visible, onClose, onSubmit, initialMeal }: Props)
     setFat(toField(initialMeal?.fat));
     setFiber(toField(initialMeal?.fiber));
     setFieldError('');
+    setGoalWarning(null);
   }, [visible, initialMeal]);
   const canSubmit =
     name.trim().length > 0 && calories.trim() !== '' && !hasInvalidNumber && !loading;
 
-  async function handleSubmit() {
+  async function handleSubmit(confirmed = false) {
     if (!canSubmit) {
+      const onlyLimits = Object.values(parsed).every((v) => v !== null) && parsedFiber !== undefined;
       setFieldError(
-        hasInvalidNumber ? 'Use apenas números (sem letras) nos campos de macros.' : '',
+        hasInvalidNumber && !onlyLimits ? 'Use apenas números (sem letras) nos campos de macros.' : '',
       );
       return;
     }
+    if (!confirmed && goals) {
+      const meal = {
+        calories: parsed.calories ?? 0,
+        protein: parsed.protein ?? 0,
+        carbs: parsed.carbs ?? 0,
+        fat: parsed.fat ?? 0,
+      };
+      // Na edição a refeição já está somada no dia: desconta antes de somar a nova.
+      const dayBefore = { calories: (dayTotals?.calories ?? 0) - (initialMeal?.calories ?? 0) };
+      const warning = checkAgainstGoals(meal, dayBefore, goals);
+      if (warning) {
+        setGoalWarning(warning);
+        return;
+      }
+    }
+    setGoalWarning(null);
     setLoading(true);
     setFieldError('');
     try {
@@ -142,6 +196,10 @@ export function AddMealModal({ visible, onClose, onSubmit, initialMeal }: Props)
       setLoading(false);
     }
   }
+
+  // Botões chamam com argumento explícito: o onPress passaria o evento como `confirmed`.
+  const submit = () => handleSubmit(false);
+  const confirmSave = () => handleSubmit(true);
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
@@ -197,6 +255,7 @@ export function AddMealModal({ visible, onClose, onSubmit, initialMeal }: Props)
               keyboardType="numeric"
               value={calories}
               onChangeText={setCalories}
+              error={limitErrors.calories}
               testID="meal-calories-input"
             />
             <View>
@@ -207,6 +266,7 @@ export function AddMealModal({ visible, onClose, onSubmit, initialMeal }: Props)
                 keyboardType="numeric"
                 value={protein}
                 onChangeText={setProtein}
+                error={limitErrors.protein}
               />
               <Input
                 label="Carboidratos (g)"
@@ -215,6 +275,7 @@ export function AddMealModal({ visible, onClose, onSubmit, initialMeal }: Props)
                 keyboardType="numeric"
                 value={carbs}
                 onChangeText={setCarbs}
+                error={limitErrors.carbs}
               />
             </View>
             <Input
@@ -224,6 +285,7 @@ export function AddMealModal({ visible, onClose, onSubmit, initialMeal }: Props)
               keyboardType="numeric"
               value={fat}
               onChangeText={setFat}
+              error={limitErrors.fat}
             />
             <Input
               label="Fibra (g)"
@@ -232,11 +294,37 @@ export function AddMealModal({ visible, onClose, onSubmit, initialMeal }: Props)
               keyboardType="numeric"
               value={fiber}
               onChangeText={setFiber}
+              error={limitErrors.fiber}
               testID="meal-fiber-input"
             />
             {fieldError ? <Text style={styles.errorText}>{fieldError}</Text> : null}
+            {goalWarning ? (
+              <View style={styles.warning} accessibilityLiveRegion="polite">
+                <Text style={styles.warningTitle}>Essa refeição está bem acima da sua meta</Text>
+                <Text style={styles.warningBody}>
+                  Com ela, você chega a {fmt(goalWarning.dayCalories)} kcal hoje (
+                  {goalWarning.dayPercent}% da meta de {fmt(goalWarning.calorieGoal)} kcal). Confira
+                  se os valores estão certos.
+                </Text>
+                <Button
+                  onPress={() => setGoalWarning(null)}
+                  style={styles.reviewBtn}
+                  labelStyle={styles.submitBtnLabel}
+                >
+                  {reviewLabel}
+                </Button>
+                <Button
+                  onPress={confirmSave}
+                  loading={loading}
+                  style={styles.submitBtn}
+                  labelStyle={styles.submitBtnLabel}
+                >
+                  {saveAnywayLabel}
+                </Button>
+              </View>
+            ) : null}
             <Button
-              onPress={handleSubmit}
+              onPress={submit}
               loading={loading}
               disabled={!canSubmit}
               style={styles.submitBtn}
@@ -300,5 +388,30 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontFamily.regular,
   },
   submitBtn: { backgroundColor: colors.brandPrimary, marginTop: spacing.sm },
+  warning: {
+    backgroundColor: colors.brandSurface,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.error,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  warningTitle: {
+    fontSize: typography.fontSize.md,
+    fontFamily: typography.fontFamily.bold,
+    color: colors.brandAnchor,
+    marginBottom: spacing.xs,
+  },
+  warningBody: {
+    fontSize: typography.fontSize.sm,
+    fontFamily: typography.fontFamily.regular,
+    color: colors.brandAnchor,
+  },
+  reviewBtn: {
+    backgroundColor: colors.brandSurface,
+    borderWidth: 1,
+    borderColor: colors.brandDivider,
+    marginTop: spacing.md,
+  },
   submitBtnLabel: { color: colors.brandAnchor },
 });
