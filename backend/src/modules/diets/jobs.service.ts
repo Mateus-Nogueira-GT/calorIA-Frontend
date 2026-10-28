@@ -654,7 +654,7 @@ export async function processJobStep(
   // de novo calado. Agora a cota estourada falha o job (liberando o lock na
   // hora) e o /step responde 200 com status 'failed' + AI_QUOTA_EXCEEDED.
   try {
-    await checkDailyQuota(fastify, userId)
+    await checkDailyQuota(fastify, userId, 'diet')
   } catch (err) {
     if (err instanceof AppError && err.code === 'AI_QUOTA_EXCEEDED') {
       await failJob(fastify, jobId, job.diet_id, 'AI_QUOTA_EXCEEDED', lockToken)

@@ -20,20 +20,9 @@ import {
   stopSpeech,
 } from '@shared/services/voice-player.service';
 import { useDietStore } from '@features/diet/store';
+import { coachQuotaMessage } from './quota-message';
 
-// OP2: teto diário de tokens do backend (429 AI_QUOTA_EXCEEDED). Sem isso, o
-// usuário via a mensagem genérica de erro de envio e não sabia que era um
-// limite diário — parecia um bug para tentar de novo mais tarde no mesmo dia.
-const QUOTA_MESSAGE = 'Você atingiu o limite diário do coach. Volte amanhã.';
 const SEND_ERROR_MESSAGE = 'Não foi possível enviar sua mensagem. Tente novamente.';
-
-function isQuotaExceeded(e: unknown): boolean {
-  return (
-    axios.isAxiosError(e) &&
-    e.response?.status === 429 &&
-    (e.response.data as { error?: string } | undefined)?.error === 'AI_QUOTA_EXCEEDED'
-  );
-}
 
 // Geração da dieta (spec B): mensagens de fallback quando o servidor não manda
 // errorMessage (backend antigo, rede). A do servidor tem preferência.
@@ -285,7 +274,7 @@ export const useCoachStore = create<CoachState>()(
           set({
             isLoading: false,
             error:
-              creditErrorMessage(e) ?? (isQuotaExceeded(e) ? QUOTA_MESSAGE : SEND_ERROR_MESSAGE),
+              creditErrorMessage(e) ?? coachQuotaMessage(e) ?? SEND_ERROR_MESSAGE,
             lastFailedAction: 'send',
           });
           return false;
@@ -335,7 +324,7 @@ export const useCoachStore = create<CoachState>()(
             set({
               isLoading: false,
               error:
-                creditErrorMessage(e) ?? (isQuotaExceeded(e) ? QUOTA_MESSAGE : SEND_ERROR_MESSAGE),
+                creditErrorMessage(e) ?? coachQuotaMessage(e) ?? SEND_ERROR_MESSAGE,
               lastFailedAction: 'send',
             });
           }

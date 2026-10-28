@@ -92,11 +92,18 @@ const envSchema = z
       (v) => (v === '' || v == null ? undefined : v),
       z.string().optional(),
     ),
-    // OP2: teto diário de tokens por usuário (soma de ai_usage nas últimas 24h).
-    // Acima → 429 AI_QUOTA_EXCEEDED em chat, geração de dia e visão.
+    // OP2: teto diário de tokens por usuário (soma de ai_usage nas últimas 24h),
+    // contado separado para o coach (chat/voz) e para a visão. Acima → 429.
     AI_DAILY_TOKEN_CAP: z.preprocess(
       (v) => (v === '' || v == null ? undefined : v),
       z.coerce.number().int().positive().default(200_000),
+    ),
+    // Teto diário de tokens da geração de dieta (diet_day), separado do coach:
+    // uma dieta são 7 chamadas de até 20k tokens de saída cada. 400k ≈ 2 dietas
+    // completas no pior caso (estimativa; ajustar pelo consumo real em ai_usage).
+    AI_DIET_DAILY_TOKEN_CAP: z.preprocess(
+      (v) => (v === '' || v == null ? undefined : v),
+      z.coerce.number().int().positive().default(400_000),
     ),
     // Teto diário de tokens de visão somado entre TODOS os convidados (scanner
     // sem conta). Um scan custa ~2-5k tokens; 1M ≈ 200-500 scans/dia.

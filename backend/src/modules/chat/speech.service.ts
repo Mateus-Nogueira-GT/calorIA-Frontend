@@ -89,7 +89,7 @@ export async function synthesizeLastReply(
   if (expectedReply !== undefined && reply?.content !== expectedReply)
     throw new AppError(409, 'SPEECH_REPLY_CHANGED', 'A resposta da conversa já mudou.')
 
-  await checkDailyQuota(fastify, userId)
+  await checkDailyQuota(fastify, userId, 'coach')
 
   const model = env.OPENAI_TTS_MODEL
   // Gemini TTS só devolve PCM bruto; o servidor converte para WAV.

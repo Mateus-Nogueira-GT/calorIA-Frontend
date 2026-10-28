@@ -10,7 +10,8 @@ Referência rápida para quem opera o backend. Spec: `docs/superpowers/specs/202
 | `OPENAI_DIET_MODEL` | = `OPENAI_MODEL` | geração de dias (7 chamadas/dieta) |
 | `OPENAI_VISION_MODEL` | `openai/gpt-6.1-sol` | scanner |
 | `OPENAI_FALLBACK_MODELS` | vazio | fallbacks do OpenRouter (CSV) |
-| `AI_DAILY_TOKEN_CAP` | `200000` | teto diário de tokens por usuário → 429 `AI_QUOTA_EXCEEDED` |
+| `AI_DAILY_TOKEN_CAP` | `200000` | teto diário de tokens por usuário, contado **separado** para o coach (`chat` + `transcribe` + `speech`) e para a visão (`vision`) → 429 `AI_QUOTA_EXCEEDED` com `details.retryAt` |
+| `AI_DIET_DAILY_TOKEN_CAP` | `400000` | teto diário da geração de dieta (`diet_day`), separado do coach. Estimativa de ~2 dietas completas no pior caso (7 × 20k de saída + prompt); ajustar pelo consumo real (consulta abaixo). Estourado: o job falha com `AI_QUOTA_EXCEEDED`, o chat segue |
 | `RUN_AI_EVALS` | vazio (desligado) | opt-in do eval `src/evals/coach-tool-decision.eval.test.ts` — chama o modelo de verdade para checar a decisão de tool call; sem a variável o arquivo aparece como skipped. Nunca liga sozinho no CI nem no `npm test` normal |
 | `EVAL_MODEL` | `openai/gpt-5-mini` | modelo usado pelo eval acima quando `RUN_AI_EVALS=1` |
 
@@ -28,6 +29,16 @@ Rodar o eval com uma chave real: `cd backend && RUN_AI_EVALS=1 npx vitest run sr
 | `DIET_STEP_FAILED` | 502 | step | idem, por erro de IA/rede |
 
 Recusas por segurança (menor de idade, condição de saúde, IMC < 18,5 com déficit) **não são erros**: voltam como texto do coach com status `collecting`.
+
+**Por que separado (28/10):** o teto somava todas as features. Uma dieta (gratuita) consumia o teto e o coach (pago) passava a responder 429 pelo resto do dia. O 429 sai antes da cobrança: a reserva de crédito é liberada.
+
+Consumo real de uma dieta, para calibrar `AI_DIET_DAILY_TOKEN_CAP`:
+
+```sql
+SELECT job_id, SUM(total_tokens) AS tokens
+FROM ai_usage WHERE feature = 'diet_day' AND created_at >= NOW() - interval '30 days'
+GROUP BY job_id ORDER BY tokens DESC LIMIT 20;
+```
 
 ## Lock em voo do `/step` (OP1)
 

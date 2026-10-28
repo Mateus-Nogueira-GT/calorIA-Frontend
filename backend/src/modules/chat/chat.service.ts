@@ -311,7 +311,7 @@ async function sendChatMessageCore(
 ): Promise<ChatResponse> {
   // OP2: teto diário de tokens antes de qualquer chamada de IA — usuário acima
   // da cota não paga nem a primeira chamada do turno.
-  await checkDailyQuota(fastify, userId)
+  await checkDailyQuota(fastify, userId, 'coach')
 
   const conversationId = data.conversation_id ?? randomUUID()
   if (env.CREDITS_ENFORCEMENT_ENABLED && data.conversation_id) {

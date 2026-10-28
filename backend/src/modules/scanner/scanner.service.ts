@@ -102,7 +102,7 @@ async function analyzePhotoCore(
   imageDataUrl: string,
   userId: string | null,
 ): Promise<ScanResponse> {
-  await checkDailyQuota(fastify, userId)
+  await checkDailyQuota(fastify, userId, 'vision')
 
   // OP3: a mesma foto reenviada não paga uma chamada nova.
   const hash = createHash('sha256')

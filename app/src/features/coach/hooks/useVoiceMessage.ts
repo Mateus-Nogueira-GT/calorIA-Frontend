@@ -4,6 +4,7 @@ import axios from 'axios';
 import { creditErrorMessage } from '@shared/services/credits.service';
 import { useAuthStore } from '@features/auth/store';
 import { useCoachStore } from '../store';
+import { coachQuotaMessage } from '../quota-message';
 import { coachService, VoiceRequestContext } from '@shared/services/coach.service';
 import {
   ActiveRecording,
@@ -57,7 +58,11 @@ function showTranscribeError(e: unknown): void {
   } else if (status === 429 && code === 'TOO_MANY_REQUESTS') {
     Alert.alert('Muitos áudios seguidos', 'Espere um minutinho e tente de novo.');
   } else if (status === 429) {
-    Alert.alert('Limite diário atingido', 'Você atingiu o limite diário do coach. Volte amanhã.');
+    Alert.alert(
+      'Limite diário atingido',
+      coachQuotaMessage(e) ??
+        'Você chegou ao limite diário do coach. Tente de novo mais tarde. Nenhum crédito foi cobrado.',
+    );
   } else if (status === 413) {
     Alert.alert('Áudio muito longo', 'Grave mensagens de até 1 minuto.');
   } else {
