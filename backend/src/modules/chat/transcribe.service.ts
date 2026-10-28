@@ -87,7 +87,7 @@ export async function transcribeAudio(
   fetchImpl: typeof fetch = fetch,
 ): Promise<{ text: string }> {
   assertAiTariffConfigured('audio_transcription')
-  await checkDailyQuota(fastify, userId)
+  await checkDailyQuota(fastify, userId, 'coach')
 
   const model = env.OPENAI_TRANSCRIBE_MODEL ?? DEFAULT_TRANSCRIBE_MODEL
 

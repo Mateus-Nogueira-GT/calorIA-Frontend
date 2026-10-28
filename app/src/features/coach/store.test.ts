@@ -91,7 +91,9 @@ describe('useCoachStore', () => {
     const { result } = renderHook(() => useCoachStore());
     await act(() => result.current.sendMessage('oi'));
 
-    expect(result.current.error).toBe('Você atingiu o limite diário do coach. Volte amanhã.');
+    expect(result.current.error).toBe(
+      'Você chegou ao limite diário do coach. Tente de novo mais tarde. Nenhum crédito foi cobrado.',
+    );
     expect(result.current.lastFailedAction).toBe('send');
   });
 

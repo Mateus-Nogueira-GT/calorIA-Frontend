@@ -154,12 +154,12 @@ describe('checkDailyQuota (OP2)', () => {
 
   it('abaixo do teto: resolve', async () => {
     const { fastify } = fakeFastify([['FROM ai_usage', [{ used: 10 }]]])
-    await expect(checkDailyQuota(fastify, USER)).resolves.toBeUndefined()
+    await expect(checkDailyQuota(fastify, USER, 'coach')).resolves.toBeUndefined()
   })
 
   it('no teto ou acima: 429 AI_QUOTA_EXCEEDED', async () => {
     const { fastify } = fakeFastify([['FROM ai_usage', [{ used: 200_000 }]]])
-    await expect(checkDailyQuota(fastify, USER)).rejects.toMatchObject({
+    await expect(checkDailyQuota(fastify, USER, 'coach')).rejects.toMatchObject({
       statusCode: 429,
       code: 'AI_QUOTA_EXCEEDED',
     })
@@ -167,14 +167,14 @@ describe('checkDailyQuota (OP2)', () => {
 
   it('consulta só as últimas 24h do usuário', async () => {
     const { fastify, calls } = fakeFastify([['FROM ai_usage', [{ used: 0 }]]])
-    await checkDailyQuota(fastify, USER)
+    await checkDailyQuota(fastify, USER, 'coach')
     expect(calls[0].sql).toContain("interval '24 hours'")
     expect(calls[0].params).toContain(USER)
   })
 
   it('telemetria indisponível: libera com warn (fail-open)', async () => {
     const { fastify, logs } = fakeFastify([['FROM ai_usage', new Error('tabela sumiu')]])
-    await expect(checkDailyQuota(fastify, USER)).resolves.toBeUndefined()
+    await expect(checkDailyQuota(fastify, USER, 'coach')).resolves.toBeUndefined()
     expect(logs.some((l) => l.level === 'warn')).toBe(true)
   })
 })
@@ -182,17 +182,67 @@ describe('checkDailyQuota (OP2)', () => {
 describe('checkDailyQuota — convidado (userId null)', () => {
   it('soma só a visão de convidados (user_id IS NULL)', async () => {
     const { fastify, calls } = fakeFastify([['FROM ai_usage', [{ used: 0 }]]])
-    await checkDailyQuota(fastify, null)
+    await checkDailyQuota(fastify, null, 'vision')
     expect(calls[0].sql).toContain('user_id IS NULL')
     expect(calls[0].sql).toContain("feature = 'vision'")
   })
 
   it('teto global de convidados atingido: 429 pedindo conta', async () => {
     const { fastify } = fakeFastify([['FROM ai_usage', [{ used: 1_000_000 }]]])
-    await expect(checkDailyQuota(fastify, null)).rejects.toMatchObject({
+    await expect(checkDailyQuota(fastify, null, 'vision')).rejects.toMatchObject({
       statusCode: 429,
       code: 'AI_QUOTA_EXCEEDED',
       message: expect.stringContaining('Crie uma conta'),
     })
+  })
+})
+
+describe('checkDailyQuota — teto por grupo (feedback 27/10)', () => {
+  const USER = '11111111-1111-1111-1111-111111111111'
+
+  it('cada grupo soma só as próprias features', async () => {
+    const coach = fakeFastify([['FROM ai_usage', [{ used: 0 }]]])
+    await checkDailyQuota(coach.fastify, USER, 'coach')
+    expect(coach.calls[0].params).toContainEqual(['chat', 'transcribe', 'speech'])
+
+    const diet = fakeFastify([['FROM ai_usage', [{ used: 0 }]]])
+    await checkDailyQuota(diet.fastify, USER, 'diet')
+    expect(diet.calls[0].params).toContainEqual(['diet_day'])
+
+    const vision = fakeFastify([['FROM ai_usage', [{ used: 0 }]]])
+    await checkDailyQuota(vision.fastify, USER, 'vision')
+    expect(vision.calls[0].params).toContainEqual(['vision'])
+  })
+
+  it('a geração de dieta tem teto próprio, maior que o do coach', async () => {
+    // 250k: estoura o teto do coach (200k), cabe no da dieta.
+    const { fastify } = fakeFastify([['FROM ai_usage', [{ used: 250_000 }]]])
+    await expect(checkDailyQuota(fastify, USER, 'diet')).resolves.toBeUndefined()
+    await expect(checkDailyQuota(fastify, USER, 'coach')).rejects.toMatchObject({
+      code: 'AI_QUOTA_EXCEEDED',
+    })
+  })
+
+  it('estourado: devolve retryAt (quando a janela de 24 h libera) e diz que não houve cobrança', async () => {
+    const { fastify } = fakeFastify([
+      ['retry_at', [{ retry_at: new Date('2026-10-28T22:15:00Z') }]],
+      ['FROM ai_usage', [{ used: 210_000 }]],
+    ])
+    await expect(checkDailyQuota(fastify, USER, 'coach')).rejects.toMatchObject({
+      statusCode: 429,
+      code: 'AI_QUOTA_EXCEEDED',
+      message: expect.stringContaining('nenhum crédito foi cobrado'),
+      details: { retryAt: '2026-10-28T22:15:00.000Z' },
+    })
+  })
+
+  it('falha ao calcular retryAt não impede o 429', async () => {
+    const { fastify } = fakeFastify([
+      ['retry_at', new Error('boom')],
+      ['FROM ai_usage', [{ used: 210_000 }]],
+    ])
+    const err = await checkDailyQuota(fastify, USER, 'coach').catch((e: unknown) => e)
+    expect(err).toMatchObject({ code: 'AI_QUOTA_EXCEEDED' })
+    expect((err as { details?: unknown }).details).toBeUndefined()
   })
 })
