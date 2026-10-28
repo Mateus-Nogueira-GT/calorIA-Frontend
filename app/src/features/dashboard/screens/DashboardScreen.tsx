@@ -17,7 +17,12 @@ import { useFoodLogStore } from '@features/food-log/store';
 import { foodLogService } from '@shared/services/food-log.service';
 import { useDietStore } from '@features/diet/store';
 import { todayString } from '@shared/utils/date';
-import { getDailyCalorieGoal, getDailyFiberGoal, getDayTotals } from '@shared/utils/calories';
+import {
+  formatGoalPercent,
+  getDailyCalorieGoal,
+  getDailyFiberGoal,
+  getDayTotals,
+} from '@shared/utils/calories';
 import { CreditBalance } from '@features/credits/components/CreditBalance';
 import { CalorieRing } from '../components/CalorieRing';
 import { MacroCard } from '../components/MacroCard';
@@ -128,10 +133,7 @@ export function DashboardScreen(): React.JSX.Element {
   const fiberGoal = getDailyFiberGoal(plan);
   const hasGoals = calorieGoal !== null;
   const greetingLabel = user?.name ? `Olá, ${user.name}` : 'Seu resumo de hoje';
-  const percentLabel =
-    calorieGoal !== null && calorieGoal > 0
-      ? `${Math.round((totals.calories / calorieGoal) * 100)}%`
-      : '--';
+  const percentLabel = formatGoalPercent(totals.calories, calorieGoal);
 
   // Keep the full calorie value readable instead of shrinking Dynamic Type.
   // Cinco dígitos inteiros: o total pode ter decimal ("450.5" tem 5 caracteres).
