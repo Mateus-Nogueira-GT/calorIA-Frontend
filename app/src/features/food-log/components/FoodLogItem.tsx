@@ -4,6 +4,7 @@ import { Text } from '@shared/components';
 import { colors, typography, spacing, radius } from '@theme';
 import { Meal } from '@shared/services/food-log.service';
 import { parseDbDate } from '@shared/utils/parse-db-date';
+import { isImplausibleMeal } from '@shared/utils/meal-plausibility';
 
 interface Props {
   meal: Meal;
@@ -30,9 +31,12 @@ function DeleteGlyph(): React.JSX.Element {
 }
 
 export function FoodLogItem({ meal, onDelete, onEdit, hideBorder }: Props): React.JSX.Element {
-  const macros =
-    `Proteínas ${meal.protein}g · Carboidratos ${meal.carbs}g · Gorduras ${meal.fat}g` +
-    (meal.fiber != null ? ` · Fibras ${meal.fiber}g` : '');
+  // Registro impossível: não exibe os números (não fazem sentido) e pede correção.
+  const implausible = isImplausibleMeal(meal);
+  const macros = implausible
+    ? 'Valores impossíveis: não contam no dia. Corrija ou apague.'
+    : `Proteínas ${meal.protein}g · Carboidratos ${meal.carbs}g · Gorduras ${meal.fat}g` +
+      (meal.fiber != null ? ` · Fibras ${meal.fiber}g` : '');
   return (
     <View style={[styles.container, hideBorder && styles.containerLast]}>
       <View style={styles.info}>
@@ -40,10 +44,10 @@ export function FoodLogItem({ meal, onDelete, onEdit, hideBorder }: Props): Reac
           <Text style={styles.name}>{meal.name}</Text>
           <Text style={styles.time}>{formatTime(meal.loggedAt)}</Text>
         </View>
-        <Text style={styles.macros}>{macros}</Text>
+        <Text style={[styles.macros, implausible && styles.invalid]}>{macros}</Text>
       </View>
       <View style={styles.right}>
-        <Text style={styles.calories}>{meal.calories} kcal</Text>
+        {implausible ? null : <Text style={styles.calories}>{meal.calories} kcal</Text>}
         <View style={styles.actions}>
           {onEdit ? (
             <TouchableOpacity
@@ -82,6 +86,7 @@ const styles = StyleSheet.create({
   name: { fontSize: typography.fontSize.sm, fontFamily: typography.fontFamily.semiBold, color: colors.brandAnchor, flex: 1 },
   time: { fontSize: typography.fontSize.xs, color: colors.brandTextMuted },
   macros: { fontSize: typography.fontSize.xs, color: colors.brandText, marginTop: 6 },
+  invalid: { color: colors.error },
   right: { alignItems: 'flex-end', gap: spacing.sm },
   calories: { fontSize: typography.fontSize.sm, fontFamily: typography.fontFamily.bold, color: colors.brandPrimary },
   actions: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },

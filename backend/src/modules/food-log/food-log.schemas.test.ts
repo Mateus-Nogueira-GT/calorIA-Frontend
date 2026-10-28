@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { addMealBodySchema, MEAL_LIMITS, updateMealBodySchema } from './food-log.schemas.js'
+import {
+  MEAL_LIMITS,
+  addMealBodySchema,
+  isImplausibleMeal,
+  updateMealBodySchema,
+} from './food-log.schemas.js'
 
 const body = {
   name: 'Arroz',
@@ -28,17 +33,31 @@ describe('limites de plausibilidade por refeição', () => {
     (field) => {
       const r = addMealBodySchema.safeParse({ ...body, [field]: 999_999 })
       expect(r.success).toBe(false)
-      const issue = r.error!.issues.find((i) => i.path[0] === field)
+      const issue = r.error?.issues.find((i) => i.path[0] === field)
       expect(issue?.message).toMatch(/^Máximo de .+ por refeição$/)
     },
   )
 
   it('rejeita Infinity', () => {
-    expect(addMealBodySchema.safeParse({ ...body, calories: Infinity }).success).toBe(false)
+    expect(
+      addMealBodySchema.safeParse({ ...body, calories: Number.POSITIVE_INFINITY }).success,
+    ).toBe(false)
   })
 
   it('o PATCH herda os limites', () => {
     expect(updateMealBodySchema.safeParse({ ...body, calories: 999_999 }).success).toBe(false)
     expect(updateMealBodySchema.safeParse({ ...body, calories: 4800 }).success).toBe(true)
+  })
+})
+
+describe('isImplausibleMeal', () => {
+  it('qualquer campo acima do teto torna o registro impossível', () => {
+    expect(
+      isImplausibleMeal({ calories: 5000, protein: 500, carbs: 500, fat: 500, fiber: 150 }),
+    ).toBe(false)
+    expect(isImplausibleMeal({ calories: 5001, protein: 0, carbs: 0, fat: 0, fiber: null })).toBe(
+      true,
+    )
+    expect(isImplausibleMeal({ calories: 10, protein: 0, carbs: 0, fat: 0, fiber: 151 })).toBe(true)
   })
 })
