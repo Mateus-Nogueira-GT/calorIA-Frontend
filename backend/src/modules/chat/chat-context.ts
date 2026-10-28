@@ -4,6 +4,7 @@ import type { TodayPlan, TodayQuery } from '../diets/diets.schemas.js'
 import { getActiveDiet, getTodayPlan } from '../diets/diets.service.js'
 import { parseInput } from '../diets/jobs.service.js'
 import type { Meal } from '../food-log/food-log.schemas.js'
+import { isImplausibleMeal } from '../food-log/food-log.schemas.js'
 import { listMeals } from '../food-log/food-log.service.js'
 
 /**
@@ -218,9 +219,14 @@ function consumedToday(data: UserContextData): {
  * LINHA — o corte por caractere podia virar "Faltam: 12" logo abaixo de "nunca
  * invente valores".
  */
-export function formatUserContext(data: UserContextData): string {
+export function formatUserContext(raw: UserContextData): string {
   const lines: string[] = []
-  const p = data.profile
+  const p = raw.profile
+  // Registro impossível (ex.: 999.999 kcal) não é consumo: fora das contas. O
+  // coach fica sabendo que ele existe para pedir correção, nunca para repetir o número.
+  const freeMeals = raw.freeMeals.filter((m) => !isImplausibleMeal(m))
+  const ignored = raw.freeMeals.length - freeMeals.length
+  const data = { ...raw, freeMeals }
 
   if (data.diet) {
     lines.push(
@@ -249,6 +255,15 @@ export function formatUserContext(data: UserContextData): string {
         `Hoje (${data.date}): ${c.calories} kcal / ${c.protein}g prot no diário livre (sem dieta ativa gerada).`,
       )
     }
+  }
+
+  if (ignored > 0) {
+    const one = ignored === 1
+    lines.push(
+      `${ignored} ${one ? 'registro' : 'registros'} com valores impossíveis no diário de hoje ` +
+        `${one ? 'foi ignorado' : 'foram ignorados'} nas contas — se o usuário falar do dia, ` +
+        `peça para corrigir ou apagar ${one ? 'esse registro' : 'esses registros'} no Diário.`,
+    )
   }
 
   if (p && (p.weight_kg || p.height_cm || p.goal)) {

@@ -1,11 +1,7 @@
 import type { DayTotals } from '@shared/utils/calories';
+import { MEAL_LIMITS } from '@shared/utils/meal-plausibility';
 
-/**
- * Teto de plausibilidade de UMA refeição. Espelha MEAL_LIMITS de
- * backend/src/modules/food-log/food-log.schemas.ts, que é a fonte da verdade:
- * aqui só serve para mostrar o erro no campo antes de chamar a API.
- */
-export const MEAL_LIMITS = { calories: 5000, protein: 500, carbs: 500, fat: 500, fiber: 150 };
+export { MEAL_LIMITS };
 
 export type MealField = keyof typeof MEAL_LIMITS;
 

@@ -120,3 +120,17 @@ describe('formatGoalPercent', () => {
     expect(formatGoalPercent(-10, 100)).toBe('0%');
   });
 });
+
+describe('getDayTotals — registro impossível (feedback 27/10)', () => {
+  it('999.999 no diário livre não entra no dia', () => {
+    const absurd = { calories: 999999, protein: 999999, carbs: 999999, fat: 999999, fiber: 999999 };
+    const apple = { calories: 95, protein: 0, carbs: 25, fat: 0, fiber: 4 };
+    expect(getDayTotals({ freeMeals: [apple, absurd] })).toEqual({
+      calories: 95,
+      protein: 0,
+      carbs: 25,
+      fat: 0,
+      fiber: 4,
+    });
+  });
+});

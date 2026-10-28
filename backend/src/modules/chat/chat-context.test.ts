@@ -304,3 +304,48 @@ describe('dados do cadastro (F2)', () => {
     expect(out).toContain('objetivo: manter peso / melhorar saúde (use goal=maintain)')
   })
 })
+
+describe('registro com valores impossíveis (feedback 27/10)', () => {
+  const absurd = {
+    id: 'm9',
+    name: 'teste',
+    calories: 999_999,
+    protein: 999_999,
+    carbs: 999_999,
+    fat: 999_999,
+    fiber: 999_999,
+    loggedAt: '2026-07-24T12:00:00Z',
+    mealType: 'lunch' as const,
+  }
+  const apple = {
+    ...absurd,
+    id: 'm1',
+    name: 'Maçã',
+    calories: 95,
+    protein: 0,
+    carbs: 25,
+    fat: 0,
+    fiber: null,
+  }
+  const diet = {
+    name: 'Plano',
+    targetCalories: 1695,
+    targetProtein: 167,
+    targetCarbs: 148,
+    targetFat: 47,
+  }
+
+  it('não entra no consumido e o coach é avisado para pedir correção', () => {
+    const out = formatUserContext({ ...emptyData, diet, freeMeals: [apple, absurd] })
+    expect(out).toContain('consumidas 95 kcal')
+    expect(out).not.toContain('999')
+    expect(out).toContain('diário livre: 1 item(ns)')
+    expect(out).toMatch(/1 registro com valores impossíveis.*ignorado.*corrigir ou apagar/)
+  })
+
+  it('sem dieta: também ignora e avisa', () => {
+    const out = formatUserContext({ ...emptyData, freeMeals: [absurd] })
+    expect(out).not.toContain('999')
+    expect(out).toMatch(/1 registro com valores impossíveis/)
+  })
+})

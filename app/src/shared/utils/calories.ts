@@ -1,5 +1,6 @@
 import type { DietPlan } from '@shared/services/diet.service';
 import type { Meal } from '@shared/services/food-log.service';
+import { isImplausibleMeal } from './meal-plausibility';
 
 /**
  * R5: existia um DEFAULT_CALORIE_GOAL = 2000 aqui. Sem plano, o Dashboard
@@ -60,7 +61,8 @@ export function getDayTotals(params: {
 }): DayTotals {
   const completedPlanned = (params.planMeals ?? []).filter((m) => m.completedToday);
   const planned = sumMacros(completedPlanned);
-  const free = sumMacros(params.freeMeals);
+  // Registro impossível (999.999…) não é consumo: fora da conta.
+  const free = sumMacros(params.freeMeals.filter((m) => !isImplausibleMeal(m)));
   return {
     calories: planned.calories + free.calories,
     protein: planned.protein + free.protein,

@@ -2,7 +2,13 @@ import type { FastifyInstance } from 'fastify'
 import type { TransactionSql } from 'postgres'
 import { AppError } from '../../shared/errors.js'
 import { isWithinDateWindow } from '../../shared/local-date.js'
-import type { AddMealBody, DaySummary, Meal, UpdateMealBody } from './food-log.schemas.js'
+import {
+  type AddMealBody,
+  type DaySummary,
+  MEAL_LIMITS,
+  type Meal,
+  type UpdateMealBody,
+} from './food-log.schemas.js'
 import { hasMealFiberColumns } from './meal-fiber-columns.js'
 
 /**
@@ -201,6 +207,11 @@ export async function getSummary(
       COALESCE(SUM(total_fat), 0)::INT AS fat
     FROM meals
     WHERE user_id = ${userId} AND meal_date BETWEEN ${from} AND ${to}
+      -- Registros impossíveis (anteriores aos tetos) não entram na soma.
+      AND total_calories <= ${MEAL_LIMITS.calories}
+      AND total_protein <= ${MEAL_LIMITS.protein}
+      AND total_carbs <= ${MEAL_LIMITS.carbs}
+      AND total_fat <= ${MEAL_LIMITS.fat}
     GROUP BY meal_date
     ORDER BY meal_date
   `

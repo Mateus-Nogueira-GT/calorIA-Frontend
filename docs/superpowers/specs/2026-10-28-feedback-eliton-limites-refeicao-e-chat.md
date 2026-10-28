@@ -233,3 +233,21 @@ o chat depois, aparecem textos entre colchetes que parecem erro.
 - [ ] Reabrir uma conversa com dieta gerada não mostra nenhum texto entre colchetes.
 - [ ] Concluir a geração com o chat aberto adiciona a mensagem "Pronto! …" com o número de
       refeições certo.
+
+---
+
+## Revisão de 28/10: registro impossível é inválido, não "999%+"
+
+Depois do PR de R2, a tela Hoje passou a mostrar `999%+` para o registro antigo de 999.999.
+Isso continua exibindo um dado impossível como se fosse consumo. Decisão: **um registro acima
+de qualquer teto de `MEAL_LIMITS` é inválido.**
+
+- Não entra em nenhuma soma: tela Hoje, Diário (`DayMacroSummary`), resumo semanal
+  (`GET /food-log/summary`) e contexto do coach.
+- Os números dele não aparecem. No Diário e na lista da tela Hoje, o item mostra só o nome e
+  "Valores impossíveis", com Editar/Apagar no Diário. Na edição, os campos já aparecem com o
+  erro do teto.
+- O coach recebe a informação de que existe um registro impossível ignorado, para pedir a
+  correção se o usuário falar do dia. Nunca para repetir o número.
+
+O teto de 999%+ de R2 fica como proteção visual para dias somados de verdade.

@@ -3,11 +3,12 @@ import { StyleSheet, View } from 'react-native';
 import { Text } from '@shared/components';
 import { colors, typography, spacing } from '@theme';
 import { Meal } from '@shared/services/food-log.service';
+import { isImplausibleMeal } from '@shared/utils/meal-plausibility';
 
 interface Props { meals: Meal[] }
 
 export function DayMacroSummary({ meals }: Props): React.JSX.Element {
-  const totals = meals.reduce(
+  const totals = meals.filter((m) => !isImplausibleMeal(m)).reduce(
     (acc, meal) => ({
       calories: acc.calories + meal.calories,
       protein: acc.protein + meal.protein,

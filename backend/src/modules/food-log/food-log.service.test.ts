@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { fakeFastify } from '../../shared/testing/fake-fastify.js'
-import { updateMealBodySchema } from './food-log.schemas.js'
-import { addMeal, listMeals, updateMeal } from './food-log.service.js'
+import { MEAL_LIMITS, updateMealBodySchema } from './food-log.schemas.js'
+import { addMeal, getSummary, listMeals, updateMeal } from './food-log.service.js'
 import { __resetMealFiberColumnsCache } from './meal-fiber-columns.js'
 
 const USER = '11111111-1111-1111-1111-111111111111'
@@ -142,5 +142,17 @@ describe('peso revisado do scanner', () => {
     ])
     await updateMeal(fastify, USER, MEAL, body)
     expect(calls.find((c) => c.sql.includes('INSERT INTO meal_items'))?.params).toContain(275.5)
+  })
+})
+
+describe('getSummary — registro impossível não entra na soma', () => {
+  it('a consulta exclui linhas acima dos tetos', async () => {
+    const { fastify, calls } = fakeFastify([['FROM meals', []]])
+    await getSummary(fastify, USER, '2026-10-21', '2026-10-27')
+    const q = calls[0]
+    expect(q.sql).toContain('total_calories <=')
+    expect(q.sql).toContain('total_protein <=')
+    expect(q.params).toContain(MEAL_LIMITS.calories)
+    expect(q.params).toContain(MEAL_LIMITS.fat)
   })
 })

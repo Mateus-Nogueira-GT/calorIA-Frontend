@@ -33,3 +33,19 @@ describe('FoodLogItem', () => {
     expect(getByText('Proteínas 38g · Carboidratos 52g · Gorduras 8g')).toBeTruthy();
   });
 });
+
+describe('FoodLogItem — registro impossível', () => {
+  const absurd = { ...meal, id: 'm9', name: 'teste', calories: 999999, protein: 999999, carbs: 999999, fat: 999999, fiber: 999999 };
+
+  it('não mostra os números e pede correção, mantendo editar e apagar', () => {
+    const onEdit = jest.fn();
+    const { queryByText, getByText, getByTestId } = render(
+      <FoodLogItem meal={absurd} onDelete={() => {}} onEdit={onEdit} />,
+    );
+    expect(queryByText(/999/)).toBeNull();
+    expect(getByText('Valores impossíveis: não contam no dia. Corrija ou apague.')).toBeTruthy();
+    fireEvent.press(getByTestId('edit-m9'));
+    expect(onEdit).toHaveBeenCalled();
+    expect(getByTestId('delete-m9')).toBeTruthy();
+  });
+});

@@ -114,18 +114,18 @@ it('calorias de cinco dígitos têm a largura da seção, sem competir com o ane
   const date = todayString();
   useFoodLogStore.setState({
     mealsByDate: {
-      [date]: [
-        {
-          id: 'large',
-          mealType: 'other',
-          name: 'Refeição',
-          calories: 12345,
-          protein: 0,
-          carbs: 0,
-          fat: 0,
-          loggedAt: new Date().toISOString(),
-        },
-      ],
+      // Três refeições possíveis (cada uma abaixo do teto de 5.000 kcal): uma
+      // só de 12.345 seria registro impossível e não entraria na soma.
+      [date]: [4115, 4115, 4115].map((calories, i) => ({
+        id: `large-${i}`,
+        mealType: 'other' as const,
+        name: 'Refeição',
+        calories,
+        protein: 0,
+        carbs: 0,
+        fat: 0,
+        loggedAt: new Date().toISOString(),
+      })),
     },
     syncedDates: { [date]: true },
   });
