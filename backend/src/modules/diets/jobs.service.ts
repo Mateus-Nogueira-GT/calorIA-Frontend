@@ -14,6 +14,7 @@ import { env } from '../../shared/env.js'
 import { AppError } from '../../shared/errors.js'
 import { mealTypesFor, reconcileDay } from '../../shared/guardrails/day.js'
 import { type DayGuardrailResult, applyDayGuardrails } from '../../shared/guardrails/index.js'
+import { DIET_COMPLETED_MARKER } from '../chat/history-markers.js'
 import { createSystemPost } from '../feed/feed.service.js'
 import { hasFiberColumns } from './fiber-columns.js'
 
@@ -26,8 +27,9 @@ const TOTAL_DAYS = 7
 const DAYS_PT = ['', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo']
 
 // C2: contraparte do marcador de início (chat.service.ts) — o modelo passa a
-// ver, no próprio histórico, que a geração terminou.
-export const DIET_COMPLETED_MARKER = `[Dieta concluída — ${TOTAL_DAYS} dias]`
+// ver, no próprio histórico, que a geração terminou. Mora junto do de início
+// para o chat saber escondê-lo da conversa.
+export { DIET_COMPLETED_MARKER }
 
 // S5: piso mínimo sem supervisão profissional. 1000 (antes) fica abaixo do
 // que qualquer diretriz recomenda; abaixo do piso o plano vira risco.
