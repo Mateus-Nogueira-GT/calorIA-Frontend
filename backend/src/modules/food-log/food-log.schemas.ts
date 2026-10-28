@@ -25,15 +25,29 @@ export const listMealsQuerySchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data deve estar no formato YYYY-MM-DD'),
 })
 
+/**
+ * Teto de plausibilidade de UMA refeição. Folgado de propósito: um rodízio
+ * inteiro cabe, um erro de digitação com três zeros a mais não. O app espelha
+ * estes valores em app/src/features/food-log/meal-limits.ts.
+ */
+export const MEAL_LIMITS = { calories: 5000, protein: 500, carbs: 500, fat: 500, fiber: 150 }
+
+const mealNumber = (max: number, unit: string) =>
+  z
+    .number()
+    .finite()
+    .min(0)
+    .max(max, `Máximo de ${max.toLocaleString('pt-BR')} ${unit} por refeição`)
+
 export const addMealBodySchema = z.object({
   weightGrams: z.number().finite().min(0.1).max(100_000).optional(),
   name: z.string().min(1, 'Nome é obrigatório').max(120),
-  calories: z.number().min(0),
-  protein: z.number().min(0),
-  carbs: z.number().min(0),
-  fat: z.number().min(0),
+  calories: mealNumber(MEAL_LIMITS.calories, 'kcal'),
+  protein: mealNumber(MEAL_LIMITS.protein, 'g'),
+  carbs: mealNumber(MEAL_LIMITS.carbs, 'g'),
+  fat: mealNumber(MEAL_LIMITS.fat, 'g'),
   /** Fibra (g). Ausente/null = sem dado. */
-  fiber: z.number().min(0).nullable().optional(),
+  fiber: mealNumber(MEAL_LIMITS.fiber, 'g').nullable().optional(),
   /**
    * Data local do cliente (Workstream A). Sem ela, CURRENT_DATE (UTC) — que
    * "vira o dia" às 21h BRT; o app SEMPRE deve enviar.

@@ -75,11 +75,25 @@ export function FoodLogScreen(): React.JSX.Element {
   // (completedToday não diz nada sobre dias anteriores), então em dias passados
   // somamos apenas o diário livre — é o único dado real que existe para eles.
   const isToday = selectedDate === todayString();
-  const consumed = getDayTotals({
+  const dayTotals = getDayTotals({
     planMeals: isToday ? plan?.meals : undefined,
     freeMeals: meals,
-  }).calories;
+  });
+  const consumed = dayTotals.calories;
   const goal = getDailyCalorieGoal(plan);
+  // Aviso de refeição muito acima da meta (feedback de 27/10) — sem dieta, sem aviso.
+  const mealGoals = useMemo(
+    () =>
+      goal === null
+        ? undefined
+        : {
+            calories: goal,
+            protein: plan?.totalProtein ?? null,
+            carbs: plan?.totalCarbs ?? null,
+            fat: plan?.totalFat ?? null,
+          },
+    [goal, plan],
+  );
 
   const grouped = useMemo(
     () =>
@@ -177,12 +191,16 @@ export function FoodLogScreen(): React.JSX.Element {
         visible={modalVisible}
         onClose={() => setModalVisible(false)}
         onSubmit={handleAddMeal}
+        goals={mealGoals}
+        dayTotals={dayTotals}
       />
       <AddMealModal
         visible={editingMeal !== null}
         initialMeal={editingMeal ?? undefined}
         onClose={() => setEditingMeal(null)}
         onSubmit={handleEditSubmit}
+        goals={mealGoals}
+        dayTotals={dayTotals}
       />
     </SafeAreaView>
   );
