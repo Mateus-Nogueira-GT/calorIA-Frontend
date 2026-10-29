@@ -1,7 +1,12 @@
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { colors, typography, spacing, radius } from '@theme';
-import { isValidScanWeight, roundScanAmount, scaleScanPortion } from '@shared/utils/scan-portion';
+import {
+  isValidScanWeight,
+  roundScanAmount,
+  scaleScanPortion,
+  scanItemProblem,
+} from '@shared/utils/scan-portion';
 import { ConfidenceBadge } from './ConfidenceBadge';
 import type { ScanItem } from '@shared/services/scanner.service';
 
@@ -64,6 +69,8 @@ export function ScanItemRow({ item, onChange, onRemove }: Props): React.JSX.Elem
   const weightError =
     (weightTouched || item.weightGrams != null) &&
     !isValidScanWeight(Number(drafts.weightGrams?.replace(',', '.')));
+  // Valor impossível (ex.: 999.999 kcal): não exibe o número, mostra o erro.
+  const valuesError = scanItemProblem(item);
 
   return (
     <View style={styles.card}>
@@ -85,10 +92,10 @@ export function ScanItemRow({ item, onChange, onRemove }: Props): React.JSX.Elem
                 ? 'Peso não informado'
                 : `Peso estimado: ${roundScanAmount(item.weightGrams)} g`}
             </Text>
-            <Text style={styles.readMacros}>{macroSummary(item)}</Text>
+            {valuesError ? null : <Text style={styles.readMacros}>{macroSummary(item)}</Text>}
           </View>
         )}
-        {editing ? null : (
+        {editing || valuesError ? null : (
           <Text style={styles.readKcal}>{`${roundScanAmount(item.calories)} kcal`}</Text>
         )}
         <Pressable
@@ -145,7 +152,12 @@ export function ScanItemRow({ item, onChange, onRemove }: Props): React.JSX.Elem
       ) : null}
       {editing && weightError ? (
         <Text style={styles.weightError} accessibilityRole="alert">
-          Informe um peso entre 0,1 g e 100.000 g.
+          Informe um peso entre 0,1 g e 5.000 g.
+        </Text>
+      ) : null}
+      {valuesError ? (
+        <Text style={styles.weightError} accessibilityRole="alert">
+          {valuesError}
         </Text>
       ) : null}
       <Pressable

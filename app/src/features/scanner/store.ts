@@ -5,7 +5,12 @@ import { scannerService } from '@shared/services/scanner.service';
 import type { ScanItem } from '@shared/services/scanner.service';
 import { foodLogService } from '@shared/services/food-log.service';
 import { useFoodLogStore } from '@features/food-log/store';
-import { isValidScanWeight, roundScanAmount, scaleScanPortion } from '@shared/utils/scan-portion';
+import {
+  isValidScanWeight,
+  roundScanAmount,
+  scaleScanPortion,
+  scanItemProblem,
+} from '@shared/utils/scan-portion';
 import { todayString } from '@shared/utils/date';
 import { showAlert } from '@shared/utils/show-alert';
 import { captureSessionOwner, isCurrentOwner } from '@shared/services/session-owner';
@@ -136,10 +141,17 @@ export const useScannerStore = create<ScannerState>((set, get) => ({
       get().invalidWeightIds.length > 0 ||
       get().items.some((item) => item.weightGrams != null && !isValidScanWeight(item.weightGrams))
     ) {
-      showAlert('Confira o peso', 'Informe um peso entre 0,1 g e 100.000 g em cada item editado.');
+      showAlert('Confira o peso', 'Informe um peso entre 0,1 g e 5.000 g em cada item editado.');
       throw new Error('SCAN_CONFIRM_INVALID_WEIGHT');
     }
     const valid = get().items.filter((i) => i.name.trim().length > 0);
+    // O servidor recusa valores impossíveis; antes isso virava um "Tente
+    // novamente" que nunca funcionava. Diz qual item e o que corrigir.
+    const impossible = valid.find((i) => scanItemProblem(i));
+    if (impossible) {
+      showAlert('Confira os valores', `${impossible.name.trim()}: ${scanItemProblem(impossible)}`);
+      throw new Error('SCAN_CONFIRM_INVALID_VALUES');
+    }
     // M7: sem itens válidos o fluxo caía direto no reset e o modal fechava como
     // se tivesse salvo — o usuário acreditava ter registrado a refeição.
     if (valid.length === 0) {

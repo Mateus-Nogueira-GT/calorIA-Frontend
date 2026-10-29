@@ -61,3 +61,10 @@ describe('isImplausibleMeal', () => {
     expect(isImplausibleMeal({ calories: 10, protein: 0, carbs: 0, fat: 0, fiber: 151 })).toBe(true)
   })
 })
+
+describe('peso da porção', () => {
+  it('até 5 kg', () => {
+    expect(addMealBodySchema.safeParse({ ...body, weightGrams: 5000 }).success).toBe(true)
+    expect(addMealBodySchema.safeParse({ ...body, weightGrams: 5001 }).success).toBe(false)
+  })
+})

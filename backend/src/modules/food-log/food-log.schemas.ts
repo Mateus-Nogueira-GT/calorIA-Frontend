@@ -60,7 +60,8 @@ const mealNumber = (max: number, unit: string) =>
     .max(max, `Máximo de ${max.toLocaleString('pt-BR')} ${unit} por refeição`)
 
 export const addMealBodySchema = z.object({
-  weightGrams: z.number().finite().min(0.1).max(100_000).optional(),
+  // Era 100 kg. Uma porção não passa de 5 kg (mesmo teto da revisão do scanner).
+  weightGrams: z.number().finite().min(0.1).max(5000, 'Máximo de 5.000 g por refeição').optional(),
   name: z.string().min(1, 'Nome é obrigatório').max(120),
   calories: mealNumber(MEAL_LIMITS.calories, 'kcal'),
   protein: mealNumber(MEAL_LIMITS.protein, 'g'),
