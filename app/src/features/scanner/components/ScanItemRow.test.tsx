@@ -163,3 +163,14 @@ it('peso apagado mostra erro e impede concluir a edição', () => {
   fireEvent.press(tree.getByText('Concluir'));
   expect(tree.getByTestId('scan-item-weightGrams')).toBeTruthy();
 });
+
+it('calorias impossíveis mostram o erro no item, em leitura e em edição', () => {
+  const absurd = { ...item, calories: 999999 };
+  const { getByText, queryByText } = render(
+    <ScanItemRow item={absurd} onChange={() => {}} onRemove={() => {}} />,
+  );
+  expect(queryByText(/999/)).toBeNull();
+  expect(
+    getByText('Valores acima do possível para um alimento: até 5.000 kcal e 500 g de proteína, carboidratos ou gordura.'),
+  ).toBeTruthy();
+});

@@ -52,6 +52,8 @@ export const errorSchema = z.object({
 
 // ─── Requests ─────────────────────────────────────────────────────────────────
 
+const MAX_CHALLENGE_DAYS = 90
+
 export const createChallengeBodySchema = z
   .object({
     title: z.string().min(2).max(100),
@@ -66,6 +68,12 @@ export const createChallengeBodySchema = z
     message: 'A data de término não pode ser anterior à de início',
     path: ['endDate'],
   })
+  // Sem teto, a API aceitava um desafio até 2099 (a tela sempre manda 7 dias).
+  .refine(
+    (data) =>
+      Date.parse(data.endDate) - Date.parse(data.startDate) <= MAX_CHALLENGE_DAYS * 86_400_000,
+    { message: `Um desafio dura no máximo ${MAX_CHALLENGE_DAYS} dias`, path: ['endDate'] },
+  )
 
 /** Body opcional do check-in — data LOCAL do usuário (Workstream A / A8). */
 export const checkInBodySchema = z.object({ date: localDateSchema.optional() }).nullish()

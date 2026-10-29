@@ -63,14 +63,18 @@ export function getDayTotals(params: {
   const planned = sumMacros(completedPlanned);
   // Registro impossível (999.999…) não é consumo: fora da conta.
   const free = sumMacros(params.freeMeals.filter((m) => !isImplausibleMeal(m)));
+  // Soma de decimais em ponto flutuante (245,7 + 312,4 = 558.0999999999999)
+  // chegava crua na tela. Calorias inteiras, gramas com uma casa.
   return {
-    calories: planned.calories + free.calories,
-    protein: planned.protein + free.protein,
-    carbs: planned.carbs + free.carbs,
-    fat: planned.fat + free.fat,
-    fiber: planned.fiber + free.fiber,
+    calories: Math.round(planned.calories + free.calories),
+    protein: oneDecimal(planned.protein + free.protein),
+    carbs: oneDecimal(planned.carbs + free.carbs),
+    fat: oneDecimal(planned.fat + free.fat),
+    fiber: oneDecimal(planned.fiber + free.fiber),
   };
 }
+
+const oneDecimal = (n: number) => Math.round(n * 10) / 10;
 
 /** Meta de fibra = soma do plano de hoje; null se nenhuma refeição tiver o dado (dieta antiga). */
 export function getDailyFiberGoal(plan: DietPlan | null | undefined): number | null {

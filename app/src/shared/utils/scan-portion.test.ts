@@ -1,4 +1,4 @@
-import { isValidScanWeight, scaleScanPortion } from './scan-portion';
+import { isValidScanWeight, scaleScanPortion, scanItemProblem } from './scan-portion';
 import type { ScanItem } from '@shared/services/scanner.service';
 
 const item: ScanItem = {
@@ -34,7 +34,23 @@ it('edições sucessivas preservam precisão interna e fibra desconhecida', () =
 it('peso desconhecido não é tratado como 100 g para recalcular nutrientes', () => {
   expect(scaleScanPortion({ ...item, weightGrams: null }, 250)).toEqual({ weightGrams: 250 });
 });
-it.each([0, 0.001, -1, NaN, Infinity, 100001])('rejeita peso inválido %s', (value) => {
+it.each([0, 0.001, -1, NaN, Infinity, 5001, 100000])('rejeita peso inválido %s', (value) => {
   expect(isValidScanWeight(value)).toBe(false);
   expect(scaleScanPortion(item, value)).toEqual({});
+});
+
+it('5 kg é o teto de um alimento', () => {
+  expect(isValidScanWeight(5000)).toBe(true);
+});
+describe('scanItemProblem (feedback 27/10: valor impossível)', () => {
+  it('item normal: sem problema', () => {
+    expect(scanItemProblem(item)).toBeNull();
+  });
+  it('calorias ou macros acima do teto de uma refeição', () => {
+    expect(scanItemProblem({ ...item, calories: 6000 })).toBe(
+      'Valores acima do possível para um alimento: até 5.000 kcal e 500 g de proteína, carboidratos ou gordura.',
+    );
+    expect(scanItemProblem({ ...item, fat: 501 })).not.toBeNull();
+    expect(scanItemProblem({ ...item, fiber: 151 })).not.toBeNull();
+  });
 });

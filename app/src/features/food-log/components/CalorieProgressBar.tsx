@@ -8,7 +8,10 @@ interface Props {
   goal: number | null;
 }
 
-export function CalorieProgressBar({ consumed, goal }: Props): React.JSX.Element {
+export function CalorieProgressBar({ consumed: rawConsumed, goal: rawGoal }: Props): React.JSX.Element {
+  // Somas com decimal viravam "558.0999999999999 / 1695 kcal".
+  const consumed = Math.round(rawConsumed);
+  const goal = rawGoal === null ? null : Math.round(rawGoal);
   const hasGoal = goal !== null && goal > 0;
   const ratio = hasGoal ? consumed / goal : 0;
   const pct = Math.min(Math.max(ratio, 0), 1);

@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify'
+import { BODY_LIMITS } from '../../shared/body-limits.js'
 import { utcTodayString } from '../../shared/local-date.js'
 import type { TodayPlan, TodayQuery } from '../diets/diets.schemas.js'
 import { getActiveDiet, getTodayPlan } from '../diets/diets.service.js'
@@ -91,6 +92,25 @@ export function ageFromBirthDate(birthDate: string | null, now: Date = new Date(
   const m = now.getUTCMonth() - born.getUTCMonth()
   if (m < 0 || (m === 0 && now.getUTCDate() < born.getUTCDate())) age--
   return age >= 0 && age < 130 ? age : null
+}
+
+/**
+ * Peso, altura ou idade fora das faixas do corpo (ex.: perfil antigo com
+ * 0,1 kg) não é dado: some do contexto e o coach pergunta de novo, em vez de
+ * dizer "vou usar seu peso de 0,1 kg".
+ */
+function plausibleProfile(p: ContextProfile | null): ContextProfile | null {
+  if (!p) return p
+  const inRange = (v: number | null, r: { min: number; max: number }) =>
+    v != null && v >= r.min && v <= r.max ? v : null
+  const age = ageFromBirthDate(p.birth_date)
+  const ageOk = age != null && age >= BODY_LIMITS.age.min && age <= BODY_LIMITS.age.max
+  return {
+    ...p,
+    weight_kg: inRange(p.weight_kg, BODY_LIMITS.weightKg),
+    height_cm: inRange(p.height_cm, BODY_LIMITS.heightCm),
+    birth_date: ageOk ? p.birth_date : null,
+  }
 }
 
 function toNumberOrNull(v: unknown): number | null {
@@ -221,7 +241,7 @@ function consumedToday(data: UserContextData): {
  */
 export function formatUserContext(raw: UserContextData): string {
   const lines: string[] = []
-  const p = raw.profile
+  const p = plausibleProfile(raw.profile)
   // Registro impossível (ex.: 999.999 kcal) não é consumo: fora das contas. O
   // coach fica sabendo que ele existe para pedir correção, nunca para repetir o número.
   const freeMeals = raw.freeMeals.filter((m) => !isImplausibleMeal(m))
@@ -310,7 +330,7 @@ export function truncateByLines(header: string, lines: string[], max: number): s
 
 /** Lista os campos obrigatórios já conhecidos, para o coach só confirmar. */
 export function formatKnownData(data: UserContextData): string {
-  const p = data.profile
+  const p = plausibleProfile(data.profile)
   if (!p) return ''
   const bits: string[] = []
   if (p.weight_kg) bits.push(`peso: ${p.weight_kg}kg`)

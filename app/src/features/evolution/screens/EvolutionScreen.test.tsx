@@ -21,3 +21,20 @@ describe('EvolutionScreen', () => {
     await waitFor(() => expect(getByText('Registrar peso de hoje')).toBeTruthy());
   });
 });
+
+describe('EvolutionScreen — peso impossível gravado antes do limite', () => {
+  it('fica fora do gráfico e da variação', async () => {
+    const { weightService } = jest.requireMock('@shared/services/weight.service') as {
+      weightService: { getHistory: jest.Mock };
+    };
+    weightService.getHistory.mockResolvedValueOnce([
+      { id: '1', date: '2026-06-20', weightKg: 0.5 },
+      { id: '2', date: '2026-06-21', weightKg: 80 },
+      { id: '3', date: '2026-06-22', weightKg: 79 },
+    ]);
+    const { findByText, queryByText } = render(<EvolutionScreen />);
+    await findByText('79');
+    expect(queryByText('0.5')).toBeNull();
+    expect(queryByText(/78[,.]5/)).toBeNull();
+  });
+});

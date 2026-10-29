@@ -322,4 +322,14 @@ describe('porções do scanner até a escrita no diário', () => {
     expect(foodLogService.addMeal).toHaveBeenCalledTimes(3);
     expect(foodLogService.addMeal.mock.calls[2][0].weightGrams).toBe(250);
   });
+  it('item com valores impossíveis bloqueia a confirmação com mensagem clara, sem chamar o servidor', async () => {
+    foodLogService.addMeal.mockClear();
+    useScannerStore.setState({ items: [{ ...item('rice'), calories: 12000 }] });
+    await expect(useScannerStore.getState().confirm()).rejects.toThrow('SCAN_CONFIRM_INVALID_VALUES');
+    expect(foodLogService.addMeal).not.toHaveBeenCalled();
+    expect(showAlert).toHaveBeenCalledWith(
+      'Confira os valores',
+      expect.stringContaining('Arroz'),
+    );
+  });
 });

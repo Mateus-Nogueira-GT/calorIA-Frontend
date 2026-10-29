@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { BODY_LIMITS, isPlausibleBirthDate } from '../../shared/body-limits.js'
 
 // ─── Enums compartilhados ─────────────────────────────────────────────────────
 
@@ -43,6 +44,9 @@ export const profileSchema = z.object({
 
 // ─── Requests ─────────────────────────────────────────────────────────────────
 
+const WEIGHT_MESSAGE = `Peso deve ficar entre ${BODY_LIMITS.weightKg.min} e ${BODY_LIMITS.weightKg.max} kg`
+const HEIGHT_MESSAGE = `Altura deve ficar entre ${BODY_LIMITS.heightCm.min} e ${BODY_LIMITS.heightCm.max} cm`
+
 export const updateProfileBodySchema = z
   .object({
     // Permissions are read-only, even when mixed with a legitimate profile update.
@@ -58,18 +62,21 @@ export const updateProfileBodySchema = z
     avatar_emoji: z.string().min(1).max(16).nullable().optional(),
     weight_kg: z
       .number({ invalid_type_error: 'Peso deve ser um número' })
-      .positive('Peso deve ser positivo')
-      .max(500, 'Peso inválido')
+      .min(BODY_LIMITS.weightKg.min, WEIGHT_MESSAGE)
+      .max(BODY_LIMITS.weightKg.max, WEIGHT_MESSAGE)
       .optional(),
     height_cm: z
       .number({ invalid_type_error: 'Altura deve ser um número' })
       .int()
-      .positive()
-      .max(300, 'Altura inválida')
+      .min(BODY_LIMITS.heightCm.min, HEIGHT_MESSAGE)
+      .max(BODY_LIMITS.heightCm.max, HEIGHT_MESSAGE)
       .optional(),
     birth_date: z
       .string()
       .regex(/^\d{4}-\d{2}-\d{2}$/, 'Data deve estar no formato YYYY-MM-DD')
+      .refine((d) => isPlausibleBirthDate(d), {
+        message: `Idade deve ficar entre ${BODY_LIMITS.age.min} e ${BODY_LIMITS.age.max} anos`,
+      })
       .optional(),
     gender: genderEnum.optional(),
     goal: goalEnum.optional(),

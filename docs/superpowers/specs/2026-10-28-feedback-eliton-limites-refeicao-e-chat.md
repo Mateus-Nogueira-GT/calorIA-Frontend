@@ -251,3 +251,18 @@ de qualquer teto de `MEAL_LIMITS` é inválido.**
   correção se o usuário falar do dia. Nunca para repetir o número.
 
 O teto de 999%+ de R2 fica como proteção visual para dias somados de verdade.
+
+---
+
+## Varredura de 28/10: outras falhas do mesmo tipo
+
+Busca por valor impossível que entra (digitado ou vindo da IA) ou que chega à tela:
+
+| # | Falha | Correção |
+|---|---|---|
+| V1 | A revisão do scanner aceitava porção de até 100 kg e calorias sem limite. Desde o teto por refeição, salvar falhava com um "Tente novamente" que nunca funcionava | Porção até 5 kg (app e servidor). O item mostra o erro sem exibir o número, e a confirmação diz qual item corrigir |
+| V2 | Soma de decimais crua na tela: `558.0999999999999 kcal`, "faltam 1136.9000000000001 kcal" | `getDayTotals` arredonda (kcal inteira, gramas com uma casa). Barra do Diário, resumo do Diário e metas também |
+| V3 | O registro de peso aceitava 0,5 kg (ia para o gráfico) e acima de 500 kg mostrava só "Tente novamente" | 30–300 kg no app, com mensagem, e no servidor. Registros antigos fora da faixa saem do gráfico e da variação |
+| V4 | O perfil no servidor aceitava peso 0,1 kg, altura 1 cm e nascimento em 1800 ou no futuro | `BODY_LIMITS` (as faixas do cadastro inicial) no servidor. O coach ignora valores impossíveis de perfis antigos |
+| V5 | A dieta da IA podia ter um alimento cujos macros pesam mais que ele, ou 1,5 kg de um item | Novas violações `ITEM_MACROS_EXCEED_WEIGHT` e `ITEM_QUANTITY_TOO_LARGE`: a IA refaz o dia |
+| V6 | A API aceitava desafio até 2099 | Máximo de 90 dias |

@@ -18,6 +18,7 @@ import { OnboardingProgressBar } from '../components/OnboardingProgressBar';
 import { BODY_TYPE_LABELS, BODY_TYPE_QUIZ, BodyTypeKey, scoreBodyType } from '../bodyTypeQuiz';
 import { colors, typography, spacing } from '@theme';
 import type { AuthStackScreenProps } from '@navigation/types';
+import { BODY_LIMITS } from '@shared/utils/body-limits';
 
 type Step =
   | 'name'
@@ -126,12 +127,12 @@ function parseNumber(raw: string): number | null {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
-const MIN_HEIGHT_CM = 100;
-const MAX_HEIGHT_CM = 250;
-const MIN_WEIGHT_KG = 30;
-const MAX_WEIGHT_KG = 300;
-const MIN_AGE = 13;
-const MAX_AGE = 100;
+const MIN_HEIGHT_CM = BODY_LIMITS.heightCm.min;
+const MAX_HEIGHT_CM = BODY_LIMITS.heightCm.max;
+const MIN_WEIGHT_KG = BODY_LIMITS.weightKg.min;
+const MAX_WEIGHT_KG = BODY_LIMITS.weightKg.max;
+const MIN_AGE = BODY_LIMITS.age.min;
+const MAX_AGE = BODY_LIMITS.age.max;
 
 type StepCheck = { ok: true; value: string } | { ok: false; reason: string };
 

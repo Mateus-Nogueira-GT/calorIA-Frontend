@@ -206,3 +206,51 @@ describe('describeViolations', () => {
     expect(txt).toContain('exatamente 6')
   })
 })
+
+describe('validateDay — item fisicamente impossível', () => {
+  const targets = { protein: 30 }
+  const withLunch = (it: Partial<Meal['items'][number]>): AiSingleDay => ({
+    ...tresRefeicoes,
+    meals: [meal('breakfast', [{}]), meal('lunch', [it]), meal('dinner', [{}])],
+  })
+
+  it('macros somando mais gramas que o próprio alimento', () => {
+    // 30 g de azeite com 50 g de gordura: não existe.
+    const v = validateDay(
+      withLunch({ food_name: 'Azeite', quantity_g: 30, protein_g: 10, carbs_g: 0, fat_g: 50 }),
+      targets,
+      3,
+    )
+    expect(v.map((x) => x.type)).toContain('ITEM_MACROS_EXCEED_WEIGHT')
+  })
+
+  it('azeite puro (10 g com 10 g de gordura) passa', () => {
+    const v = validateDay(
+      withLunch({ quantity_g: 10, calories: 90, protein_g: 0, carbs_g: 0, fat_g: 10 }),
+      targets,
+      3,
+    )
+    expect(v.map((x) => x.type)).not.toContain('ITEM_MACROS_EXCEED_WEIGHT')
+  })
+
+  it('mais de 1 kg de um alimento com calorias numa refeição', () => {
+    const v = validateDay(withLunch({ food_name: 'Arroz', quantity_g: 1500 }), targets, 3)
+    expect(v.map((x) => x.type)).toContain('ITEM_QUANTITY_TOO_LARGE')
+  })
+
+  it('água (sem caloria) pode passar de 1 kg', () => {
+    const v = validateDay(
+      withLunch({
+        food_name: 'Água',
+        quantity_g: 2000,
+        calories: 0,
+        protein_g: 10,
+        carbs_g: 0,
+        fat_g: 0,
+      }),
+      targets,
+      3,
+    )
+    expect(v.map((x) => x.type)).not.toContain('ITEM_QUANTITY_TOO_LARGE')
+  })
+})
