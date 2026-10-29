@@ -46,7 +46,8 @@ function dayWith(food: string): AiSingleDay {
       items: [
         {
           food_name: food,
-          quantity_g: 150,
+          // Peso coerente com os macros (o guardrail barra macros > peso).
+          quantity_g: Math.max(150, Math.ceil((p + c + f) * 1.5)),
           unit: 'g',
           calories: kcal,
           protein_g: p,

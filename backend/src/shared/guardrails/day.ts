@@ -36,6 +36,8 @@ export type DayViolationType =
   | 'MEAL_ORDER'
   | 'NON_POSITIVE_QUANTITY'
   | 'NEGATIVE_MACRO'
+  | 'ITEM_MACROS_EXCEED_WEIGHT'
+  | 'ITEM_QUANTITY_TOO_LARGE'
   | 'PROTEIN_OFF_TARGET'
   | 'RECONCILE_FAILED'
 
@@ -47,6 +49,14 @@ export interface DayViolation {
 export const KCAL_MISMATCH_TOLERANCE = 0.25
 export const PROTEIN_TOLERANCE = 0.2
 export const RECONCILE_FAIL_TOLERANCE = 0.15
+/**
+ * Só o fisicamente impossível (uma violação faz a IA refazer o dia; a segunda
+ * derruba o job): macros não pesam mais que o alimento (folga de 5% para
+ * arredondamento) e ninguém come mais de 1 kg de um alimento com caloria
+ * numa refeição. Água e afins (0 kcal) ficam de fora.
+ */
+const MACROS_WEIGHT_TOLERANCE = 1.05
+export const MAX_ITEM_QUANTITY_G = 1000
 
 export function kcalFromMacros(p: number, c: number, f: number): number {
   return 4 * p + 4 * c + 9 * f
@@ -117,6 +127,19 @@ export function validateDay(
         v.push({
           type: 'NON_POSITIVE_QUANTITY',
           detail: `refeição ${mi + 1}, item ${ii + 1} ('${it.food_name}') com quantidade ${it.quantity_g}`,
+        })
+      }
+      const macroGrams = it.protein_g + it.carbs_g + it.fat_g
+      if (it.quantity_g > 0 && macroGrams > it.quantity_g * MACROS_WEIGHT_TOLERANCE) {
+        v.push({
+          type: 'ITEM_MACROS_EXCEED_WEIGHT',
+          detail: `refeição ${mi + 1}, item ${ii + 1} ('${it.food_name}'): ${Math.round(macroGrams)} g de macros em ${it.quantity_g} g de alimento — impossível; corrija quantidade ou macros`,
+        })
+      }
+      if (it.calories > 0 && it.quantity_g > MAX_ITEM_QUANTITY_G) {
+        v.push({
+          type: 'ITEM_QUANTITY_TOO_LARGE',
+          detail: `refeição ${mi + 1}, item ${ii + 1} ('${it.food_name}') com ${it.quantity_g} g — máximo ${MAX_ITEM_QUANTITY_G} g de um alimento por refeição`,
         })
       }
       if (it.protein_g < 0 || it.carbs_g < 0 || it.fat_g < 0 || it.calories < 0) {

@@ -27,7 +27,8 @@ function buildDay(
       items: [
         {
           food_name: food,
-          quantity_g: 150,
+          // Peso coerente com os macros (o guardrail barra macros > peso).
+          quantity_g: Math.max(150, Math.ceil((p + c + f) * 1.5)),
           unit: 'g',
           calories: kcal / n,
           protein_g: p,
@@ -75,7 +76,7 @@ function buildDayWithIncoherentItem(): AiSingleDay {
         items: [
           {
             food_name: 'Batata doce com whey',
-            quantity_g: 150,
+            quantity_g: 400, // coerente com os macros (≤ peso)
             unit: 'g',
             calories: 5000, // errada: 4·20 + 4·100 + 9·0 = 480
             protein_g: 20,
@@ -94,7 +95,7 @@ function buildDayWithIncoherentItem(): AiSingleDay {
         items: [
           {
             food_name: 'Frango com arroz',
-            quantity_g: 150,
+            quantity_g: 400, // coerente com os macros (≤ peso)
             unit: 'g',
             calories: 900, // coerente: 4·60 + 4·120 + 9·20 = 900
             protein_g: 60,
@@ -113,7 +114,7 @@ function buildDayWithIncoherentItem(): AiSingleDay {
         items: [
           {
             food_name: 'Carne com batata',
-            quantity_g: 150,
+            quantity_g: 400, // coerente com os macros (≤ peso)
             unit: 'g',
             calories: 900, // coerente: 4·60 + 4·120 + 9·20 = 900
             protein_g: 60,
