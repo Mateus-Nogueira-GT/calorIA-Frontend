@@ -32,7 +32,7 @@ export function MacroCard({ label, current, goal, unit = 'g', color }: Props): R
         {current.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}
         {unit}
       </Text>
-      <Text style={styles.goal}>{hasGoal ? `Meta ${goal}${unit}` : 'Sem meta'}</Text>
+      <Text style={styles.goal}>{hasGoal ? `Meta ${Math.round(goal)}${unit}` : 'Sem meta'}</Text>
       <View style={styles.track}>
         <View style={[styles.fill, { width: `${pct * 100}%` as const, backgroundColor: color }]} />
       </View>

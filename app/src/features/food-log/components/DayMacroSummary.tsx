@@ -3,21 +3,13 @@ import { StyleSheet, View } from 'react-native';
 import { Text } from '@shared/components';
 import { colors, typography, spacing } from '@theme';
 import { Meal } from '@shared/services/food-log.service';
-import { isImplausibleMeal } from '@shared/utils/meal-plausibility';
+import { getDayTotals } from '@shared/utils/calories';
 
 interface Props { meals: Meal[] }
 
 export function DayMacroSummary({ meals }: Props): React.JSX.Element {
-  const totals = meals.filter((m) => !isImplausibleMeal(m)).reduce(
-    (acc, meal) => ({
-      calories: acc.calories + meal.calories,
-      protein: acc.protein + meal.protein,
-      carbs: acc.carbs + meal.carbs,
-      fat: acc.fat + meal.fat,
-      fiber: acc.fiber + (meal.fiber ?? 0),
-    }),
-    { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 },
-  );
+  // Mesma regra da tela Hoje: ignora registro impossível e arredonda a soma.
+  const totals = getDayTotals({ freeMeals: meals });
 
   const items = [
     { label: 'Calorias', value: String(totals.calories), suffix: 'kcal', color: colors.brandPrimary },

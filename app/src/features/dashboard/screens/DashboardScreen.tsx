@@ -170,7 +170,7 @@ export function DashboardScreen(): React.JSX.Element {
               </View>
               <Text style={styles.kcalValue}>{totals.calories}</Text>
               <Text style={styles.kcalGoal}>
-                {hasGoals ? `de ${calorieGoal} kcal` : 'kcal hoje'}
+                {hasGoals ? `de ${Math.round(calorieGoal ?? 0)} kcal` : 'kcal hoje'}
               </Text>
               <View style={styles.progressMeta}>
                 <Text style={styles.progressMetaLabel}>

@@ -134,3 +134,17 @@ describe('getDayTotals — registro impossível (feedback 27/10)', () => {
     });
   });
 });
+
+describe('getDayTotals — arredonda o que vai para a tela', () => {
+  it('245,7 + 312,4 kcal vira 558; macros com uma casa', () => {
+    const a = { calories: 245.7, protein: 30.9, carbs: 0.1, fat: 2.1, fiber: null };
+    const b = { calories: 312.4, protein: 2.1, carbs: 0.2, fat: 15.3, fiber: null };
+    expect(getDayTotals({ freeMeals: [a, b] })).toEqual({
+      calories: 558,
+      protein: 33,
+      carbs: 0.3,
+      fat: 17.4,
+      fiber: 0,
+    });
+  });
+});
