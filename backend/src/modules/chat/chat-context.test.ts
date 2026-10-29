@@ -349,3 +349,25 @@ describe('registro com valores impossíveis (feedback 27/10)', () => {
     expect(out).toMatch(/1 registro com valores impossíveis/)
   })
 })
+
+describe('perfil com valor impossível não vira dado conhecido do coach', () => {
+  const broken = { ...fullProfile, weight_kg: 0.1, height_cm: 1, birth_date: '1800-01-01' }
+
+  it('formatKnownData omite peso, altura e idade impossíveis', () => {
+    const out = formatKnownData({ ...emptyData, profile: broken })
+    expect(out).not.toContain('0.1kg')
+    expect(out).not.toMatch(/altura: 1cm/)
+    expect(out).not.toMatch(/idade: 2\d\d anos/)
+    expect(out).toContain('restrições')
+  })
+
+  it('formatUserContext também', () => {
+    const out = formatUserContext({ ...emptyData, profile: broken })
+    expect(out).not.toContain('0.1kg')
+    expect(out).not.toContain(' 1cm')
+  })
+
+  it('perfil normal continua igual', () => {
+    expect(formatKnownData({ ...emptyData, profile: fullProfile })).toContain('peso: 82kg')
+  })
+})

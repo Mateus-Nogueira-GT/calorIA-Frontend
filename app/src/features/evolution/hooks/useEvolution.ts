@@ -1,8 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useWeightStore } from '../store';
+import { isPlausibleWeightKg } from '@shared/utils/body-limits';
 
 export function useEvolution() {
-  const entries = useWeightStore((s) => s.entries);
+  const allEntries = useWeightStore((s) => s.entries);
+  // Peso impossível gravado antes do limite (ex.: 0,5 kg) não é dado: fica
+  // fora do gráfico e da variação.
+  const entries = useMemo(() => allEntries.filter((e) => isPlausibleWeightKg(e.weightKg)), [allEntries]);
   const isLoading = useWeightStore((s) => s.isLoading);
   const isSaving = useWeightStore((s) => s.isSaving);
   const load = useWeightStore((s) => s.load);
