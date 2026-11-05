@@ -161,7 +161,7 @@ describe('formatUserContext — truncamento por linha (C4)', () => {
     return {
       profile: fullProfile,
       diet: {
-        name: 'Plano '.repeat(180).trim(), // ~1080 chars: força o corte
+        name: 'Plano '.repeat(350).trim(), // ~2100 chars: força o corte (teto 2400)
         targetCalories: 2100,
         targetProtein: 148,
         targetCarbs: 210,
@@ -177,7 +177,7 @@ describe('formatUserContext — truncamento por linha (C4)', () => {
 
   it('nunca corta uma linha no meio: toda linha termina com ponto', () => {
     const out = formatUserContext(bigData())
-    expect(out.length).toBeLessThanOrEqual(1400)
+    expect(out.length).toBeLessThanOrEqual(2400)
     const lines = out.split('\n').slice(1) // sem o cabeçalho
     for (const l of lines) expect(l).toMatch(/\.$/)
   })
@@ -369,5 +369,83 @@ describe('perfil com valor impossível não vira dado conhecido do coach', () =>
 
   it('perfil normal continua igual', () => {
     expect(formatKnownData({ ...emptyData, profile: fullProfile })).toContain('peso: 82kg')
+  })
+})
+
+describe('registros de hoje no contexto (coach antenado, 04/11)', () => {
+  const meal = (o: Record<string, unknown>) => ({
+    id: 'abcdef12-0000-0000-0000-000000000000',
+    name: 'Carne suína grelhada',
+    calories: 420,
+    protein: 38,
+    carbs: 0,
+    fat: 29,
+    fiber: null,
+    weightGrams: 180,
+    loggedAt: '2026-07-24 23:14:00+00',
+    mealType: 'dinner' as const,
+    ...o,
+  })
+  const diet = {
+    name: 'Plano',
+    targetCalories: 2100,
+    targetProtein: 148,
+    targetCarbs: 210,
+    targetFat: 58,
+  }
+
+  it('lista nome, peso, valores, horário local e ref, mais recentes primeiro', () => {
+    const out = formatUserContext({
+      ...emptyData,
+      diet,
+      tzOffsetMinutes: -180,
+      freeMeals: [
+        meal({
+          id: '9f8e7d00-0000-0000-0000-000000000000',
+          name: 'Arroz com feijão',
+          weightGrams: 250,
+          calories: 330,
+          protein: 11,
+          carbs: 60,
+          fat: 4,
+          loggedAt: '2026-07-24 15:30:00+00',
+        }),
+        meal({}),
+      ],
+    })
+    expect(out).toContain('Registros de hoje no diário (mais recentes primeiro):')
+    expect(out).toContain(
+      '- [ref abcdef] 20:14 Carne suína grelhada — 180 g · 420 kcal · P 38 g · C 0 g · G 29 g.',
+    )
+    expect(out).toContain(
+      '- [ref 9f8e7d] 12:30 Arroz com feijão — 250 g · 330 kcal · P 11 g · C 60 g · G 4 g.',
+    )
+    expect(out.indexOf('Carne suína')).toBeLessThan(out.indexOf('Arroz com feijão'))
+  })
+
+  it('no máximo 8 itens e sem registro impossível', () => {
+    const many = Array.from({ length: 10 }, (_, i) =>
+      meal({
+        id: `0000000${i}-0000-0000-0000-000000000000`,
+        name: `Item ${i}`,
+        loggedAt: `2026-07-24 1${i}:00:00+00`,
+      }),
+    )
+    const out = formatUserContext({
+      ...emptyData,
+      freeMeals: [...many, meal({ id: 'zzzzzz00-0', calories: 999999 })],
+    })
+    expect((out.match(/- \[ref /g) ?? []).length).toBe(8)
+    expect(out).not.toContain('999999')
+  })
+
+  it('refeições do plano concluídas aparecem pelo nome', () => {
+    const out = formatUserContext({ ...emptyData, diet, today: todayPlan(), freeMeals: [] })
+    expect(out).toMatch(/Do plano, concluídas hoje: .+/)
+  })
+
+  it('instrui a usar a lista quando o usuário fala da refeição', () => {
+    const out = formatUserContext({ ...emptyData, diet, freeMeals: [meal({})] })
+    expect(out).toMatch(/minha refeição.*use esta lista/i)
   })
 })

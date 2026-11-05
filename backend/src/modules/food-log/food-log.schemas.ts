@@ -15,6 +15,8 @@ export const mealSchema = z.object({
   fat: z.number(),
   /** Fibra (g). null = sem dado (registro anterior à migration 022). */
   fiber: z.number().nullable(),
+  /** Peso do registro (g). null = sem itens (não deve acontecer). */
+  weightGrams: z.number().nullable().optional(),
   loggedAt: z.string(),
   mealType: appMealTypeSchema,
 })

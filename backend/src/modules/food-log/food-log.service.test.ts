@@ -156,3 +156,32 @@ describe('getSummary — registro impossível não entra na soma', () => {
     expect(q.params).toContain(MEAL_LIMITS.fat)
   })
 })
+
+describe('listMeals — peso do registro (coach antenado, 04/11)', () => {
+  it('devolve weightGrams somado dos itens, null sem dado', async () => {
+    const row = {
+      id: MEAL,
+      name: 'Carne suína grelhada',
+      meal_type: 'dinner',
+      total_calories: '420',
+      total_protein: '38',
+      total_carbs: '0',
+      total_fat: '29',
+      total_fiber: null,
+      logged_at: '2026-11-03 23:14:00+00',
+    }
+    const { fastify, calls } = fakeFastify([
+      [
+        'FROM meals',
+        [
+          { ...row, weight_grams: '180' },
+          { ...row, id: 'x', weight_grams: null },
+        ],
+      ],
+    ])
+    const meals = await listMeals(fastify, USER, '2026-11-03')
+    expect(meals[0].weightGrams).toBe(180)
+    expect(meals[1].weightGrams).toBeNull()
+    expect(calls[0].sql).toContain('meal_items')
+  })
+})
