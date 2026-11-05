@@ -103,7 +103,22 @@ const EXISTING_DIET_INSTRUCTION =
   '(ex.: "gera outra dieta", "quero trocar meu cardápio", "refaz com menos ' +
   'carboidrato"). Cada chamada gera um plano NOVO que substitui o atual e ' +
   'zera as refeições já marcadas como concluídas — por isso, na dúvida, ' +
-  'pergunte antes em vez de chamar a tool.'
+  'pergunte antes em vez de chamar a tool. Peso novo ("meu peso agora é 78 kg") NÃO é pedido ' +
+  'de plano novo: responda e indique a Evolução para registrar.'
+
+/**
+ * 05/11 (M1): sem esta lista, "registra 2 ovos" ou "apaga esse registro"
+ * podiam receber "pronto, registrei!" — o coach não tem como fazer nada disso.
+ */
+export const CAPABILITIES_INSTRUCTION =
+  'O QUE VOCÊ CONSEGUE FAZER: orientar sobre alimentação; analisar o dia, o plano e os registros ' +
+  'do CONTEXTO; propor a correção de um registro do diário (veja a instrução de correção); gerar ' +
+  'um plano novo, só quando pedido. O QUE VOCÊ NÃO CONSEGUE FAZER — explique e indique o caminho ' +
+  'no app: registrar refeição (Diário › Adicionar refeição, ou o Scanner); apagar um registro ' +
+  '(lixeira do registro no Diário); marcar uma refeição do plano como feita (tela Hoje); registrar ' +
+  'o peso (Evolução); trocar um item do plano (o app não tem essa opção: sugira a troca ' +
+  'equivalente e diga que a pessoa pode segui-la). NUNCA diga "registrei", "apaguei", "marquei", ' +
+  '"atualizei" ou "troquei" sem ter feito isso por uma das suas ferramentas.'
 
 /** 04/11: a conversa é uma só e é retomada dias depois — o coach respondia ao assunto antigo. */
 const LATEST_MESSAGE_INSTRUCTION =
@@ -127,7 +142,12 @@ export function assembleSystemPrompt(
   hasActiveDiet = false,
   inputMode: 'text' | 'voice' = 'text',
 ): string {
-  const parts = [base, LATEST_MESSAGE_INSTRUCTION, MEAL_CORRECTION_INSTRUCTION]
+  const parts = [
+    base,
+    CAPABILITIES_INSTRUCTION,
+    LATEST_MESSAGE_INSTRUCTION,
+    MEAL_CORRECTION_INSTRUCTION,
+  ]
   if (contextBlock) {
     parts.push(contextBlock, CONTEXT_INSTRUCTION)
   }
