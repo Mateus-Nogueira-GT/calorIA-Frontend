@@ -203,7 +203,12 @@ Envia uma mensagem para o assistente de dietas com IA.
         response: {
           200: z.object({
             messages: z.array(
-              z.object({ role: z.enum(['user', 'assistant']), content: z.string() }),
+              z.object({
+                role: z.enum(['user', 'assistant']),
+                content: z.string(),
+                /** Quando a mensagem aconteceu (ISO); ausente no histórico anterior a 04/11. */
+                created_at: z.string().optional(),
+              }),
             ),
             status: z.string(),
           }),

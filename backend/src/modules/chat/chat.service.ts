@@ -729,7 +729,10 @@ export async function getChatHistory(
   fastify: FastifyInstance,
   userId: string,
   conversationId: string,
-): Promise<{ messages: ChatHistoryMessage[]; status: string }> {
+): Promise<{
+  messages: { role: ChatHistoryMessage['role']; content: string; created_at?: string }[]
+  status: string
+}> {
   const [row] = await fastify.db<{ messages: unknown; status: string }[]>`
     SELECT messages, status
     FROM chat_history
@@ -739,13 +742,26 @@ export async function getChatHistory(
   if (!row) throw new AppError(404, 'CONVERSATION_NOT_FOUND', 'Conversa não encontrada')
   // Leitura para o usuário: os marcadores continuam no banco e no histórico do
   // modelo (loadHistory), mas apareciam como balões do coach entre colchetes.
-  const messages = normalizeHistory(row.messages).filter(
-    (m) => typeof m.content !== 'string' || !isInternalChatMarker(m.content),
-  )
+  const messages = normalizeHistory(row.messages)
+    .filter((m) => typeof m.content !== 'string' || !isInternalChatMarker(m.content))
+    .slice(-HISTORY_PAGE)
+    // 05/11 (M2): o app mostrava toda mensagem antiga com o horário de agora.
+    .map((m) => ({ role: m.role, content: m.content, ...(m.at ? { created_at: m.at } : {}) }))
   return { messages, status: row.status }
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * 05/11 (M10): a conversa é uma só, para sempre, e cada mensagem relê e regrava
+ * o JSON inteiro. O modelo vê 30 (CHAT_CONTEXT_WINDOW); o app, as últimas 200.
+ */
+export const HISTORY_MAX_MESSAGES = 400
+export const HISTORY_PAGE = 200
+
+export function capHistory<T>(messages: T[]): T[] {
+  return messages.length > HISTORY_MAX_MESSAGES ? messages.slice(-HISTORY_MAX_MESSAGES) : messages
+}
 
 /**
  * Garante que o histórico seja sempre um array. Dependendo do driver/pooler, a
@@ -798,7 +814,7 @@ async function persistHistory(
   status: string,
   transaction?: CreditTransaction,
 ): Promise<void> {
-  const messagesStr = JSON.stringify(messages)
+  const messagesStr = JSON.stringify(capHistory(messages))
   try {
     const sql = transaction ?? fastify.db
     const rows = await sql`
