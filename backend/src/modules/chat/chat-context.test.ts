@@ -449,3 +449,32 @@ describe('registros de hoje no contexto (coach antenado, 04/11)', () => {
     expect(out).toMatch(/minha refeição.*use esta lista/i)
   })
 })
+
+describe('último peso da Evolução (04/11)', () => {
+  it('entra no contexto e vira o peso conhecido, no lugar do cadastro', () => {
+    const data = {
+      ...emptyData,
+      profile: fullProfile,
+      lastWeight: { kg: 79.4, date: '2026-11-02' },
+    }
+    expect(formatUserContext(data)).toContain(
+      'Último peso registrado na Evolução: 79.4 kg em 02/11.',
+    )
+    const known = formatKnownData(data)
+    expect(known).toContain('peso: 79.4kg')
+    expect(known).not.toContain('peso: 82kg')
+  })
+
+  it('fetchUserContext busca o registro mais recente dentro da faixa plausível', async () => {
+    const { fastify, calls } = fakeFastify([
+      ['FROM weight_entries', [{ weight_kg: '79.4', date: '2026-11-02' }]],
+    ])
+    const ctx = await fetchUserContext(fastify, '11111111-1111-1111-1111-111111111111', {
+      date: '2026-11-04',
+    })
+    expect(ctx.lastWeight).toEqual({ kg: 79.4, date: '2026-11-02' })
+    const q = calls.find((c) => c.sql.includes('FROM weight_entries'))
+    expect(q?.sql).toContain('ORDER BY date DESC')
+    expect(q?.params).toEqual(expect.arrayContaining([30, 300]))
+  })
+})

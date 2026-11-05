@@ -85,6 +85,8 @@ export interface UserContextData {
   date: string
   /** Fuso do app (min): horário local dos registros na lista do diário. */
   tzOffsetMinutes?: number
+  /** Registro mais recente da Evolução (faixa plausível); mais novo que o cadastro. */
+  lastWeight?: { kg: number; date: string } | null
 }
 
 /** Idade (anos) a partir de 'YYYY-MM-DD'; null se ausente/inválida. */
@@ -245,6 +247,20 @@ export async function fetchUserContext(
     streak = null
   }
 
+  // 04/11: o coach só conhecia o peso do cadastro, não o registrado na Evolução.
+  let lastWeight: { kg: number; date: string } | null = null
+  try {
+    const [row] = await fastify.db<{ weight_kg: string | number; date: string }[]>`
+      SELECT weight_kg, date::TEXT AS date FROM weight_entries
+      WHERE user_id = ${userId}
+        AND weight_kg BETWEEN ${BODY_LIMITS.weightKg.min} AND ${BODY_LIMITS.weightKg.max}
+      ORDER BY date DESC LIMIT 1
+    `
+    lastWeight = row ? { kg: Number(row.weight_kg), date: row.date } : null
+  } catch {
+    lastWeight = null
+  }
+
   let mealsPerDay: number | null = null
   try {
     const [row] = await fastify.db<{ input: unknown }[]>`
@@ -264,6 +280,7 @@ export async function fetchUserContext(
     mealsPerDay,
     date,
     tzOffsetMinutes: query.tzOffsetMinutes,
+    lastWeight,
   }
 }
 
@@ -370,6 +387,10 @@ export function formatUserContext(raw: UserContextData): string {
     lines.push(`${parts.join('. ')}.`)
   }
 
+  if (data.lastWeight) {
+    const [, mm, dd] = data.lastWeight.date.split('-')
+    lines.push(`Último peso registrado na Evolução: ${data.lastWeight.kg} kg em ${dd}/${mm}.`)
+  }
   if (data.streak != null && data.streak > 0) lines.push(`Streak atual: ${data.streak} dias.`)
 
   if (lines.length === 0) return ''
@@ -395,7 +416,9 @@ export function formatKnownData(data: UserContextData): string {
   const p = plausibleProfile(data.profile)
   if (!p) return ''
   const bits: string[] = []
-  if (p.weight_kg) bits.push(`peso: ${p.weight_kg}kg`)
+  // O peso da Evolução é mais recente que o do cadastro.
+  const weight = data.lastWeight?.kg ?? p.weight_kg
+  if (weight) bits.push(`peso: ${weight}kg`)
   if (p.height_cm) bits.push(`altura: ${p.height_cm}cm`)
   const age = ageFromBirthDate(p.birth_date)
   if (age != null) bits.push(`idade: ${age} anos`)
