@@ -12,6 +12,11 @@ import { createDietJob, getPendingJob } from '../diets/jobs.service.js'
 import { fetchUserContext, formatKnownData, formatUserContext } from './chat-context.js'
 import type { ChatMessageBody, ChatResponse } from './chat.schemas.js'
 import { DIET_STARTED_MARKER_PREFIX, isInternalChatMarker } from './history-markers.js'
+import {
+  MEAL_CORRECTION_INSTRUCTION,
+  UPDATE_LOGGED_MEAL_TOOL,
+  applyMealCorrection,
+} from './meal-correction.js'
 
 // ─── System prompt ─────────────────────────────────────────────────────────
 
@@ -93,7 +98,7 @@ const KNOWN_DATA_INSTRUCTION =
 const EXISTING_DIET_INSTRUCTION =
   'INSTRUÇÃO IMPORTANTE: o usuário JÁ TEM uma dieta ativa. NÃO chame ' +
   'collect_diet_data para confirmar dados, nem em resposta a agradecimentos, ' +
-  '"ok", "sim" ou perguntas sobre a dieta atual. Chame a tool APENAS se o ' +
+  '"ok", "sim" ou perguntas sobre a dieta atual. Chame collect_diet_data APENAS se o ' +
   'usuário pedir EXPLICITAMENTE um plano novo ou uma alteração no plano ' +
   '(ex.: "gera outra dieta", "quero trocar meu cardápio", "refaz com menos ' +
   'carboidrato"). Cada chamada gera um plano NOVO que substitui o atual e ' +
@@ -122,7 +127,7 @@ export function assembleSystemPrompt(
   hasActiveDiet = false,
   inputMode: 'text' | 'voice' = 'text',
 ): string {
-  const parts = [base, LATEST_MESSAGE_INSTRUCTION]
+  const parts = [base, LATEST_MESSAGE_INSTRUCTION, MEAL_CORRECTION_INSTRUCTION]
   if (contextBlock) {
     parts.push(contextBlock, CONTEXT_INSTRUCTION)
   }
@@ -416,13 +421,14 @@ async function sendChatMessageCore(
   )
   // Geração de dieta é gratuita também com a carteira ligada (decisão de 21/10;
   // ver AI_FEATURE_TARIFFS): a tool só sai quando já há geração em voo.
-  const toolParams = pendingJob
-    ? {}
-    : {
-        tools: [COLLECT_DIET_DATA_TOOL],
-        tool_choice: 'auto' as const,
-        parallel_tool_calls: false,
-      }
+  // 04/11: a correção de registro vale sempre; a geração de dieta só sem job em voo.
+  const toolParams = {
+    tools: pendingJob
+      ? [UPDATE_LOGGED_MEAL_TOOL]
+      : [COLLECT_DIET_DATA_TOOL, UPDATE_LOGGED_MEAL_TOOL],
+    tool_choice: 'auto' as const,
+    parallel_tool_calls: false,
+  }
 
   // ── Chamada à OpenAI com suporte a function calling ──────────────────────
   const baseParams = {
@@ -516,9 +522,33 @@ async function sendChatMessageCore(
 
   // ── Detecta chamada de função: IA coletou todos os dados ─────────────────
   if (choice.finish_reason === 'tool_calls' && choice.message.tool_calls?.length) {
-    assertAiTariffConfigured('diet_generation')
     const toolCall = choice.message.tool_calls[0]
+    if (toolCall.function.name === 'update_logged_meal') {
+      let rawArgs: unknown = null
+      try {
+        rawArgs = JSON.parse(toolCall.function.arguments)
+      } catch {
+        rawArgs = null
+      }
+      const correction = await applyMealCorrection(fastify, userId, rawArgs, context.date)
+      history.push(said('assistant', correction.message))
+      if (deferHistory) deferHistory(history)
+      else await persistHistory(fastify, userId, conversationId, history, 'collecting')
+      return {
+        conversation_id: conversationId,
+        message: {
+          role: 'assistant',
+          content: correction.message,
+          created_at: new Date().toISOString(),
+        },
+        diet_generated: false,
+        diet_id: null,
+        diet_job_id: null,
+        meal_updated: correction.ok ? { id: correction.mealId, date: correction.date } : null,
+      }
+    }
     if (toolCall.function.name === 'collect_diet_data') {
+      assertAiTariffConfigured('diet_generation')
       return handleDietGeneration(
         fastify,
         userId,

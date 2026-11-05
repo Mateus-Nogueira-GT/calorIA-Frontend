@@ -8,7 +8,7 @@ const PENDING_SQL = "status IN ('pending', 'running')"
 const PENDING_ROW = { id: 'job-1', diet_id: 'diet-1' }
 
 describe('sendChatMessage — gating da tool (C1)', () => {
-  it('com job pending/running, a request vai SEM tools e sem tool_choice', async () => {
+  it('com job pending/running, a geração de dieta sai das tools (fica só a correção de registro)', async () => {
     const { fastify, openaiCalls } = fakeFastify([[PENDING_SQL, [PENDING_ROW]]], {
       chatCreate: async () => textCompletion('Sua dieta está sendo gerada!'),
     })
@@ -16,9 +16,8 @@ describe('sendChatMessage — gating da tool (C1)', () => {
     await sendChatMessage(fastify, USER, { message: 'ok', conversation_id: CONV })
 
     expect(openaiCalls).toHaveLength(1)
-    const params = openaiCalls[0].params
-    expect(params.tools).toBeUndefined()
-    expect(params.tool_choice).toBeUndefined()
+    const tools = openaiCalls[0].params.tools as { function: { name: string } }[]
+    expect(tools.map((t) => t.function.name)).toEqual(['update_logged_meal'])
   })
 
   it('com job em andamento, o prompt avisa que já existe dieta (mesmo sem dieta ativa)', async () => {
@@ -45,7 +44,7 @@ describe('sendChatMessage — gating da tool (C1)', () => {
       tool_choice?: string
       parallel_tool_calls?: boolean
     }
-    expect(params.tools).toHaveLength(1)
+    expect(params.tools).toHaveLength(2) // dieta + correção de registro (04/11)
     expect(params.tool_choice).toBe('auto')
     expect(params.parallel_tool_calls).toBe(false)
   })

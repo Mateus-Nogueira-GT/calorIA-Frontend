@@ -57,6 +57,8 @@ export const chatResponseSchema = z.object({
    * polling em POST /diets/jobs/:id/step até status = completed.
    */
   diet_job_id: z.string().uuid().nullable().default(null),
+  /** 04/11: o coach corrigiu um registro do diário — o app recarrega aquele dia. */
+  meal_updated: z.object({ id: z.string().uuid(), date: z.string() }).nullable().optional(),
 })
 
 export const transcribeResponseSchema = z.object({
