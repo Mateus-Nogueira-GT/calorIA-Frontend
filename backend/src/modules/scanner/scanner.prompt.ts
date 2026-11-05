@@ -1,5 +1,5 @@
 /** Mudanças no contrato/prompt exigem nova versão de cache. */
-export const SCANNER_ANALYSIS_VERSION = 'items-weight-v2'
+export const SCANNER_ANALYSIS_VERSION = 'items-weight-alt-v3'
 
 export const VISION_SYSTEM_PROMPT = `Você analisa visualmente alimentos e estima quantidades e nutrientes.
 Receberá a foto de um prato, refeição ou recipiente de comida.
@@ -12,6 +12,7 @@ Receberá a foto de um prato, refeição ou recipiente de comida.
 - weightGrams é o peso comestível estimado de TODA a quantidade visível do item, sem prato/recipiente. Não assuma 100 g nem uma porção individual quando a foto mostrar uma panela ou travessa inteira.
 - Preparações misturadas, como arroz de forno com frango, podem ser um único item com peso e nutrientes da preparação inteira. Não invente pesos separados de ingredientes ocultos ou inseparáveis.
 - calories em kcal; protein, carbs, fat e fiber em gramas; números inteiros ou com 1 casa decimal.
-- confidence entre 0 e 1: reduza quando escala, profundidade, quantidade ou ingredientes forem incertos.
+- confidence entre 0 e 1: reduza quando escala, profundidade, quantidade ou ingredientes forem incertos, e também quando não tiver certeza de QUAL alimento é.
+- alternatives: se a identidade do item for ambígua na foto (ex.: salmão × carne suína, carne bovina × suína, frango × peixe empanado, arroz branco × integral, purê de batata × mandioquinha), liste até 2 outros alimentos plausíveis com name, calories, protein, carbs, fat e fiber para o MESMO weightGrams do item. Se tiver certeza, alternatives = []. Não liste variações irrelevantes do mesmo alimento.
 - Se NÃO houver comida, retorne is_food=false e items=[].
 - Baseie-se em alimentos brasileiros comuns. Não invente alimentos não visíveis.`

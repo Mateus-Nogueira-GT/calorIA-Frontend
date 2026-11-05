@@ -13,6 +13,15 @@ export const analyzePhotoBodySchema = z.object({
 
 // ─── Responses (contrato com o frontend) ───────────────────────────────────────
 
+export const scanAlternativeSchema = z.object({
+  name: z.string(),
+  calories: z.number().finite(),
+  protein: z.number().finite(),
+  carbs: z.number().finite(),
+  fat: z.number().finite(),
+  fiber: z.number().finite().nullable(),
+})
+
 export const scanItemSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -28,6 +37,11 @@ export const scanItemSchema = z.object({
   confidence: z.number().finite().min(0).max(1),
   /** OP3: confiança < 0.5 — o app pede para conferir os valores. */
   uncertain: z.boolean(),
+  /**
+   * 05/11 (S1): outros alimentos que o item pode ser, com os valores para o
+   * MESMO peso. Vazio quando a IA tem certeza; ausente em resultados antigos.
+   */
+  alternatives: z.array(scanAlternativeSchema).max(2).optional(),
 })
 
 // Alimentos distinguíveis têm itens próprios; preparação misturada pode ser um item.
@@ -44,6 +58,15 @@ export const errorSchema = z.object({
 // ─── Structured output da OpenAI Vision ─────────────────────────────────────────
 // Structured Outputs exige todos os campos obrigatórios.
 
+export const visionAlternativeSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  calories: z.number().finite(),
+  protein: z.number().finite(),
+  carbs: z.number().finite(),
+  fat: z.number().finite(),
+  fiber: z.number().finite(),
+})
+
 export const visionItemSchema = z.object({
   name: z.string().trim().min(1).max(120),
   weightGrams: z.number().finite().min(0.1).max(100_000),
@@ -53,6 +76,7 @@ export const visionItemSchema = z.object({
   fat: z.number().finite(),
   fiber: z.number().finite(),
   confidence: z.number().finite(),
+  alternatives: z.array(visionAlternativeSchema).max(2),
 })
 
 export const visionAnalysisSchema = z.object({
@@ -60,9 +84,24 @@ export const visionAnalysisSchema = z.object({
   items: z.array(visionItemSchema).max(20),
 })
 
+/**
+ * Leitura da resposta: igual ao schema enviado ao modelo, mas tolera a falta de
+ * `alternatives` (o Structured Outputs exige o campo; um fallback do OpenRouter
+ * pode não mandar).
+ */
+export const visionAnalysisReadSchema = z.object({
+  is_food: z.boolean(),
+  items: z
+    .array(
+      visionItemSchema.extend({ alternatives: visionItemSchema.shape.alternatives.default([]) }),
+    )
+    .max(20),
+})
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type AnalyzePhotoBody = z.infer<typeof analyzePhotoBodySchema>
 export type ScanItem = z.infer<typeof scanItemSchema>
 export type ScanResponse = z.infer<typeof scanResponseSchema>
-export type VisionAnalysis = z.infer<typeof visionAnalysisSchema>
+export type VisionAnalysis = z.infer<typeof visionAnalysisReadSchema>
+export type ScanAlternative = z.infer<typeof scanAlternativeSchema>
