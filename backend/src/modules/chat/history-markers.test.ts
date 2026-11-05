@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import { fakeFastify } from '../../shared/testing/fake-fastify.js'
 import { DIET_COMPLETED_MARKER as JOBS_COMPLETED_MARKER } from '../diets/jobs.service.js'
-import { formatDietStartedMarker, getChatHistory } from './chat.service.js'
+import {
+  HISTORY_MAX_MESSAGES,
+  HISTORY_PAGE,
+  capHistory,
+  formatDietStartedMarker,
+  getChatHistory,
+} from './chat.service.js'
 import { DIET_COMPLETED_MARKER, isInternalChatMarker } from './history-markers.js'
 
 const USER = '11111111-1111-1111-1111-111111111111'
@@ -41,5 +47,39 @@ describe('getChatHistory (feedback 27/10: marcadores vazavam para a conversa)', 
       'valeu',
     ])
     expect(r.status).toBe('completed')
+  })
+})
+
+describe('histórico com hora e com teto (05/11, M2 e M10)', () => {
+  it('devolve created_at quando a mensagem tem `at`; sem `at`, sem o campo', async () => {
+    const messages = [
+      { role: 'user', content: 'antiga' },
+      { role: 'user', content: 'nova', at: '2026-11-05T15:00:00.000Z' },
+    ]
+    const { fastify } = fakeFastify([['FROM chat_history', [{ messages, status: 'collecting' }]]])
+    const r = await getChatHistory(fastify, USER, CONV)
+    expect(r.messages).toEqual([
+      { role: 'user', content: 'antiga' },
+      { role: 'user', content: 'nova', created_at: '2026-11-05T15:00:00.000Z' },
+    ])
+  })
+
+  it(`GET devolve só as últimas ${HISTORY_PAGE}`, async () => {
+    const messages = Array.from({ length: 450 }, (_, i) => ({ role: 'user', content: `m${i}` }))
+    const { fastify } = fakeFastify([['FROM chat_history', [{ messages, status: 'collecting' }]]])
+    const r = await getChatHistory(fastify, USER, CONV)
+    expect(r.messages).toHaveLength(HISTORY_PAGE)
+    expect(r.messages.at(-1)?.content).toBe('m449')
+  })
+
+  it(`a gravação guarda só as últimas ${HISTORY_MAX_MESSAGES}`, () => {
+    const messages = Array.from({ length: 450 }, (_, i) => ({
+      role: 'user' as const,
+      content: `m${i}`,
+    }))
+    const kept = capHistory(messages)
+    expect(kept).toHaveLength(HISTORY_MAX_MESSAGES)
+    expect(kept[0].content).toBe('m50')
+    expect(capHistory(messages.slice(0, 3))).toHaveLength(3)
   })
 })

@@ -2,7 +2,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { CollectedUserData } from '../../shared/diet-ai-schema.js'
 import { buildDayPrompt, computeTargets } from '../diets/jobs.service.js'
 import { type UserContextData, formatKnownData, formatUserContext } from './chat-context.js'
-import { VOICE_REPLY_INSTRUCTION, assembleSystemPrompt, buildSystemPrompt } from './chat.service.js'
+import {
+  CAPABILITIES_INSTRUCTION,
+  VOICE_REPLY_INSTRUCTION,
+  assembleSystemPrompt,
+  buildSystemPrompt,
+} from './chat.service.js'
 
 /**
  * OP5: snapshot dos prompts montados. Uma mudança de prompt tem que ser
@@ -177,5 +182,19 @@ describe('Coach e mensagens de voz', () => {
   it('mensagem digitada não recebe a instrução de voz', () => {
     expect(assembleSystemPrompt('BASE', '', '', false, 'text')).not.toMatch(/chegou por ÁUDIO/)
     expect(assembleSystemPrompt('BASE', '', '', false)).not.toMatch(/chegou por ÁUDIO/)
+  })
+})
+
+describe('o que o coach não consegue fazer (05/11, M1)', () => {
+  it('a lista entra em todo prompt, logo depois do prompt base', () => {
+    const prompt = assembleSystemPrompt('BASE', '', '', false)
+    expect(prompt.startsWith(`BASE\n\n${CAPABILITIES_INSTRUCTION}`)).toBe(true)
+    for (const path of ['Adicionar refeição', 'lixeira', 'tela Hoje', 'Evolução'])
+      expect(CAPABILITIES_INSTRUCTION).toContain(path)
+    expect(CAPABILITIES_INSTRUCTION).toMatch(/NUNCA diga "registrei"/)
+  })
+
+  it('com dieta ativa, peso novo não é pedido de plano novo', () => {
+    expect(assembleSystemPrompt('BASE', '', '', true)).toMatch(/Peso novo .* NÃO é pedido/)
   })
 })

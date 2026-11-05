@@ -3,7 +3,12 @@ import { useAuthStore } from '@features/auth/store';
 import { creditErrorMessage } from '@shared/services/credits.service';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
-import { coachService, CoachMessage, VoiceRequestContext } from '@shared/services/coach.service';
+import {
+  coachService,
+  CoachMessage,
+  MealProposal,
+  VoiceRequestContext,
+} from '@shared/services/coach.service';
 import { dietService, DietJobStatus } from '@shared/services/diet.service';
 import { kvStorage } from '@shared/services/storage';
 import {
@@ -110,11 +115,18 @@ const dietRetries = new Map<string, Promise<void>>();
 /** STALE = ninguém chamou /step por >10 min (app em segundo plano/fechado), não uma falha real. */
 const isStaleFailure = (s: DietJobStatus) => s.status === 'failed' && s.errorCode === 'STALE';
 
-interface StoreMessage {
+/** Cartão da correção proposta (05/11): vive só na sessão, não é persistido. */
+export interface ProposalCard extends MealProposal {
+  status: 'idle' | 'saving' | 'saved' | 'error' | 'dismissed';
+}
+
+export interface StoreMessage {
   id: string;
   role: 'coach' | 'user';
   content: string;
-  timestamp: Date;
+  /** null = mensagem antiga, sem horário gravado. */
+  timestamp: Date | null;
+  mealProposal?: ProposalCard;
   dietGenerated?: boolean;
   dietId?: string | null;
   dietJobId?: string | null;
@@ -158,6 +170,10 @@ interface CoachState {
   /** Texto para começar a próxima mensagem (ex.: "Corrigir com o coach" do Diário). */
   draft: string | null;
   setDraft: (text: string | null) => void;
+  /** "Atualizar registro": grava a correção proposta pelo coach. */
+  applyProposal: (messageId: string) => Promise<void>;
+  /** "Agora não": fecha o cartão. */
+  dismissProposal: (messageId: string) => void;
   /** Logout: encerra os loops e apaga o estado da geração. */
   resetDietGeneration: () => void;
   clear: () => void;
@@ -168,7 +184,8 @@ function toStoreMessage(m: CoachMessage): StoreMessage {
     id: m.id,
     role: m.role,
     content: m.content,
-    timestamp: new Date(m.timestamp),
+    timestamp: m.timestamp ? new Date(m.timestamp) : null,
+    ...(m.mealProposal ? { mealProposal: { ...m.mealProposal, status: 'idle' as const } } : {}),
     ...(m.dietGenerated ? { dietGenerated: true, dietId: m.dietId } : {}),
     ...(m.dietJobId ? { dietJobId: m.dietJobId } : {}),
   };
@@ -188,6 +205,46 @@ export const useCoachStore = create<CoachState>()(
       speakingMessageId: null,
       draft: null,
       setDraft: (text) => set({ draft: text }),
+
+      applyProposal: async (messageId) => {
+        const card = get().messages.find((m) => m.id === messageId)?.mealProposal;
+        if (!card || card.status === 'saving' || card.status === 'saved') return;
+        const setStatus = (status: ProposalCard['status']) =>
+          set((s) => ({
+            messages: s.messages.map((m) =>
+              m.id === messageId && m.mealProposal
+                ? { ...m, mealProposal: { ...m.mealProposal, status } }
+                : m,
+            ),
+          }));
+        setStatus('saving');
+        try {
+          await foodLogService.updateMeal(card.id, {
+            name: card.name,
+            calories: card.calories,
+            protein: card.protein,
+            carbs: card.carbs,
+            fat: card.fat,
+            fiber: card.fiber,
+            mealType: card.mealType,
+            ...(card.weightGrams != null ? { weightGrams: card.weightGrams } : {}),
+          });
+        } catch {
+          setStatus('error');
+          return;
+        }
+        setStatus('saved');
+        await refreshCorrectedDay(card.date);
+      },
+
+      dismissProposal: (messageId) =>
+        set((s) => ({
+          messages: s.messages.map((m) =>
+            m.id === messageId && m.mealProposal
+              ? { ...m, mealProposal: { ...m.mealProposal, status: 'dismissed' } }
+              : m,
+          ),
+        })),
 
       toggleSpeech: (messageId) => {
         if (get().speakingMessageId === messageId) {

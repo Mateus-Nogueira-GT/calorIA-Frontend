@@ -142,5 +142,100 @@
     ],
     "expectTool": true,
     "expectToolName": "update_logged_meal"
+  },
+  {
+    "name": "M1: pedido para registrar refeição → NÃO chama tool (indica o Diário)",
+    "hasActiveDiet": true,
+    "knownData": "",
+    "context": "## CONTEXTO DO USUÁRIO\nDieta ativa: \"Plano personalizado\" — meta 2100 kcal | 148g prot | 210g carb | 58g gord.\nHoje (2026-11-04): consumidas 420 kcal / 38g prot (plano: 0 de 4 refeições concluídas; diário livre: 1 item(ns)).\nRegistros de hoje no diário (mais recentes primeiro):\n- [ref abcdef] 20:14 Carne suína grelhada — 180 g · 420 kcal · P 38 g · C 0 g · G 29 g.\nINSTRUÇÃO: quando o usuário falar de \"minha refeição\", do que comeu ou de um registro, use esta lista (é a fonte da verdade); se o item não estiver nela, diga que não há esse registro hoje.",
+    "messages": [
+      {
+        "role": "user",
+        "content": "[05/11 12:00] Registra aí que comi 2 ovos cozidos no café."
+      }
+    ],
+    "expectTool": false
+  },
+  {
+    "name": "M1: pedido para apagar registro → NÃO chama tool (indica a lixeira)",
+    "hasActiveDiet": true,
+    "knownData": "",
+    "context": "## CONTEXTO DO USUÁRIO\nDieta ativa: \"Plano personalizado\" — meta 2100 kcal | 148g prot | 210g carb | 58g gord.\nHoje (2026-11-04): consumidas 420 kcal / 38g prot (plano: 0 de 4 refeições concluídas; diário livre: 1 item(ns)).\nRegistros de hoje no diário (mais recentes primeiro):\n- [ref abcdef] 20:14 Carne suína grelhada — 180 g · 420 kcal · P 38 g · C 0 g · G 29 g.\nINSTRUÇÃO: quando o usuário falar de \"minha refeição\", do que comeu ou de um registro, use esta lista (é a fonte da verdade); se o item não estiver nela, diga que não há esse registro hoje.",
+    "messages": [
+      {
+        "role": "user",
+        "content": "[05/11 12:00] Apaga esse registro da carne suína, por favor."
+      }
+    ],
+    "expectTool": false
+  },
+  {
+    "name": "M1: pedido para marcar refeição do plano → NÃO chama tool",
+    "hasActiveDiet": true,
+    "knownData": "",
+    "context": "## CONTEXTO DO USUÁRIO\nDieta ativa: \"Plano personalizado\" — meta 2100 kcal | 148g prot | 210g carb | 58g gord.\nHoje (2026-11-04): consumidas 420 kcal / 38g prot (plano: 0 de 4 refeições concluídas; diário livre: 1 item(ns)).\nRegistros de hoje no diário (mais recentes primeiro):\n- [ref abcdef] 20:14 Carne suína grelhada — 180 g · 420 kcal · P 38 g · C 0 g · G 29 g.\nINSTRUÇÃO: quando o usuário falar de \"minha refeição\", do que comeu ou de um registro, use esta lista (é a fonte da verdade); se o item não estiver nela, diga que não há esse registro hoje.",
+    "messages": [
+      {
+        "role": "user",
+        "content": "[05/11 12:00] Marca meu almoço do plano como feito."
+      }
+    ],
+    "expectTool": false
+  },
+  {
+    "name": "M1: peso novo com dieta ativa → NÃO gera plano",
+    "hasActiveDiet": true,
+    "knownData": "",
+    "context": "## CONTEXTO DO USUÁRIO\nDieta ativa: \"Plano personalizado\" — meta 2100 kcal | 148g prot | 210g carb | 58g gord.\nHoje (2026-11-04): consumidas 420 kcal / 38g prot (plano: 0 de 4 refeições concluídas; diário livre: 1 item(ns)).\nRegistros de hoje no diário (mais recentes primeiro):\n- [ref abcdef] 20:14 Carne suína grelhada — 180 g · 420 kcal · P 38 g · C 0 g · G 29 g.\nINSTRUÇÃO: quando o usuário falar de \"minha refeição\", do que comeu ou de um registro, use esta lista (é a fonte da verdade); se o item não estiver nela, diga que não há esse registro hoje.",
+    "messages": [
+      {
+        "role": "user",
+        "content": "[05/11 12:00] Meu peso agora é 78 kg."
+      }
+    ],
+    "expectTool": false
+  },
+  {
+    "name": "M1: trocar item do plano → NÃO chama tool (sugere troca)",
+    "hasActiveDiet": true,
+    "knownData": "",
+    "context": "## CONTEXTO DO USUÁRIO\nDieta ativa: \"Plano personalizado\" — meta 2100 kcal | 148g prot | 210g carb | 58g gord.\nHoje (2026-11-04): consumidas 420 kcal / 38g prot (plano: 0 de 4 refeições concluídas; diário livre: 1 item(ns)).\nRegistros de hoje no diário (mais recentes primeiro):\n- [ref abcdef] 20:14 Carne suína grelhada — 180 g · 420 kcal · P 38 g · C 0 g · G 29 g.\nINSTRUÇÃO: quando o usuário falar de \"minha refeição\", do que comeu ou de um registro, use esta lista (é a fonte da verdade); se o item não estiver nela, diga que não há esse registro hoje.",
+    "messages": [
+      {
+        "role": "user",
+        "content": "[05/11 12:00] Troca o arroz do meu almoço por batata-doce."
+      }
+    ],
+    "expectTool": false
+  },
+  {
+    "name": "M3: app com cartão — usuário aponta o erro → chama propose_meal_correction já",
+    "hasActiveDiet": true,
+    "knownData": "",
+    "context": "## CONTEXTO DO USUÁRIO\nDieta ativa: \"Plano personalizado\" — meta 2100 kcal | 148g prot | 210g carb | 58g gord.\nHoje (2026-11-04): consumidas 420 kcal / 38g prot (plano: 0 de 4 refeições concluídas; diário livre: 1 item(ns)).\nRegistros de hoje no diário (mais recentes primeiro):\n- [ref abcdef] 20:14 Carne suína grelhada — 180 g · 420 kcal · P 38 g · C 0 g · G 29 g.\nINSTRUÇÃO: quando o usuário falar de \"minha refeição\", do que comeu ou de um registro, use esta lista (é a fonte da verdade); se o item não estiver nela, diga que não há esse registro hoje.",
+    "proposals": true,
+    "messages": [
+      {
+        "role": "user",
+        "content": "[05/11 20:20] Não era carne suína, era salmão. Quais seriam os valores no mesmo peso?"
+      }
+    ],
+    "expectTool": true,
+    "expectToolName": "propose_meal_correction"
+  },
+  {
+    "name": "M6: rascunho de outro dia com ref → propõe com a ref citada",
+    "hasActiveDiet": true,
+    "knownData": "",
+    "context": "## CONTEXTO DO USUÁRIO\nDieta ativa: \"Plano personalizado\" — meta 2100 kcal | 148g prot | 210g carb | 58g gord.\nHoje (2026-11-04): consumidas 420 kcal / 38g prot (plano: 0 de 4 refeições concluídas; diário livre: 1 item(ns)).\nRegistros de hoje no diário (mais recentes primeiro):\n- [ref abcdef] 20:14 Carne suína grelhada — 180 g · 420 kcal · P 38 g · C 0 g · G 29 g.\nINSTRUÇÃO: quando o usuário falar de \"minha refeição\", do que comeu ou de um registro, use esta lista (é a fonte da verdade); se o item não estiver nela, diga que não há esse registro hoje.",
+    "proposals": true,
+    "messages": [
+      {
+        "role": "user",
+        "content": "[05/11 09:00] Corrigir o registro \"Frango empanado\" (200 g, 02/11 · ref 7c1d2e): na verdade era frango grelhado"
+      }
+    ],
+    "expectTool": true,
+    "expectToolName": "propose_meal_correction"
   }
 ]

@@ -21,7 +21,7 @@ const { coachService } = jest.requireMock('@shared/services/coach.service') as {
   coachService: { sendMessage: jest.Mock };
 };
 const { foodLogService } = jest.requireMock('@shared/services/food-log.service') as {
-  foodLogService: { getMeals: jest.Mock };
+  foodLogService: { getMeals: jest.Mock; updateMeal?: jest.Mock };
 };
 
 const salmon = {
@@ -57,4 +57,65 @@ it('resposta comum não recarrega o diário', async () => {
   });
   await useCoachStore.getState().sendMessage('oi');
   expect(foodLogService.getMeals).not.toHaveBeenCalled();
+});
+
+describe('cartão da correção proposta (05/11)', () => {
+  const proposal = {
+    id: 'm1', date: '2026-11-03', currentName: 'Carne suína', name: 'Salmão grelhado',
+    weightGrams: 180, mealType: 'dinner' as const, calories: 376, protein: 40, carbs: 0, fat: 24,
+    fiber: 0,
+  };
+  const reply = {
+    conversationId: 'c1',
+    acknowledge: jest.fn().mockResolvedValue(undefined),
+    message: {
+      id: 'c1-9', role: 'coach', content: 'Para os mesmos 180 g…', timestamp: '2026-11-04T23:20:00Z',
+      mealProposal: proposal,
+    },
+  };
+
+  beforeEach(() => {
+    foodLogService.updateMeal = jest.fn().mockResolvedValue(salmon);
+  });
+
+  it('a proposta chega como cartão e NÃO grava sozinha', async () => {
+    coachService.sendMessage.mockResolvedValue(reply);
+    await useCoachStore.getState().sendMessage('não era suína');
+    const msg = useCoachStore.getState().messages.find((m) => m.id === 'c1-9');
+    expect(msg?.mealProposal?.status).toBe('idle');
+    expect(foodLogService.updateMeal).not.toHaveBeenCalled();
+    expect(foodLogService.getMeals).not.toHaveBeenCalled();
+  });
+
+  it('Atualizar registro grava pelo PATCH, com o peso, e recarrega o dia', async () => {
+    coachService.sendMessage.mockResolvedValue(reply);
+    await useCoachStore.getState().sendMessage('não era suína');
+    await useCoachStore.getState().applyProposal('c1-9');
+    expect(foodLogService.updateMeal).toHaveBeenCalledWith('m1', {
+      name: 'Salmão grelhado', calories: 376, protein: 40, carbs: 0, fat: 24, fiber: 0,
+      mealType: 'dinner', weightGrams: 180,
+    });
+    expect(foodLogService.getMeals).toHaveBeenCalledWith('2026-11-03');
+    const msg = useCoachStore.getState().messages.find((m) => m.id === 'c1-9');
+    expect(msg?.mealProposal?.status).toBe('saved');
+    expect(useFoodLogStore.getState().mealsByDate['2026-11-03'][0].name).toBe('Salmão grelhado');
+  });
+
+  it('falha ao gravar → status error, sem recarregar', async () => {
+    (foodLogService.updateMeal as jest.Mock).mockRejectedValue(new Error('rede'));
+    coachService.sendMessage.mockResolvedValue(reply);
+    await useCoachStore.getState().sendMessage('não era suína');
+    await useCoachStore.getState().applyProposal('c1-9');
+    const msg = useCoachStore.getState().messages.find((m) => m.id === 'c1-9');
+    expect(msg?.mealProposal?.status).toBe('error');
+    expect(foodLogService.getMeals).not.toHaveBeenCalled();
+  });
+
+  it('Agora não fecha o cartão', async () => {
+    coachService.sendMessage.mockResolvedValue(reply);
+    await useCoachStore.getState().sendMessage('não era suína');
+    useCoachStore.getState().dismissProposal('c1-9');
+    const msg = useCoachStore.getState().messages.find((m) => m.id === 'c1-9');
+    expect(msg?.mealProposal?.status).toBe('dismissed');
+  });
 });

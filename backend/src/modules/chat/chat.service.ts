@@ -14,8 +14,11 @@ import type { ChatMessageBody, ChatResponse } from './chat.schemas.js'
 import { DIET_STARTED_MARKER_PREFIX, isInternalChatMarker } from './history-markers.js'
 import {
   MEAL_CORRECTION_INSTRUCTION,
+  MEAL_PROPOSAL_INSTRUCTION,
+  PROPOSE_MEAL_CORRECTION_TOOL,
   UPDATE_LOGGED_MEAL_TOOL,
   applyMealCorrection,
+  proposeMealCorrection,
 } from './meal-correction.js'
 
 // ─── System prompt ─────────────────────────────────────────────────────────
@@ -103,7 +106,22 @@ const EXISTING_DIET_INSTRUCTION =
   '(ex.: "gera outra dieta", "quero trocar meu cardápio", "refaz com menos ' +
   'carboidrato"). Cada chamada gera um plano NOVO que substitui o atual e ' +
   'zera as refeições já marcadas como concluídas — por isso, na dúvida, ' +
-  'pergunte antes em vez de chamar a tool.'
+  'pergunte antes em vez de chamar a tool. Peso novo ("meu peso agora é 78 kg") NÃO é pedido ' +
+  'de plano novo: responda e indique a Evolução para registrar.'
+
+/**
+ * 05/11 (M1): sem esta lista, "registra 2 ovos" ou "apaga esse registro"
+ * podiam receber "pronto, registrei!" — o coach não tem como fazer nada disso.
+ */
+export const CAPABILITIES_INSTRUCTION =
+  'O QUE VOCÊ CONSEGUE FAZER: orientar sobre alimentação; analisar o dia, o plano e os registros ' +
+  'do CONTEXTO; propor a correção de um registro do diário (veja a instrução de correção); gerar ' +
+  'um plano novo, só quando pedido. O QUE VOCÊ NÃO CONSEGUE FAZER — explique e indique o caminho ' +
+  'no app: registrar refeição (Diário › Adicionar refeição, ou o Scanner); apagar um registro ' +
+  '(lixeira do registro no Diário); marcar uma refeição do plano como feita (tela Hoje); registrar ' +
+  'o peso (Evolução); trocar um item do plano (o app não tem essa opção: sugira a troca ' +
+  'equivalente e diga que a pessoa pode segui-la). NUNCA diga "registrei", "apaguei", "marquei", ' +
+  '"atualizei" ou "troquei" sem ter feito isso por uma das suas ferramentas.'
 
 /** 04/11: a conversa é uma só e é retomada dias depois — o coach respondia ao assunto antigo. */
 const LATEST_MESSAGE_INSTRUCTION =
@@ -126,8 +144,14 @@ export function assembleSystemPrompt(
   knownData: string,
   hasActiveDiet = false,
   inputMode: 'text' | 'voice' = 'text',
+  correctionMode: 'update' | 'proposal' = 'update',
 ): string {
-  const parts = [base, LATEST_MESSAGE_INSTRUCTION, MEAL_CORRECTION_INSTRUCTION]
+  const parts = [
+    base,
+    CAPABILITIES_INSTRUCTION,
+    LATEST_MESSAGE_INSTRUCTION,
+    correctionMode === 'proposal' ? MEAL_PROPOSAL_INSTRUCTION : MEAL_CORRECTION_INSTRUCTION,
+  ]
   if (contextBlock) {
     parts.push(contextBlock, CONTEXT_INSTRUCTION)
   }
@@ -411,6 +435,8 @@ async function sendChatMessageCore(
   // existe. Fecha o buraco da primeira geração (dieta ainda 'draft', logo
   // hasActiveDiet era false e a instrução de "já tem dieta" não entrava).
   const pendingJob = await getPendingJob(fastify, userId)
+  const proposals = data.client_features?.includes('meal_proposal') ?? false
+  const correctionTool = proposals ? PROPOSE_MEAL_CORRECTION_TOOL : UPDATE_LOGGED_MEAL_TOOL
   const hasActiveDiet = context.diet !== null || pendingJob !== null
   const systemPrompt = assembleSystemPrompt(
     buildSystemPrompt(profile?.coach_personality),
@@ -418,14 +444,13 @@ async function sendChatMessageCore(
     formatKnownData(context),
     hasActiveDiet,
     data.input_mode,
+    proposals ? 'proposal' : 'update',
   )
   // Geração de dieta é gratuita também com a carteira ligada (decisão de 21/10;
   // ver AI_FEATURE_TARIFFS): a tool só sai quando já há geração em voo.
   // 04/11: a correção de registro vale sempre; a geração de dieta só sem job em voo.
   const toolParams = {
-    tools: pendingJob
-      ? [UPDATE_LOGGED_MEAL_TOOL]
-      : [COLLECT_DIET_DATA_TOOL, UPDATE_LOGGED_MEAL_TOOL],
+    tools: pendingJob ? [correctionTool] : [COLLECT_DIET_DATA_TOOL, correctionTool],
     tool_choice: 'auto' as const,
     parallel_tool_calls: false,
   }
@@ -523,7 +548,31 @@ async function sendChatMessageCore(
   // ── Detecta chamada de função: IA coletou todos os dados ─────────────────
   if (choice.finish_reason === 'tool_calls' && choice.message.tool_calls?.length) {
     const toolCall = choice.message.tool_calls[0]
-    if (toolCall.function.name === 'update_logged_meal') {
+    if (toolCall.function.name === 'propose_meal_correction' && proposals) {
+      let rawArgs: unknown = null
+      try {
+        rawArgs = JSON.parse(toolCall.function.arguments)
+      } catch {
+        rawArgs = null
+      }
+      const proposal = await proposeMealCorrection(fastify, userId, rawArgs, context.date)
+      history.push(said('assistant', proposal.message))
+      if (deferHistory) deferHistory(history)
+      else await persistHistory(fastify, userId, conversationId, history, 'collecting')
+      return {
+        conversation_id: conversationId,
+        message: {
+          role: 'assistant',
+          content: proposal.message,
+          created_at: new Date().toISOString(),
+        },
+        diet_generated: false,
+        diet_id: null,
+        diet_job_id: null,
+        meal_proposal: proposal.ok ? proposal.proposal : null,
+      }
+    }
+    if (toolCall.function.name === 'update_logged_meal' && !proposals) {
       let rawArgs: unknown = null
       try {
         rawArgs = JSON.parse(toolCall.function.arguments)
@@ -709,7 +758,10 @@ export async function getChatHistory(
   fastify: FastifyInstance,
   userId: string,
   conversationId: string,
-): Promise<{ messages: ChatHistoryMessage[]; status: string }> {
+): Promise<{
+  messages: { role: ChatHistoryMessage['role']; content: string; created_at?: string }[]
+  status: string
+}> {
   const [row] = await fastify.db<{ messages: unknown; status: string }[]>`
     SELECT messages, status
     FROM chat_history
@@ -719,13 +771,26 @@ export async function getChatHistory(
   if (!row) throw new AppError(404, 'CONVERSATION_NOT_FOUND', 'Conversa não encontrada')
   // Leitura para o usuário: os marcadores continuam no banco e no histórico do
   // modelo (loadHistory), mas apareciam como balões do coach entre colchetes.
-  const messages = normalizeHistory(row.messages).filter(
-    (m) => typeof m.content !== 'string' || !isInternalChatMarker(m.content),
-  )
+  const messages = normalizeHistory(row.messages)
+    .filter((m) => typeof m.content !== 'string' || !isInternalChatMarker(m.content))
+    .slice(-HISTORY_PAGE)
+    // 05/11 (M2): o app mostrava toda mensagem antiga com o horário de agora.
+    .map((m) => ({ role: m.role, content: m.content, ...(m.at ? { created_at: m.at } : {}) }))
   return { messages, status: row.status }
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * 05/11 (M10): a conversa é uma só, para sempre, e cada mensagem relê e regrava
+ * o JSON inteiro. O modelo vê 30 (CHAT_CONTEXT_WINDOW); o app, as últimas 200.
+ */
+export const HISTORY_MAX_MESSAGES = 400
+export const HISTORY_PAGE = 200
+
+export function capHistory<T>(messages: T[]): T[] {
+  return messages.length > HISTORY_MAX_MESSAGES ? messages.slice(-HISTORY_MAX_MESSAGES) : messages
+}
 
 /**
  * Garante que o histórico seja sempre um array. Dependendo do driver/pooler, a
@@ -778,7 +843,7 @@ async function persistHistory(
   status: string,
   transaction?: CreditTransaction,
 ): Promise<void> {
-  const messagesStr = JSON.stringify(messages)
+  const messagesStr = JSON.stringify(capHistory(messages))
   try {
     const sql = transaction ?? fastify.db
     const rows = await sql`

@@ -6,7 +6,8 @@ import { getActiveDiet, getTodayPlan } from '../diets/diets.service.js'
 import { parseInput } from '../diets/jobs.service.js'
 import type { Meal } from '../food-log/food-log.schemas.js'
 import { isImplausibleMeal } from '../food-log/food-log.schemas.js'
-import { listMeals } from '../food-log/food-log.service.js'
+import type { DaySummary } from '../food-log/food-log.schemas.js'
+import { getSummary, listMeals } from '../food-log/food-log.service.js'
 
 /**
  * Contexto do usuário para o coach (Workstream I1/I2). Sem isto o coach é
@@ -53,8 +54,10 @@ const KNOWN_GOAL_LABELS: Record<string, string> = {
 }
 
 // 04/11: a lista dos registros do dia entrou no contexto (até 8 linhas).
-const CONTEXT_MAX_CHARS = 2400
+// 05/11: e o plano de hoje e os dias anteriores — o teto subiu de novo.
+const CONTEXT_MAX_CHARS = 3600
 const DIARY_MAX_ITEMS = 8
+const NAME_MAX_CHARS = 60
 const LIST_MAX_ITEMS = 6
 
 interface ContextProfile {
@@ -87,6 +90,8 @@ export interface UserContextData {
   tzOffsetMinutes?: number
   /** Registro mais recente da Evolução (faixa plausível); mais novo que o cadastro. */
   lastWeight?: { kg: number; date: string } | null
+  /** Totais do diário nos 6 dias anteriores (só os dias com registro). */
+  recentDays?: DaySummary[] | null
 }
 
 /** Idade (anos) a partir de 'YYYY-MM-DD'; null se ausente/inválida. */
@@ -117,6 +122,11 @@ export function mealRef(id: string): string {
 
 const fmtG = (n: number) => `${Math.round(n * 10) / 10}`
 
+/** Nome de registro/prato no contexto: um nome gigante não pode comer o teto. */
+function shortName(name: string): string {
+  return name.length > NAME_MAX_CHARS ? `${name.slice(0, NAME_MAX_CHARS - 1).trimEnd()}…` : name
+}
+
 /**
  * Feedback de 04/11: o contexto trazia só "diário livre: 2 item(ns)" — o
  * coach não sabia O QUE foi registrado e não conseguia analisar "minha
@@ -124,9 +134,6 @@ const fmtG = (n: number) => `${Math.round(n * 10) / 10}`
  */
 function diaryLines(data: UserContextData): string[] {
   const out: string[] = []
-  const done = (data.today?.meals ?? []).filter((m) => m.completedToday)
-  if (done.length > 0)
-    out.push(`Do plano, concluídas hoje: ${done.map((m) => m.title).join('; ')}.`)
   if (data.freeMeals.length === 0) return out
   const recent = [...data.freeMeals]
     .sort((a, b) => (a.loggedAt < b.loggedAt ? 1 : a.loggedAt > b.loggedAt ? -1 : 0))
@@ -136,13 +143,43 @@ function diaryLines(data: UserContextData): string[] {
     const time = localTime(m.loggedAt, data.tzOffsetMinutes)
     const weight = m.weightGrams != null ? `${fmtG(m.weightGrams)} g · ` : ''
     out.push(
-      `- [ref ${mealRef(m.id)}] ${time ? `${time} ` : ''}${m.name} — ${weight}${Math.round(m.calories)} kcal · ` +
+      `- [ref ${mealRef(m.id)}] ${time ? `${time} ` : ''}${shortName(m.name)} — ${weight}${Math.round(m.calories)} kcal · ` +
         `P ${fmtG(m.protein)} g · C ${fmtG(m.carbs)} g · G ${fmtG(m.fat)} g.`,
     )
   }
   out.push(
     'INSTRUÇÃO: quando o usuário falar de "minha refeição", do que comeu ou de um registro, use esta lista ' +
-      '(é a fonte da verdade); se o item não estiver nela, diga que não há esse registro hoje.',
+      '(é a fonte da verdade); se o item não estiver nela nem o usuário citar a ref dele, diga que ' +
+      'não há esse registro hoje.',
+  )
+  return out
+}
+
+const PLAN_ITEMS_MAX = 6
+
+/**
+ * 05/11 (M5): do plano o coach só via a próxima refeição (título e kcal).
+ * "O que tem no meu almoço?" e "Sugira uma refeição" eram respondidos sem o
+ * plano. Uma linha por refeição, com os itens.
+ */
+function planLines(today: TodayPlan | null): string[] {
+  if (!today?.meals.length) return []
+  const out = ['Plano de hoje:']
+  for (const m of today.meals) {
+    const items = m.items
+      .slice(0, PLAN_ITEMS_MAX)
+      .map((i) => `${shortName(i.name)} ${fmtG(i.quantity)} ${i.unit}`)
+    const extra = m.items.length - PLAN_ITEMS_MAX
+    if (extra > 0) items.push(`+${extra} ${extra === 1 ? 'item' : 'itens'}`)
+    const at = m.suggestedTime ? `${m.suggestedTime} ` : ''
+    const done = m.completedToday ? ' (concluída)' : ''
+    out.push(
+      `- ${at}${m.title}${done} — ${Math.round(m.calories)} kcal${items.length ? `: ${items.join(', ')}` : ''}.`,
+    )
+  }
+  out.push(
+    'INSTRUÇÃO: perguntas sobre o plano usam esta lista. Se o usuário quiser trocar um item, ' +
+      'sugira a troca com quantidade equivalente, sem dizer que alterou o plano.',
   )
   return out
 }
@@ -254,11 +291,19 @@ export async function fetchUserContext(
       SELECT weight_kg, date::TEXT AS date FROM weight_entries
       WHERE user_id = ${userId}
         AND weight_kg BETWEEN ${BODY_LIMITS.weightKg.min} AND ${BODY_LIMITS.weightKg.max}
-      ORDER BY date DESC LIMIT 1
+      ORDER BY date DESC, created_at DESC LIMIT 1
     `
     lastWeight = row ? { kg: Number(row.weight_kg), date: row.date } : null
   } catch {
     lastWeight = null
+  }
+
+  // 05/11 (M6): "como foi minha semana?" ficava sem nenhum dado.
+  let recentDays: DaySummary[] | null = null
+  try {
+    recentDays = await getSummary(fastify, userId, shiftDate(date, -6), shiftDate(date, -1))
+  } catch {
+    recentDays = null
   }
 
   let mealsPerDay: number | null = null
@@ -281,6 +326,7 @@ export async function fetchUserContext(
     date,
     tzOffsetMinutes: query.tzOffsetMinutes,
     lastWeight,
+    recentDays,
   }
 }
 
@@ -335,9 +381,10 @@ export function formatUserContext(raw: UserContextData): string {
       `Hoje (${data.date}): consumidas ${c.calories} kcal / ${c.protein}g prot ` +
         `(plano: ${c.planCompleted} de ${c.planTotal} refeições concluídas; diário livre: ${data.freeMeals.length} item(ns)).`,
     )
-    const remainingCal = data.diet.targetCalories - c.calories
-    const remainingProt = data.diet.targetProtein - c.protein
-    lines.push(`Faltam: ${remainingCal} kcal, ${remainingProt}g proteína.`)
+    lines.push(
+      `Restante do dia: ${remainingText(data.diet.targetCalories - c.calories, 'kcal')}; ` +
+        `${remainingText(data.diet.targetProtein - c.protein, 'protein')}.`,
+    )
     const next = data.today?.meals.find((m) => !m.completedToday)
     if (next) {
       const at = next.suggestedTime ? ` (${next.suggestedTime})` : ''
@@ -354,8 +401,8 @@ export function formatUserContext(raw: UserContextData): string {
     }
   }
 
-  lines.push(...diaryLines(data))
-
+  // 05/11 (M9): o corte é do fim para o começo. O aviso e o perfil vêm antes
+  // das listas longas (diário, plano), que são as que podem ficar de fora.
   if (ignored > 0) {
     const one = ignored === 1
     lines.push(
@@ -365,9 +412,15 @@ export function formatUserContext(raw: UserContextData): string {
     )
   }
 
-  if (p && (p.weight_kg || p.height_cm || p.goal)) {
+  // 05/11 (M7): um peso só — o da Evolução, se houver, é o mais recente.
+  const weight = data.lastWeight
+    ? `${data.lastWeight.kg}kg (Evolução, ${ddmm(data.lastWeight.date)})`
+    : p?.weight_kg
+      ? `${p.weight_kg}kg`
+      : null
+  if (p && (weight || p.height_cm || p.goal)) {
     const bits: string[] = []
-    if (p.weight_kg) bits.push(`${p.weight_kg}kg`)
+    if (weight) bits.push(weight)
     if (p.height_cm) bits.push(`${p.height_cm}cm`)
     const age = ageFromBirthDate(p.birth_date)
     if (age != null) bits.push(`${age} anos`)
@@ -376,6 +429,8 @@ export function formatUserContext(raw: UserContextData): string {
     if (p.activity_level)
       bits.push(`atividade: ${ACTIVITY_LABELS[p.activity_level] ?? p.activity_level}`)
     lines.push(`Perfil: ${bits.join(', ')}.`)
+  } else if (weight) {
+    lines.push(`Peso atual: ${weight}.`)
   }
 
   if (p?.dietary_restrictions?.length || p?.allergies?.length) {
@@ -387,16 +442,61 @@ export function formatUserContext(raw: UserContextData): string {
     lines.push(`${parts.join('. ')}.`)
   }
 
-  if (data.lastWeight) {
-    const [, mm, dd] = data.lastWeight.date.split('-')
-    lines.push(`Último peso registrado na Evolução: ${data.lastWeight.kg} kg em ${dd}/${mm}.`)
-  }
+  lines.push(...planLines(data.today), ...diaryLines(data))
+
+  lines.push(...recentDaysLines(data))
   if (data.streak != null && data.streak > 0) lines.push(`Streak atual: ${data.streak} dias.`)
 
   if (lines.length === 0) return ''
 
   const header = '## CONTEXTO DO USUÁRIO (dados reais — use-os; não invente valores)'
   return truncateByLines(header, lines, CONTEXT_MAX_CHARS)
+}
+
+/** 'YYYY-MM-DD' deslocada em N dias. */
+function shiftDate(date: string, days: number): string {
+  const d = new Date(`${date}T12:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + days)
+  return d.toISOString().slice(0, 10)
+}
+
+/** Os 6 dias anteriores, inclusive os sem registro; nada se não houver nenhum. */
+function recentDaysLines(data: UserContextData): string[] {
+  if (!data.recentDays?.length) return []
+  const byDate = new Map(data.recentDays.map((d) => [d.date, d]))
+  const days: string[] = []
+  for (let i = -6; i <= -1; i++) {
+    const date = shiftDate(data.date, i)
+    const d = byDate.get(date)
+    days.push(
+      d ? `${ddmm(date)} ${d.calories} kcal / ${d.protein}g prot` : `${ddmm(date)} sem registro`,
+    )
+  }
+  return [
+    `Últimos dias (só diário): ${days.join(' · ')}.`,
+    'INSTRUÇÃO: refeições do plano marcadas como concluídas em dias passados não aparecem nesses ' +
+      'totais — não conclua que o usuário não comeu; pergunte.',
+  ]
+}
+
+/** 'YYYY-MM-DD' → 'dd/mm'. */
+function ddmm(date: string): string {
+  const [, mm, dd] = date.split('-')
+  return `${dd}/${mm}`
+}
+
+/**
+ * 05/11 (M8): "Faltam: -350 kcal" quando o usuário passou da meta. Cada número
+ * sai na forma certa: falta, passou ou atingida.
+ */
+function remainingText(remaining: number, kind: 'kcal' | 'protein'): string {
+  const n = Math.abs(Math.round(remaining))
+  if (kind === 'kcal') {
+    if (n === 0) return 'meta de calorias atingida'
+    return remaining > 0 ? `faltam ${n} kcal` : `passou da meta em ${n} kcal`
+  }
+  if (n === 0) return 'meta de proteína atingida'
+  return remaining > 0 ? `faltam ${n}g de proteína` : `passou da meta de proteína em ${n}g`
 }
 
 /** Acrescenta linhas inteiras até o teto; a primeira que não couber encerra. */
