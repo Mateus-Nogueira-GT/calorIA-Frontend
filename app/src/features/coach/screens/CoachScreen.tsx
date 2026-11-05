@@ -23,6 +23,7 @@ import { Text, screenShellStyle } from '@shared/components';
 import { colors, typography, spacing, radius } from '@theme';
 import { CoachMark } from '../components/CoachMark';
 import { MealProposalCard } from '../components/MealProposalCard';
+import { ActionProposalCard } from '../components/ActionProposalCard';
 import { daySeparators } from '../day-separators';
 
 const conversationSuggestions = [
@@ -45,6 +46,8 @@ export function CoachScreen(): React.JSX.Element {
     stopSpeaking,
     applyProposal,
     dismissProposal,
+    applyAction,
+    dismissAction,
   } = useCoachStore();
   const nav = useNavigation<TabScreenProps<'Coach'>['navigation']>();
   const isFocused = useIsFocused();
@@ -156,6 +159,13 @@ export function CoachScreen(): React.JSX.Element {
                 proposal={item.mealProposal}
                 onApply={() => void applyProposal(item.id)}
                 onDismiss={() => dismissProposal(item.id)}
+              />
+            )}
+            {item.actionProposal && (
+              <ActionProposalCard
+                action={item.actionProposal}
+                onApply={() => void applyAction(item.id)}
+                onDismiss={() => dismissAction(item.id)}
               />
             )}
             {item.id === lastCoachWithFlag && (

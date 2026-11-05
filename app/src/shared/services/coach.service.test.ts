@@ -141,8 +141,17 @@ describe('coachService.sendMessage — modo de entrada', () => {
 
 describe('coachService — varredura de 05/11', () => {
   const proposal = {
-    id: 'm1', date: '2026-11-04', currentName: 'Carne suína', name: 'Salmão grelhado',
-    weightGrams: 180, mealType: 'dinner', calories: 376, protein: 40, carbs: 0, fat: 24, fiber: 0,
+    id: 'm1',
+    date: '2026-11-04',
+    currentName: 'Carne suína',
+    name: 'Salmão grelhado',
+    weightGrams: 180,
+    mealType: 'dinner',
+    calories: 376,
+    protein: 40,
+    carbs: 0,
+    fat: 24,
+    fiber: 0,
   };
 
   beforeEach(() => {
@@ -153,14 +162,22 @@ describe('coachService — varredura de 05/11', () => {
     api.post.mockResolvedValue({
       data: {
         conversation_id: 'conv-1',
-        message: { role: 'assistant', content: 'Para os mesmos 180 g…', created_at: '2026-11-05T00:00:00Z' },
-        diet_generated: false, diet_id: null, diet_job_id: null,
+        message: {
+          role: 'assistant',
+          content: 'Para os mesmos 180 g…',
+          created_at: '2026-11-05T00:00:00Z',
+        },
+        diet_generated: false,
+        diet_id: null,
+        diet_job_id: null,
         meal_proposal: proposal,
       },
     });
     const r = await coachService.sendMessage('não era suína', null);
     const body = api.post.mock.calls.find(([url]: [string]) => url === '/chat/message')?.[1];
-    expect(body).toMatchObject({ client_features: ['meal_proposal'] });
+    expect(body).toMatchObject({
+      client_features: ['meal_proposal', 'log_meal', 'log_weight', 'complete_plan_meal'],
+    });
     expect(r.message.mealProposal).toEqual(proposal);
   });
 
@@ -175,6 +192,35 @@ describe('coachService — varredura de 05/11', () => {
       },
     });
     const h = await coachService.getHistory('conv-1');
-    expect(h.messages.map((m: { timestamp: string | null }) => m.timestamp)).toEqual([null, '2026-11-02T13:00:00.000Z']);
+    expect(h.messages.map((m: { timestamp: string | null }) => m.timestamp)).toEqual([
+      null,
+      '2026-11-02T13:00:00.000Z',
+    ]);
   });
+});
+
+it('mapeia action_proposal (05/11, ações com cartão)', async () => {
+  const action = {
+    kind: 'log_weight',
+    weightKg: 78,
+    date: '2026-11-05',
+    replaces: null,
+    bigChange: false,
+  };
+  api.post.mockResolvedValue({
+    data: {
+      conversation_id: 'conv-1',
+      message: {
+        role: 'assistant',
+        content: 'Toque para salvar.',
+        created_at: '2026-11-05T00:00:00Z',
+      },
+      diet_generated: false,
+      diet_id: null,
+      diet_job_id: null,
+      action_proposal: action,
+    },
+  });
+  const r = await coachService.sendMessage('meu peso é 78', null);
+  expect(r.message.actionProposal).toEqual(action);
 });

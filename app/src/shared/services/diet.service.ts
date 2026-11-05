@@ -88,11 +88,13 @@ export const dietService = {
    * concluída NAQUELE dia local. Sem tzOffsetMinutes ele compara em UTC e o
    * dia "vira" às 21h BRT (mesmo motivo do getToday acima).
    */
-  toggleMeal: (mealId: string) =>
+  // `completed` (05/11, cartão do coach): pede o estado em vez de alternar.
+  toggleMeal: (mealId: string, opts?: { completed?: boolean }) =>
     api
       .patch<{ is_completed: boolean }>(`/diets/meals/${mealId}/toggle`, {
         date: todayString(),
         tzOffsetMinutes: tzOffsetMinutes(),
+        ...(opts?.completed != null ? { completed: opts.completed } : {}),
       })
       .then((r) => r.data),
   /** Geração assíncrona: cada chamada gera 1 dia; chamar em polling até completed. */
