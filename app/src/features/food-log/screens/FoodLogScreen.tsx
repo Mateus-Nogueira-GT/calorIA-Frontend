@@ -207,7 +207,7 @@ export function FoodLogScreen({
         onAskCoach={() => {
           // 04/11: corrigir um alimento errado sem saber os valores de cabeça.
           if (!editingMeal) return;
-          useCoachStore.getState().setDraft(correctionDraft(editingMeal));
+          useCoachStore.getState().setDraft(correctionDraft(editingMeal, selectedDate));
           setEditingMeal(null);
           navigation?.navigate('Coach');
         }}
