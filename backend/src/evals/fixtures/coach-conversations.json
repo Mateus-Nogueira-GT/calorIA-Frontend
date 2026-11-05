@@ -41,9 +41,18 @@
     "hasActiveDiet": true,
     "knownData": "## DADOS JÁ CONHECIDOS DO USUÁRIO\npeso: 82kg; altura: 178cm; idade: 31 anos; sexo: masculino; objetivo: perder peso; atividade: moderada; refeições/dia: 4.",
     "messages": [
-      { "role": "assistant", "content": "[Dieta de 7 dias iniciada em 09/09 às 14:32]" },
-      { "role": "assistant", "content": "[Dieta concluída — 7 dias]" },
-      { "role": "user", "content": "obrigado!" }
+      {
+        "role": "assistant",
+        "content": "[Dieta de 7 dias iniciada em 09/09 às 14:32]"
+      },
+      {
+        "role": "assistant",
+        "content": "[Dieta concluída — 7 dias]"
+      },
+      {
+        "role": "user",
+        "content": "obrigado!"
+      }
     ],
     "expectTool": false
   },
@@ -52,7 +61,10 @@
     "hasActiveDiet": true,
     "knownData": "## DADOS JÁ CONHECIDOS DO USUÁRIO\npeso: 82kg; altura: 178cm; idade: 31 anos; sexo: masculino; objetivo: perder peso; atividade: moderada; refeições/dia: 4.",
     "messages": [
-      { "role": "assistant", "content": "[Dieta concluída — 7 dias]" },
+      {
+        "role": "assistant",
+        "content": "[Dieta concluída — 7 dias]"
+      },
       {
         "role": "user",
         "content": "Quero refazer minha dieta com menos carboidrato. Meus dados são os mesmos, não tenho nenhuma condição de saúde. Pode gerar outra agora."
@@ -64,14 +76,71 @@
     "name": "fora de escopo → não chama",
     "hasActiveDiet": false,
     "knownData": "",
-    "messages": [{ "role": "user", "content": "Qual é a capital da Austrália?" }],
+    "messages": [
+      {
+        "role": "user",
+        "content": "Qual é a capital da Austrália?"
+      }
+    ],
     "expectTool": false
   },
   {
     "name": "pós-onboarding: só falta refeições/dia → não chama e não repergunta peso",
     "hasActiveDiet": false,
     "knownData": "## DADOS JÁ CONHECIDOS DO USUÁRIO\npeso: 80kg; altura: 175cm; idade: 30 anos; sexo: masculino; objetivo: perder peso; atividade: moderada.",
-    "messages": [{ "role": "user", "content": "quero montar minha dieta" }],
+    "messages": [
+      {
+        "role": "user",
+        "content": "quero montar minha dieta"
+      }
+    ],
     "expectTool": false
+  },
+  {
+    "name": "correção de registro: usuário aponta o erro → propõe valores, NÃO chama",
+    "hasActiveDiet": true,
+    "knownData": "",
+    "context": "## CONTEXTO DO USUÁRIO\nDieta ativa: \"Plano personalizado\" — meta 2100 kcal | 148g prot | 210g carb | 58g gord.\nHoje (2026-11-04): consumidas 420 kcal / 38g prot (plano: 0 de 4 refeições concluídas; diário livre: 1 item(ns)).\nRegistros de hoje no diário (mais recentes primeiro):\n- [ref abcdef] 20:14 Carne suína grelhada — 180 g · 420 kcal · P 38 g · C 0 g · G 29 g.\nINSTRUÇÃO: quando o usuário falar de \"minha refeição\", do que comeu ou de um registro, use esta lista (é a fonte da verdade); se o item não estiver nela, diga que não há esse registro hoje.",
+    "messages": [
+      {
+        "role": "user",
+        "content": "[03/11 10:00] Como fica meu treino de amanhã?"
+      },
+      {
+        "role": "assistant",
+        "content": "[03/11 10:00] Sobre o treino, priorize proteína no pós-treino."
+      },
+      {
+        "role": "system",
+        "content": "[Retomada em 04/11 às 20:20 — as mensagens acima são de conversas anteriores. Responda à mensagem a seguir.]"
+      },
+      {
+        "role": "user",
+        "content": "[04/11 20:20] Analisa minha refeição: não era carne suína, era salmão. Baseado no mesmo peso, quais seriam os valores?"
+      }
+    ],
+    "expectTool": false
+  },
+  {
+    "name": "correção de registro: usuário confirma → chama update_logged_meal",
+    "hasActiveDiet": true,
+    "knownData": "",
+    "context": "## CONTEXTO DO USUÁRIO\nDieta ativa: \"Plano personalizado\" — meta 2100 kcal | 148g prot | 210g carb | 58g gord.\nHoje (2026-11-04): consumidas 420 kcal / 38g prot (plano: 0 de 4 refeições concluídas; diário livre: 1 item(ns)).\nRegistros de hoje no diário (mais recentes primeiro):\n- [ref abcdef] 20:14 Carne suína grelhada — 180 g · 420 kcal · P 38 g · C 0 g · G 29 g.\nINSTRUÇÃO: quando o usuário falar de \"minha refeição\", do que comeu ou de um registro, use esta lista (é a fonte da verdade); se o item não estiver nela, diga que não há esse registro hoje.",
+    "messages": [
+      {
+        "role": "user",
+        "content": "[04/11 20:20] Não era carne suína, era salmão. Quais seriam os valores no mesmo peso?"
+      },
+      {
+        "role": "assistant",
+        "content": "[04/11 20:20] Para 180 g de salmão grelhado: cerca de 376 kcal, 40 g de proteína, 0 g de carboidrato e 24 g de gordura. Quer que eu atualize o registro?"
+      },
+      {
+        "role": "user",
+        "content": "[04/11 20:21] Sim, pode atualizar."
+      }
+    ],
+    "expectTool": true,
+    "expectToolName": "update_logged_meal"
   }
 ]
