@@ -155,6 +155,9 @@ interface CoachState {
   retryDietGeneration: (explicitJobId?: string) => Promise<void>;
   /** Boot: pending/running → retoma o polling; failed → só mostra a falha (com retry). */
   resumeDietJob: (job: DietJobStatus) => Promise<void>;
+  /** Texto para começar a próxima mensagem (ex.: "Corrigir com o coach" do Diário). */
+  draft: string | null;
+  setDraft: (text: string | null) => void;
   /** Logout: encerra os loops e apaga o estado da geração. */
   resetDietGeneration: () => void;
   clear: () => void;
@@ -183,6 +186,8 @@ export const useCoachStore = create<CoachState>()(
       dietJob: null,
       activeJobId: null,
       speakingMessageId: null,
+      draft: null,
+      setDraft: (text) => set({ draft: text }),
 
       toggleSpeech: (messageId) => {
         if (get().speakingMessageId === messageId) {

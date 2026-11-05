@@ -13,6 +13,9 @@ import { formatChipLabel, getMealGroupFor, last7Days, todayString } from '@share
 import { getDailyCalorieGoal, getDayTotals } from '@shared/utils/calories';
 import { useDietStore } from '@features/diet/store';
 import type { AddMealPayload, Meal } from '@shared/services/food-log.service';
+import { useCoachStore } from '@features/coach/store';
+import { correctionDraft } from '@features/coach/correction-draft';
+import type { TabScreenProps } from '@navigation/types';
 
 const GROUPS = ['Café da manhã', 'Almoço', 'Lanche', 'Jantar'] as const;
 const addMealLabel = 'Adicionar refeição';
@@ -39,7 +42,9 @@ function DiaryEmptyIcon(): React.JSX.Element {
   );
 }
 
-export function FoodLogScreen(): React.JSX.Element {
+export function FoodLogScreen({
+  navigation,
+}: Partial<TabScreenProps<'FoodLog'>> = {}): React.JSX.Element {
   const {
     meals,
     isLoading,
@@ -199,6 +204,13 @@ export function FoodLogScreen(): React.JSX.Element {
         initialMeal={editingMeal ?? undefined}
         onClose={() => setEditingMeal(null)}
         onSubmit={handleEditSubmit}
+        onAskCoach={() => {
+          // 04/11: corrigir um alimento errado sem saber os valores de cabeça.
+          if (!editingMeal) return;
+          useCoachStore.getState().setDraft(correctionDraft(editingMeal));
+          setEditingMeal(null);
+          navigation?.navigate('Coach');
+        }}
         goals={mealGoals}
         dayTotals={dayTotals}
       />

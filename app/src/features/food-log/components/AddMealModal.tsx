@@ -34,11 +34,14 @@ interface Props {
   goals?: MealGoals;
   /** O que já foi consumido no dia (inclui a refeição em edição, se houver). */
   dayTotals?: DayTotals;
+  /** Edição: abre o Coach para corrigir este registro (04/11). */
+  onAskCoach?: () => void;
 }
 
 const saveMealLabel = 'Salvar refeição';
 const saveChangesLabel = 'Salvar alterações';
 const reviewLabel = 'Revisar valores';
+const askCoachLabel = 'Não sabe os valores? Corrija com o coach';
 const saveAnywayLabel = 'Salvar mesmo assim';
 const sheetMaxHeight: DimensionValue = '80%';
 
@@ -96,6 +99,7 @@ export function AddMealModal({
   initialMeal,
   goals,
   dayTotals,
+  onAskCoach,
 }: Props): React.JSX.Element {
   const [name, setName] = useState(initialMeal?.name ?? '');
   const [mealType, setMealType] = useState<AppMealType>(initialType(initialMeal));
@@ -297,6 +301,16 @@ export function AddMealModal({
               error={limitErrors.fiber}
               testID="meal-fiber-input"
             />
+            {initialMeal && onAskCoach ? (
+              <TouchableOpacity
+                onPress={onAskCoach}
+                accessibilityRole="link"
+                style={styles.askCoach}
+                testID="ask-coach"
+              >
+                <Text style={styles.askCoachText}>{askCoachLabel}</Text>
+              </TouchableOpacity>
+            ) : null}
             {fieldError ? <Text style={styles.errorText}>{fieldError}</Text> : null}
             {goalWarning ? (
               <View style={styles.warning} accessibilityLiveRegion="polite">
@@ -388,6 +402,13 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontFamily.regular,
   },
   submitBtn: { backgroundColor: colors.brandPrimary, marginTop: spacing.sm },
+  askCoach: { minHeight: 44, justifyContent: 'center', marginBottom: spacing.sm },
+  askCoachText: {
+    fontSize: typography.fontSize.sm,
+    fontFamily: typography.fontFamily.semiBold,
+    color: colors.brandAnchor,
+    textDecorationLine: 'underline',
+  },
   warning: {
     backgroundColor: colors.brandSurface,
     borderRadius: radius.md,

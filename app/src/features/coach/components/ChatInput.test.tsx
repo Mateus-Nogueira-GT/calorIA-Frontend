@@ -4,6 +4,7 @@ import { Alert, AppState } from 'react-native';
 import { render, fireEvent, act, waitFor } from '@testing-library/react-native';
 import { AxiosError, AxiosHeaders } from 'axios';
 import { ChatInput } from './ChatInput';
+import { useCoachStore } from '../store';
 
 let mockSupported = true;
 const mockStop = jest.fn();
@@ -230,5 +231,14 @@ describe('ChatInput', () => {
     });
     expect(alertSpy.mock.calls[0][0]).toBe('Não entendi o áudio, tenta de novo');
     expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it('rascunho do store (Corrigir com o coach) preenche o campo e é consumido', () => {
+    const { getByPlaceholderText } = render(<ChatInput onSend={jest.fn()} disabled={false} />);
+    act(() => useCoachStore.getState().setDraft('Corrigir o registro "Carne suína": na verdade era '));
+    expect(getByPlaceholderText('Pergunte ao Coach...').props.value).toBe(
+      'Corrigir o registro "Carne suína": na verdade era ',
+    );
+    expect(useCoachStore.getState().draft).toBeNull();
   });
 });

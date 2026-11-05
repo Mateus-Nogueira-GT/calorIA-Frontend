@@ -14,6 +14,7 @@ import type { VoiceRequestContext } from '@shared/services/coach.service';
 import { screenShellStyle } from '@shared/components';
 import { colors, radius, spacing, typography } from '@theme';
 import { useVoiceMessage } from '../hooks/useVoiceMessage';
+import { useCoachStore } from '../store';
 
 interface Props {
   onSend: (text: string, voice?: VoiceRequestContext) => Promise<boolean>;
@@ -23,6 +24,13 @@ interface Props {
 
 export function ChatInput({ onSend, disabled, isFocused = true }: Props): React.JSX.Element {
   const [text, setText] = useState('');
+  // "Corrigir com o coach" (Diário) deixa a mensagem começada no store.
+  const draft = useCoachStore((s) => s.draft);
+  useEffect(() => {
+    if (draft == null) return;
+    setText(draft);
+    useCoachStore.getState().setDraft(null);
+  }, [draft]);
   const [keyboardInset, setKeyboardInset] = useState(0);
   const voice = useVoiceMessage({ onSend, disabled, isFocused });
   const isRecording = voice.status === 'recording';
