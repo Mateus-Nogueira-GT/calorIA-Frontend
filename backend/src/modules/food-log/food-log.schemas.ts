@@ -6,6 +6,12 @@ import { localDateSchema } from '../../shared/local-date.js'
 /** 4 grupos do app + 'other' (registros antigos caem no heurístico por hora). */
 export const appMealTypeSchema = z.enum(['breakfast', 'lunch', 'snack', 'dinner', 'other'])
 
+/** Dúvida do scanner na hora de salvar (confiança e outros alimentos possíveis). */
+export const mealScanSchema = z.object({
+  confidence: z.number().finite().min(0).max(1),
+  alternatives: z.array(z.string().trim().min(1).max(60)).max(2),
+})
+
 export const mealSchema = z.object({
   id: z.string().uuid(),
   name: z.string(),
@@ -17,6 +23,8 @@ export const mealSchema = z.object({
   fiber: z.number().nullable(),
   /** Peso do registro (g). null = sem itens (não deve acontecer). */
   weightGrams: z.number().nullable().optional(),
+  /** 05/11 (S3): dúvida do scanner; null = digitado/revisado ou sem a migration 025. */
+  scan: mealScanSchema.nullable().optional(),
   loggedAt: z.string(),
   mealType: appMealTypeSchema,
 })
@@ -78,6 +86,8 @@ export const addMealBodySchema = z.object({
   date: localDateSchema.optional(),
   /** Tipo da refeição (D4) — registros sem tipo continuam como 'other'. */
   mealType: appMealTypeSchema.optional().default('other'),
+  /** 05/11 (S3): veio do scanner — guarda a dúvida para o coach. */
+  scan: mealScanSchema.optional(),
 })
 
 /**
@@ -86,7 +96,8 @@ export const addMealBodySchema = z.object({
  * refeição do grupo escolhido.
  */
 export const updateMealBodySchema = addMealBodySchema
-  .omit({ date: true })
+  // Editar é revisar: o item é trocado e a dúvida do scanner some.
+  .omit({ date: true, scan: true })
   .extend({ mealType: appMealTypeSchema })
 
 export const mealParamsSchema = z.object({

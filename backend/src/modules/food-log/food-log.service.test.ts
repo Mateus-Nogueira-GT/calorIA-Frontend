@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { fakeFastify } from '../../shared/testing/fake-fastify.js'
-import { MEAL_LIMITS, updateMealBodySchema } from './food-log.schemas.js'
+import { MEAL_LIMITS, addMealBodySchema, updateMealBodySchema } from './food-log.schemas.js'
 import { addMeal, getSummary, listMeals, updateMeal } from './food-log.service.js'
 import { __resetMealFiberColumnsCache } from './meal-fiber-columns.js'
+import { __resetMealScanColumnsCache } from './meal-scan-columns.js'
 
 const USER = '11111111-1111-1111-1111-111111111111'
 const MEAL = '22222222-2222-2222-2222-222222222222'
@@ -16,7 +17,10 @@ const body = {
   mealType: 'lunch' as const,
 }
 
-beforeEach(() => __resetMealFiberColumnsCache())
+beforeEach(() => {
+  __resetMealFiberColumnsCache()
+  __resetMealScanColumnsCache()
+})
 
 describe('listMeals — fibra', () => {
   it('devolve total_fiber como número, e null quando não há dado', async () => {
@@ -183,5 +187,84 @@ describe('listMeals — peso do registro (coach antenado, 04/11)', () => {
     expect(meals[0].weightGrams).toBe(180)
     expect(meals[1].weightGrams).toBeNull()
     expect(calls[0].sql).toContain('meal_items')
+  })
+})
+
+describe('dúvida do scanner gravada no registro (05/11, S3)', () => {
+  const scan = { confidence: 0.45, alternatives: ['Salmão grelhado', 'Truta'] }
+  const inserted = ['INSERT INTO meals', [{ id: MEAL, logged_at: '2026-11-05 12:00:00+00' }]] as [
+    string,
+    unknown[],
+  ]
+
+  it('com a migração 025: marca o item como do scanner, com confiança e alternativas', async () => {
+    const { fastify, calls } = fakeFastify([
+      ['ai_confidence', [{ n: 2 }]],
+      [COLS, [{ n: 2 }]],
+      inserted,
+    ])
+    await addMeal(fastify, USER, { ...body, scan })
+    const upd = calls.find((c) => c.sql.includes('UPDATE meal_items'))
+    expect(upd?.sql).toContain("source = 'ai_vision'")
+    expect(upd?.params).toEqual(expect.arrayContaining([0.45, ['Salmão grelhado', 'Truta'], MEAL]))
+  })
+
+  it('sem a migração 025: grava como antes, sem erro', async () => {
+    const { fastify, calls } = fakeFastify([
+      ['ai_confidence', [{ n: 0 }]],
+      [COLS, [{ n: 2 }]],
+      inserted,
+    ])
+    await addMeal(fastify, USER, { ...body, scan })
+    expect(calls.some((c) => c.sql.includes('UPDATE meal_items'))).toBe(false)
+  })
+
+  it('registro manual (sem scan) não consulta nem marca nada', async () => {
+    const { fastify, calls } = fakeFastify([[COLS, [{ n: 2 }]], inserted])
+    await addMeal(fastify, USER, body)
+    expect(calls.some((c) => c.sql.includes('ai_confidence'))).toBe(false)
+  })
+
+  it('listMeals devolve a dúvida; sem dado, scan null', async () => {
+    const row = {
+      id: MEAL,
+      name: 'Carne suína',
+      meal_type: 'dinner',
+      total_calories: '420',
+      total_protein: '38',
+      total_carbs: '0',
+      total_fat: '29',
+      total_fiber: null,
+      logged_at: '2026-11-05 23:00:00+00',
+    }
+    const { fastify } = fakeFastify([
+      [
+        'FROM meals',
+        [
+          { ...row, ai_confidence: '0.45', ai_alternatives: '["Salmão grelhado"]' },
+          { ...row, id: 'x', ai_confidence: null, ai_alternatives: null },
+        ],
+      ],
+    ])
+    const meals = await listMeals(fastify, USER, '2026-11-05')
+    expect(meals[0].scan).toEqual({ confidence: 0.45, alternatives: ['Salmão grelhado'] })
+    expect(meals[1].scan).toBeNull()
+  })
+
+  it('schema: no máximo 2 alternativas e confiança entre 0 e 1', () => {
+    const ok = { ...body, scan }
+    expect(addMealBodySchema.safeParse(ok).success).toBe(true)
+    expect(
+      addMealBodySchema.safeParse({ ...body, scan: { ...scan, alternatives: ['a', 'b', 'c'] } })
+        .success,
+    ).toBe(false)
+    expect(
+      addMealBodySchema.safeParse({ ...body, scan: { ...scan, confidence: 1.5 } }).success,
+    ).toBe(false)
+  })
+
+  it('PATCH não aceita scan: a edição troca o item e a dúvida some', () => {
+    const parsed = updateMealBodySchema.parse({ ...body, scan })
+    expect(parsed).not.toHaveProperty('scan')
   })
 })
