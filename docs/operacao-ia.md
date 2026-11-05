@@ -46,6 +46,20 @@ GROUP BY job_id ORDER BY tokens DESC LIMIT 20;
 - **Tempo da conversa:** as mensagens novas guardam `at`. O modelo vê `[dd/mm hh:mm]` e, depois de mais de 6 h sem atividade, um marcador de retomada. O app nunca vê nenhum dos dois.
 - **Tool `update_logged_meal`:** corrige um registro de hoje ou de ontem, no mesmo peso, depois da confirmação do usuário. Fica no log como `Registro corrigido pelo coach`. Atenção: ela também marca `tool_called = TRUE` em `ai_usage`, então a consulta "Loop de geração" abaixo passa a contar correções. Antes de concluir que há um loop de dieta, confira se a conversa gerou job (`diet_jobs.conversation_id`).
 
+## Varredura ampla do coach (05/11)
+
+- **Proposta em vez de gravação:** o app novo manda `client_features: ['meal_proposal']`. Com essa marca, o coach usa `propose_meal_correction`, que não grava nada: o app mostra o cartão e grava pelo `PATCH /food-log/meals/:id` quando o usuário toca em "Atualizar registro". Fica no log como `Correção proposta pelo coach`. Apps sem o OTA continuam com `update_logged_meal`, que grava direto (`Registro corrigido pelo coach`). As duas marcam `tool_called = TRUE`, o mesmo aviso de 04/11 sobre a consulta de loop.
+- **Janela da correção:** hoje e os 6 dias anteriores. O atalho do Diário leva a ref no rascunho.
+- **Contexto:**
+  - plano de hoje com os itens;
+  - totais do diário dos 6 dias anteriores;
+  - um peso só;
+  - o restante do dia sem número negativo;
+  - teto de 3.600 caracteres.
+- **Lista do que o coach não faz:** registrar, apagar, marcar, gravar peso e trocar item. Ele indica o caminho no app.
+- **Histórico:** o `GET` devolve `created_at` e as últimas 200 mensagens. A gravação guarda as últimas 400.
+- **Custo:** o prompt cresceu até cerca de 800 caracteres. Acompanhe a média de `prompt_tokens` do `chat` em `ai_usage` na primeira semana.
+
 ## Lock em voo do `/step` (OP1)
 
 `POST /diets/jobs/:id/step` tem rate limit de **30 requisições/minuto** (por usuário, não por

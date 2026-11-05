@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { dayNumberSchema, localDateSchema, tzOffsetMinutesSchema } from '../../shared/local-date.js'
+import { MEAL_LIMITS } from '../food-log/food-log.schemas.js'
 
 // ─── Dieta completa ───────────────────────────────────────────────────────────
 
@@ -130,14 +131,15 @@ export const toggleMealBodySchema = z
   })
   .nullish()
 
+// 05/11 (M11): mesmos tetos de uma refeição do diário (food-log.schemas MEAL_LIMITS).
 export const replaceDietItemBodySchema = z.object({
-  food_name: z.string().min(2),
-  quantity_g: z.number().positive(),
-  unit: z.string().default('g'),
-  calories: z.number().min(0),
-  protein_g: z.number().min(0),
-  carbs_g: z.number().min(0),
-  fat_g: z.number().min(0),
+  food_name: z.string().min(2).max(120),
+  quantity_g: z.number().positive().max(5000),
+  unit: z.string().max(20).default('g'),
+  calories: z.number().finite().min(0).max(MEAL_LIMITS.calories),
+  protein_g: z.number().finite().min(0).max(MEAL_LIMITS.protein),
+  carbs_g: z.number().finite().min(0).max(MEAL_LIMITS.carbs),
+  fat_g: z.number().finite().min(0).max(MEAL_LIMITS.fat),
   preparation_tip: z.string().nullable().default(null),
 })
 

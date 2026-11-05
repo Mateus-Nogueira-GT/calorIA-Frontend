@@ -149,7 +149,8 @@ function diaryLines(data: UserContextData): string[] {
   }
   out.push(
     'INSTRUÇÃO: quando o usuário falar de "minha refeição", do que comeu ou de um registro, use esta lista ' +
-      '(é a fonte da verdade); se o item não estiver nela, diga que não há esse registro hoje.',
+      '(é a fonte da verdade); se o item não estiver nela nem o usuário citar a ref dele, diga que ' +
+      'não há esse registro hoje.',
   )
   return out
 }

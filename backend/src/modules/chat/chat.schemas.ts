@@ -16,6 +16,11 @@ export const chatMessageBodySchema = z.object({
   tzOffsetMinutes: tzOffsetMinutesSchema.optional(),
   /** 'voice': a mensagem veio de áudio e a resposta será falada (TTS). */
   input_mode: z.enum(['text', 'voice']).optional(),
+  /**
+   * 05/11: o que o app sabe mostrar. 'meal_proposal' = cartão "Atualizar
+   * registro"; sem ele (app sem o OTA), a correção grava direto como em 04/11.
+   */
+  client_features: z.array(z.string().max(40)).max(10).optional(),
 })
 
 /** Teto do corpo de POST /chat/transcribe (abaixo dos 4,5 MB da Vercel). */
@@ -59,6 +64,23 @@ export const chatResponseSchema = z.object({
   diet_job_id: z.string().uuid().nullable().default(null),
   /** 04/11: o coach corrigiu um registro do diário — o app recarrega aquele dia. */
   meal_updated: z.object({ id: z.string().uuid(), date: z.string() }).nullable().optional(),
+  /** 05/11 (M3): correção proposta — o app mostra o cartão e grava pelo PATCH. */
+  meal_proposal: z
+    .object({
+      id: z.string().uuid(),
+      date: z.string(),
+      currentName: z.string(),
+      name: z.string(),
+      weightGrams: z.number().nullable(),
+      mealType: z.enum(['breakfast', 'lunch', 'snack', 'dinner', 'other']),
+      calories: z.number(),
+      protein: z.number(),
+      carbs: z.number(),
+      fat: z.number(),
+      fiber: z.number().nullable(),
+    })
+    .nullable()
+    .optional(),
 })
 
 export const transcribeResponseSchema = z.object({

@@ -6,7 +6,10 @@ import {
   assembleSystemPrompt,
   buildSystemPrompt,
 } from '../modules/chat/chat.service.js'
-import { UPDATE_LOGGED_MEAL_TOOL } from '../modules/chat/meal-correction.js'
+import {
+  PROPOSE_MEAL_CORRECTION_TOOL,
+  UPDATE_LOGGED_MEAL_TOOL,
+} from '../modules/chat/meal-correction.js'
 import { env } from '../shared/env.js'
 
 /**
@@ -22,7 +25,9 @@ interface Fixture {
   messages: { role: 'user' | 'assistant' | 'system'; content: string }[]
   expectTool: boolean | 'either'
   /** Qual tool, quando expectTool = true (padrão: collect_diet_data). */
-  expectToolName?: 'collect_diet_data' | 'update_logged_meal'
+  expectToolName?: 'collect_diet_data' | 'update_logged_meal' | 'propose_meal_correction'
+  /** App com o cartão de proposta (client_features: ['meal_proposal']). */
+  proposals?: boolean
   /** Bloco de CONTEXTO (ex.: registros do diário com ref), como o servidor monta. */
   context?: string
   healthConditionsNonEmptyIfCalled?: boolean
@@ -44,12 +49,17 @@ describe.skipIf(!process.env.RUN_AI_EVALS)('eval: decisão de tool do coach', ()
         f.context ?? '',
         f.knownData,
         f.hasActiveDiet,
+        'text',
+        f.proposals ? 'proposal' : 'update',
       )
       const completion = await openai.chat.completions.create(
         {
           model,
           messages: [{ role: 'system', content: system }, ...f.messages],
-          tools: [COLLECT_DIET_DATA_TOOL, UPDATE_LOGGED_MEAL_TOOL],
+          tools: [
+            COLLECT_DIET_DATA_TOOL,
+            f.proposals ? PROPOSE_MEAL_CORRECTION_TOOL : UPDATE_LOGGED_MEAL_TOOL,
+          ],
           tool_choice: 'auto',
           parallel_tool_calls: false,
           max_tokens: 2000,
