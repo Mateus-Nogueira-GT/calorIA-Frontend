@@ -9,6 +9,16 @@ import { AppError } from '../../shared/errors.js'
 import { assessSafety, describeInvalidFields } from '../../shared/guardrails/index.js'
 import { type CreditTransaction, runCreditOperation } from '../credits/credits.service.js'
 import { createDietJob, getPendingJob } from '../diets/jobs.service.js'
+import {
+  type ActionFeature,
+  type ActionResult,
+  actionFeatures,
+  actionTools,
+  capabilitiesInstruction,
+  proposeCompletePlanMeal,
+  proposeLogMeal,
+  proposeLogWeight,
+} from './action-proposals.js'
 import { fetchUserContext, formatKnownData, formatUserContext } from './chat-context.js'
 import type { ChatMessageBody, ChatResponse } from './chat.schemas.js'
 import { DIET_STARTED_MARKER_PREFIX, isInternalChatMarker } from './history-markers.js'
@@ -109,19 +119,8 @@ const EXISTING_DIET_INSTRUCTION =
   'pergunte antes em vez de chamar a tool. Peso novo ("meu peso agora é 78 kg") NÃO é pedido ' +
   'de plano novo: responda e indique a Evolução para registrar.'
 
-/**
- * 05/11 (M1): sem esta lista, "registra 2 ovos" ou "apaga esse registro"
- * podiam receber "pronto, registrei!" — o coach não tem como fazer nada disso.
- */
-export const CAPABILITIES_INSTRUCTION =
-  'O QUE VOCÊ CONSEGUE FAZER: orientar sobre alimentação; analisar o dia, o plano e os registros ' +
-  'do CONTEXTO; propor a correção de um registro do diário (veja a instrução de correção); gerar ' +
-  'um plano novo, só quando pedido. O QUE VOCÊ NÃO CONSEGUE FAZER — explique e indique o caminho ' +
-  'no app: registrar refeição (Diário › Adicionar refeição, ou o Scanner); apagar um registro ' +
-  '(lixeira do registro no Diário); marcar uma refeição do plano como feita (tela Hoje); registrar ' +
-  'o peso (Evolução); trocar um item do plano (o app não tem essa opção: sugira a troca ' +
-  'equivalente e diga que a pessoa pode segui-la). NUNCA diga "registrei", "apaguei", "marquei", ' +
-  '"atualizei" ou "troquei" sem ter feito isso por uma das suas ferramentas.'
+/** 05/11 (M1): sem nenhuma marca de ação, o texto do PR #96 (ver action-proposals). */
+export const CAPABILITIES_INSTRUCTION = capabilitiesInstruction()
 
 /** 04/11: a conversa é uma só e é retomada dias depois — o coach respondia ao assunto antigo. */
 const LATEST_MESSAGE_INSTRUCTION =
@@ -145,10 +144,11 @@ export function assembleSystemPrompt(
   hasActiveDiet = false,
   inputMode: 'text' | 'voice' = 'text',
   correctionMode: 'update' | 'proposal' = 'update',
+  features: ActionFeature[] = [],
 ): string {
   const parts = [
     base,
-    CAPABILITIES_INSTRUCTION,
+    capabilitiesInstruction(features),
     LATEST_MESSAGE_INSTRUCTION,
     correctionMode === 'proposal' ? MEAL_PROPOSAL_INSTRUCTION : MEAL_CORRECTION_INSTRUCTION,
   ]
@@ -437,6 +437,8 @@ async function sendChatMessageCore(
   const pendingJob = await getPendingJob(fastify, userId)
   const proposals = data.client_features?.includes('meal_proposal') ?? false
   const correctionTool = proposals ? PROPOSE_MEAL_CORRECTION_TOOL : UPDATE_LOGGED_MEAL_TOOL
+  const actions = actionFeatures(data.client_features)
+  const userTools = [correctionTool, ...actionTools(actions)]
   const hasActiveDiet = context.diet !== null || pendingJob !== null
   const systemPrompt = assembleSystemPrompt(
     buildSystemPrompt(profile?.coach_personality),
@@ -445,12 +447,13 @@ async function sendChatMessageCore(
     hasActiveDiet,
     data.input_mode,
     proposals ? 'proposal' : 'update',
+    actions,
   )
   // Geração de dieta é gratuita também com a carteira ligada (decisão de 21/10;
   // ver AI_FEATURE_TARIFFS): a tool só sai quando já há geração em voo.
   // 04/11: a correção de registro vale sempre; a geração de dieta só sem job em voo.
   const toolParams = {
-    tools: pendingJob ? [correctionTool] : [COLLECT_DIET_DATA_TOOL, correctionTool],
+    tools: pendingJob ? userTools : [COLLECT_DIET_DATA_TOOL, ...userTools],
     tool_choice: 'auto' as const,
     parallel_tool_calls: false,
   }
@@ -548,6 +551,27 @@ async function sendChatMessageCore(
   // ── Detecta chamada de função: IA coletou todos os dados ─────────────────
   if (choice.finish_reason === 'tool_calls' && choice.message.tool_calls?.length) {
     const toolCall = choice.message.tool_calls[0]
+    const offered = (name: string) => toolParams.tools.some((t) => t.function.name === name)
+    const action = offered(toolCall.function.name)
+      ? await runAction(fastify, userId, toolCall, context)
+      : null
+    if (action) {
+      history.push(said('assistant', action.message))
+      if (deferHistory) deferHistory(history)
+      else await persistHistory(fastify, userId, conversationId, history, 'collecting')
+      return {
+        conversation_id: conversationId,
+        message: {
+          role: 'assistant',
+          content: action.message,
+          created_at: new Date().toISOString(),
+        },
+        diet_generated: false,
+        diet_id: null,
+        diet_job_id: null,
+        action_proposal: action.proposal,
+      }
+    }
     if (toolCall.function.name === 'propose_meal_correction' && proposals) {
       let rawArgs: unknown = null
       try {
@@ -631,6 +655,37 @@ async function sendChatMessageCore(
     diet_id: null,
     diet_job_id: null,
   }
+}
+
+// ─── Ações com cartão (spec 05/11) ─────────────────────────────────────────────
+
+/** Tool de ação → proposta; null se não for uma das ações. Nada é gravado aqui. */
+async function runAction(
+  fastify: FastifyInstance,
+  userId: string,
+  toolCall: OpenAI.Chat.ChatCompletionMessageToolCall,
+  context: Awaited<ReturnType<typeof fetchUserContext>>,
+): Promise<ActionResult | null> {
+  const name = toolCall.function.name
+  if (!['propose_log_meal', 'propose_log_weight', 'propose_complete_plan_meal'].includes(name))
+    return null
+  let rawArgs: unknown = null
+  try {
+    rawArgs = JSON.parse(toolCall.function.arguments)
+  } catch {
+    rawArgs = null
+  }
+  const result =
+    name === 'propose_log_meal'
+      ? proposeLogMeal(rawArgs, context.date)
+      : name === 'propose_log_weight'
+        ? await proposeLogWeight(fastify, userId, rawArgs, context.date)
+        : proposeCompletePlanMeal(rawArgs, context.today)
+  fastify.log.info(
+    { userId, kind: result.proposal?.kind ?? null },
+    `Ação proposta pelo coach: ${name}`,
+  )
+  return result
 }
 
 // ─── Geração da dieta (chamado quando IA usa a function) ─────────────────────

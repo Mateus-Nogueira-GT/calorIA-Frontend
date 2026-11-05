@@ -26,6 +26,32 @@ export interface MealProposal {
   fiber: number | null;
 }
 
+/** 05/11: ação proposta pelo coach — o usuário confirma no cartão. */
+export type ActionProposal =
+  | {
+      kind: 'log_meal';
+      name: string;
+      weightGrams: number;
+      calories: number;
+      protein: number;
+      carbs: number;
+      fat: number;
+      fiber: number | null;
+      mealType: 'breakfast' | 'lunch' | 'snack' | 'dinner';
+      date: string;
+    }
+  | {
+      kind: 'log_weight';
+      weightKg: number;
+      date: string;
+      replaces: number | null;
+      bigChange: boolean;
+    }
+  | { kind: 'complete_plan_meal'; mealId: string; title: string; calories: number };
+
+/** O que este app sabe mostrar (o servidor só oferece as ações declaradas). */
+export const CLIENT_FEATURES = ['meal_proposal', 'log_meal', 'log_weight', 'complete_plan_meal'];
+
 export interface CoachMessage {
   id: string;
   role: 'coach' | 'user';
@@ -38,6 +64,7 @@ export interface CoachMessage {
   /** 04/11: o coach corrigiu um registro do diário (id e dia). */
   mealUpdated?: { id: string; date: string } | null;
   mealProposal?: MealProposal | null;
+  actionProposal?: ActionProposal | null;
 }
 
 export interface HistoryResult {
@@ -59,6 +86,7 @@ interface BackendChatResponse {
   diet_job_id: string | null;
   meal_updated?: { id: string; date: string } | null;
   meal_proposal?: MealProposal | null;
+  action_proposal?: ActionProposal | null;
 }
 
 export type TranscribeMimeType = 'audio/m4a' | 'audio/mp4' | 'audio/aac' | 'audio/webm';
@@ -137,8 +165,8 @@ export const coachService = {
             tzOffsetMinutes: request.tzOffsetMinutes,
             // Veio de áudio: o Coach escreve para ser ouvido (a resposta é falada).
             ...(voice ? { input_mode: 'voice' as const } : {}),
-            // O app sabe mostrar o cartão "Atualizar registro" (05/11).
-            client_features: ['meal_proposal'],
+            // Cartões que o app sabe mostrar (05/11).
+            client_features: CLIENT_FEATURES,
           },
           {
             timeout: 60000,
@@ -162,6 +190,7 @@ export const coachService = {
               dietJobId: r.data.diet_job_id,
               mealUpdated: r.data.meal_updated ?? null,
               mealProposal: r.data.meal_proposal ?? null,
+              actionProposal: r.data.action_proposal ?? null,
             },
           };
         })

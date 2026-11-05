@@ -211,6 +211,7 @@ const dietsRoutes: FastifyPluginAsyncZod = async (fastify) => {
           request.params.mealId,
           request.body?.date,
           request.body?.tzOffsetMinutes,
+          request.body?.completed,
         ),
       )
     },

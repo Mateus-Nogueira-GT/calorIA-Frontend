@@ -81,6 +81,37 @@ export const chatResponseSchema = z.object({
     })
     .nullable()
     .optional(),
+  /** 05/11 (ações com cartão): o app mostra o cartão e grava pelo endpoint de sempre. */
+  action_proposal: z
+    .discriminatedUnion('kind', [
+      z.object({
+        kind: z.literal('log_meal'),
+        name: z.string(),
+        weightGrams: z.number(),
+        calories: z.number(),
+        protein: z.number(),
+        carbs: z.number(),
+        fat: z.number(),
+        fiber: z.number().nullable(),
+        mealType: z.enum(['breakfast', 'lunch', 'snack', 'dinner']),
+        date: z.string(),
+      }),
+      z.object({
+        kind: z.literal('log_weight'),
+        weightKg: z.number(),
+        date: z.string(),
+        replaces: z.number().nullable(),
+        bigChange: z.boolean(),
+      }),
+      z.object({
+        kind: z.literal('complete_plan_meal'),
+        mealId: z.string().uuid(),
+        title: z.string(),
+        calories: z.number(),
+      }),
+    ])
+    .nullable()
+    .optional(),
 })
 
 export const transcribeResponseSchema = z.object({

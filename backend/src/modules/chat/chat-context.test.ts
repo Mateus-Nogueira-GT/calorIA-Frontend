@@ -441,7 +441,7 @@ describe('registros de hoje no contexto (coach antenado, 04/11)', () => {
 
   it('refeições do plano concluídas aparecem pelo nome', () => {
     const out = formatUserContext({ ...emptyData, diet, today: todayPlan(), freeMeals: [] })
-    expect(out).toContain('- 12:00 Almoço (concluída) — 620 kcal')
+    expect(out).toContain('- [plano 000000] 12:00 Almoço (concluída) — 620 kcal')
   })
 
   it('instrui a usar a lista quando o usuário fala da refeição', () => {
@@ -580,8 +580,10 @@ describe('plano de hoje no contexto (05/11, M5)', () => {
     plan.meals[1].items = [item('frango grelhado', 150)]
     const out = formatUserContext({ ...emptyData, diet, today: plan })
     expect(out).toContain('Plano de hoje:')
-    expect(out).toContain('- 12:00 Almoço (concluída) — 620 kcal: arroz 120 g, ovo 2 un.')
-    expect(out).toContain('- 19:00 Jantar — 620 kcal: frango grelhado 150 g.')
+    expect(out).toContain(
+      '- [plano 000000] 12:00 Almoço (concluída) — 620 kcal: arroz 120 g, ovo 2 un.',
+    )
+    expect(out).toContain('- [plano 000000] 19:00 Jantar — 620 kcal: frango grelhado 150 g.')
     expect(out).toMatch(/troca.*sem dizer que alterou o plano/i)
   })
 

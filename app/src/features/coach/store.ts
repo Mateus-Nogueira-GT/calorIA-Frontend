@@ -4,6 +4,7 @@ import { creditErrorMessage } from '@shared/services/credits.service';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import {
+  ActionProposal,
   coachService,
   CoachMessage,
   MealProposal,
@@ -28,6 +29,8 @@ import { useDietStore } from '@features/diet/store';
 import { coachQuotaMessage } from './quota-message';
 import { foodLogService } from '@shared/services/food-log.service';
 import { useFoodLogStore } from '@features/food-log/store';
+import { useWeightStore } from '@features/evolution/store';
+import { weightService } from '@shared/services/weight.service';
 
 /**
  * 04/11: o coach corrigiu um registro (ex.: carne suína → salmão). Recarrega
@@ -40,6 +43,42 @@ async function refreshCorrectedDay(date: string): Promise<void> {
   } catch {
     /* o Diário busca de novo ao abrir */
   }
+}
+
+/** Grava a ação do cartão e atualiza a tela correspondente. */
+async function runAction(card: ActionProposal): Promise<void> {
+  if (card.kind === 'log_meal') {
+    const meal = await foodLogService.addMeal({
+      name: card.name,
+      calories: card.calories,
+      protein: card.protein,
+      carbs: card.carbs,
+      fat: card.fat,
+      fiber: card.fiber,
+      weightGrams: card.weightGrams,
+      mealType: card.mealType,
+      date: card.date,
+    });
+    useFoodLogStore.getState().addMeal(card.date, meal);
+    return;
+  }
+  if (card.kind === 'log_weight') {
+    await weightService.addEntry(card.weightKg, card.date);
+    void useWeightStore
+      .getState()
+      .load()
+      .catch(() => {
+        /* a Evolução busca de novo ao abrir */
+      });
+    return;
+  }
+  await dietService.toggleMeal(card.mealId, { completed: true });
+  void useDietStore
+    .getState()
+    .loadCurrent()
+    .catch(() => {
+      /* a tela Hoje busca de novo ao abrir */
+    });
 }
 
 const SEND_ERROR_MESSAGE = 'Não foi possível enviar sua mensagem. Tente novamente.';
@@ -115,10 +154,15 @@ const dietRetries = new Map<string, Promise<void>>();
 /** STALE = ninguém chamou /step por >10 min (app em segundo plano/fechado), não uma falha real. */
 const isStaleFailure = (s: DietJobStatus) => s.status === 'failed' && s.errorCode === 'STALE';
 
+export type CardStatus = 'idle' | 'saving' | 'saved' | 'error' | 'dismissed';
+
 /** Cartão da correção proposta (05/11): vive só na sessão, não é persistido. */
 export interface ProposalCard extends MealProposal {
-  status: 'idle' | 'saving' | 'saved' | 'error' | 'dismissed';
+  status: CardStatus;
 }
+
+/** Cartão de ação (registrar refeição, peso, marcar refeição do plano). */
+export type ActionCard = ActionProposal & { status: CardStatus };
 
 export interface StoreMessage {
   id: string;
@@ -127,6 +171,7 @@ export interface StoreMessage {
   /** null = mensagem antiga, sem horário gravado. */
   timestamp: Date | null;
   mealProposal?: ProposalCard;
+  actionProposal?: ActionCard;
   dietGenerated?: boolean;
   dietId?: string | null;
   dietJobId?: string | null;
@@ -174,6 +219,9 @@ interface CoachState {
   applyProposal: (messageId: string) => Promise<void>;
   /** "Agora não": fecha o cartão. */
   dismissProposal: (messageId: string) => void;
+  /** Toque no botão do cartão de ação: grava pelo endpoint de sempre. */
+  applyAction: (messageId: string) => Promise<void>;
+  dismissAction: (messageId: string) => void;
   /** Logout: encerra os loops e apaga o estado da geração. */
   resetDietGeneration: () => void;
   clear: () => void;
@@ -186,6 +234,9 @@ function toStoreMessage(m: CoachMessage): StoreMessage {
     content: m.content,
     timestamp: m.timestamp ? new Date(m.timestamp) : null,
     ...(m.mealProposal ? { mealProposal: { ...m.mealProposal, status: 'idle' as const } } : {}),
+    ...(m.actionProposal
+      ? { actionProposal: { ...m.actionProposal, status: 'idle' as const } }
+      : {}),
     ...(m.dietGenerated ? { dietGenerated: true, dietId: m.dietId } : {}),
     ...(m.dietJobId ? { dietJobId: m.dietJobId } : {}),
   };
@@ -236,6 +287,36 @@ export const useCoachStore = create<CoachState>()(
         setStatus('saved');
         await refreshCorrectedDay(card.date);
       },
+
+      applyAction: async (messageId) => {
+        const card = get().messages.find((m) => m.id === messageId)?.actionProposal;
+        if (!card || card.status === 'saving' || card.status === 'saved') return;
+        const setStatus = (status: CardStatus) =>
+          set((s) => ({
+            messages: s.messages.map((m) =>
+              m.id === messageId && m.actionProposal
+                ? { ...m, actionProposal: { ...m.actionProposal, status } }
+                : m,
+            ),
+          }));
+        setStatus('saving');
+        try {
+          await runAction(card);
+        } catch {
+          setStatus('error');
+          return;
+        }
+        setStatus('saved');
+      },
+
+      dismissAction: (messageId) =>
+        set((s) => ({
+          messages: s.messages.map((m) =>
+            m.id === messageId && m.actionProposal
+              ? { ...m, actionProposal: { ...m.actionProposal, status: 'dismissed' } }
+              : m,
+          ),
+        })),
 
       dismissProposal: (messageId) =>
         set((s) => ({
@@ -351,8 +432,7 @@ export const useCoachStore = create<CoachState>()(
           if (!isCurrent()) return false;
           set({
             isLoading: false,
-            error:
-              creditErrorMessage(e) ?? coachQuotaMessage(e) ?? SEND_ERROR_MESSAGE,
+            error: creditErrorMessage(e) ?? coachQuotaMessage(e) ?? SEND_ERROR_MESSAGE,
             lastFailedAction: 'send',
           });
           return false;
@@ -401,8 +481,7 @@ export const useCoachStore = create<CoachState>()(
             if (!isCurrent()) return;
             set({
               isLoading: false,
-              error:
-                creditErrorMessage(e) ?? coachQuotaMessage(e) ?? SEND_ERROR_MESSAGE,
+              error: creditErrorMessage(e) ?? coachQuotaMessage(e) ?? SEND_ERROR_MESSAGE,
               lastFailedAction: 'send',
             });
           }

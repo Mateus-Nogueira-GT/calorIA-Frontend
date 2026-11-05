@@ -1,9 +1,9 @@
 import type { FastifyInstance } from 'fastify'
 import type OpenAI from 'openai'
 import { z } from 'zod'
-import { isImplausibleMeal } from '../food-log/food-log.schemas.js'
 import { listMeals, updateMeal } from '../food-log/food-log.service.js'
 import { mealRef } from './chat-context.js'
+import { type MealValues, normalizeMealValues } from './meal-values.js'
 
 /**
  * Feedback de 04/11: o scanner registrou "carne suína" num jantar de salmão e o
@@ -109,9 +109,6 @@ const argsSchema = z.object({
   message_to_user: z.string().trim().max(400).optional(),
 })
 
-/** Mesma tolerância das verificações do dia da dieta (guardrails/day.ts). */
-const KCAL_MISMATCH_TOLERANCE = 0.25
-const MACROS_WEIGHT_TOLERANCE = 1.05
 /** 05/11 (M6): hoje e os 6 dias anteriores (era hoje e ontem). */
 const CORRECTION_WINDOW_DAYS = 7
 
@@ -129,13 +126,7 @@ function shiftDate(date: string, days: number): string {
 }
 
 type LoggedMeal = Awaited<ReturnType<typeof listMeals>>[number]
-type CorrectionValues = {
-  calories: number
-  protein: number
-  carbs: number
-  fat: number
-  fiber: number | null
-}
+type CorrectionValues = MealValues
 
 type ResolvedCorrection =
   | {
@@ -168,28 +159,17 @@ async function resolveCorrection(
   if (candidates.length !== 1) return { ok: false, message: NOT_FOUND }
   const { date, meal } = candidates[0]
 
-  const values: CorrectionValues = {
-    calories: args.calories,
-    protein: args.protein,
-    carbs: args.carbs,
-    fat: args.fat,
-    fiber: args.fiber ?? null,
-  }
-  const macroGrams = values.protein + values.carbs + values.fat
-  if (
-    isImplausibleMeal(values) ||
-    (meal.weightGrams != null && macroGrams > meal.weightGrams * MACROS_WEIGHT_TOLERANCE)
-  ) {
-    return { ok: false, message: IMPOSSIBLE }
-  }
-  // Os macros são a informação primária; a kcal do modelo erra a soma com frequência.
-  const expected = 4 * values.protein + 4 * values.carbs + 9 * values.fat
-  if (
-    expected > 0 &&
-    Math.abs(values.calories - expected) / Math.max(values.calories, 1) > KCAL_MISMATCH_TOLERANCE
-  ) {
-    values.calories = Math.round(expected)
-  }
+  const values = normalizeMealValues(
+    {
+      calories: args.calories,
+      protein: args.protein,
+      carbs: args.carbs,
+      fat: args.fat,
+      fiber: args.fiber ?? null,
+    },
+    meal.weightGrams,
+  )
+  if (!values) return { ok: false, message: IMPOSSIBLE }
   return { ok: true, meal, date, name: args.name, values, message: args.message_to_user }
 }
 
