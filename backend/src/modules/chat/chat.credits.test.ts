@@ -50,14 +50,16 @@ describe('AI wallet integration boundary', () => {
     expect(source.openaiCalls[0].params.tools).toBeDefined()
     const system = (source.openaiCalls[0].params.messages as { content: string }[])[0].content
     expect(system).not.toContain('temporariamente indisponível')
-    expect(
-      transaction.calls.find((c) => c.sql.includes('INSERT INTO chat_history'))?.params,
-    ).toContain(
-      JSON.stringify([
-        { role: 'user', content: 'oi' },
-        { role: 'assistant', content: 'Olá!' },
-      ]),
-    )
+    const params = transaction.calls.find((c) => c.sql.includes('INSERT INTO chat_history'))?.params
+    const persisted = JSON.parse(
+      String(params?.find((p) => typeof p === 'string' && p.startsWith('['))),
+    ) as { role: string; content: string; at?: string }[]
+    // Cada mensagem leva o horário (`at`, 04/11); o resto é igual.
+    expect(persisted.map(({ role, content }) => ({ role, content }))).toEqual([
+      { role: 'user', content: 'oi' },
+      { role: 'assistant', content: 'Olá!' },
+    ])
+    expect(persisted.every((m) => typeof m.at === 'string')).toBe(true)
     expect(result.credit_receipt).toEqual(receipt)
   })
 

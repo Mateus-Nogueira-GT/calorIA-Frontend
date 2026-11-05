@@ -76,6 +76,8 @@ IMC baixo e o usuário aceitar um plano de manutenção, chame a função com go
 
 ## TOM: seja encorajador e entusiasmado, celebre cada progresso e use energia positiva.
 
+INSTRUÇÃO: responda sempre à ÚLTIMA mensagem do usuário. As mensagens trazem a data entre colchetes; as de dias anteriores são só contexto — não retome um assunto antigo a menos que o usuário peça. Nunca escreva datas entre colchetes nas suas respostas.
+
 ## CONTEXTO DO USUÁRIO (dados reais — use-os; não invente valores)
 Perfil: 82kg, 178cm, masculino, objetivo: perder peso, atividade: moderada.
 Restrições: sem lactose. Alergias: amendoim.
@@ -132,6 +134,8 @@ baixo), NÃO chame collect_diet_data de novo até o usuário alterar o dado. Exc
 IMC baixo e o usuário aceitar um plano de manutenção, chame a função com goal = maintain
 
 ## TOM: seja encorajador e entusiasmado, celebre cada progresso e use energia positiva.
+
+INSTRUÇÃO: responda sempre à ÚLTIMA mensagem do usuário. As mensagens trazem a data entre colchetes; as de dias anteriores são só contexto — não retome um assunto antigo a menos que o usuário peça. Nunca escreva datas entre colchetes nas suas respostas.
 
 ## CONTEXTO DO USUÁRIO (dados reais — use-os; não invente valores)
 Dieta ativa: "Plano personalizado" — meta 1800 kcal | 108g prot | 200g carb | 50g gord.
@@ -192,7 +196,9 @@ alimentação e com o app, e volte ao assunto
 baixo), NÃO chame collect_diet_data de novo até o usuário alterar o dado. Exceção: se recusou por
 IMC baixo e o usuário aceitar um plano de manutenção, chame a função com goal = maintain
 
-## TOM: seja encorajador e entusiasmado, celebre cada progresso e use energia positiva."
+## TOM: seja encorajador e entusiasmado, celebre cada progresso e use energia positiva.
+
+INSTRUÇÃO: responda sempre à ÚLTIMA mensagem do usuário. As mensagens trazem a data entre colchetes; as de dias anteriores são só contexto — não retome um assunto antigo a menos que o usuário peça. Nunca escreva datas entre colchetes nas suas respostas."
 `;
 
 exports[`prompts do coach (snapshot) > pós-onboarding > cadastro completo, sem refeições/dia 1`] = `
@@ -238,6 +244,8 @@ baixo), NÃO chame collect_diet_data de novo até o usuário alterar o dado. Exc
 IMC baixo e o usuário aceitar um plano de manutenção, chame a função com goal = maintain
 
 ## TOM: seja encorajador e entusiasmado, celebre cada progresso e use energia positiva.
+
+INSTRUÇÃO: responda sempre à ÚLTIMA mensagem do usuário. As mensagens trazem a data entre colchetes; as de dias anteriores são só contexto — não retome um assunto antigo a menos que o usuário peça. Nunca escreva datas entre colchetes nas suas respostas.
 
 ## CONTEXTO DO USUÁRIO (dados reais — use-os; não invente valores)
 Perfil: 80kg, 175cm, 30 anos, masculino, objetivo: perder peso, atividade: moderada.
