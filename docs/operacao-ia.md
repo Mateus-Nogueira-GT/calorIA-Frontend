@@ -60,6 +60,26 @@ GROUP BY job_id ORDER BY tokens DESC LIMIT 20;
 - **Histórico:** o `GET` devolve `created_at` e as últimas 200 mensagens. A gravação guarda as últimas 400.
 - **Custo:** o prompt cresceu até cerca de 800 caracteres. Acompanhe a média de `prompt_tokens` do `chat` em `ai_usage` na primeira semana.
 
+## Ações do coach com cartão (05/11)
+
+- **Marcas:** o app manda `client_features` com `log_meal`, `log_weight` e `complete_plan_meal`. Para cada marca, o coach ganha uma tool de proposta:
+  - `propose_log_meal`;
+  - `propose_log_weight`;
+  - `propose_complete_plan_meal`.
+- **Nenhuma delas grava.** A resposta traz `action_proposal`, e o app grava quando o usuário toca no cartão:
+  - refeição: `POST /food-log`;
+  - peso: `POST /weight`;
+  - refeição do plano: `PATCH /diets/meals/:id/toggle` com `completed: true`.
+- **Log:** `Ação proposta pelo coach: <tool>`. Todas marcam `tool_called = TRUE`, então valem os mesmos avisos sobre a consulta de loop.
+- **Sem as marcas** (app sem o OTA), o coach indica o caminho no app, como no PR #96.
+- **Toggle com `completed`:** define o estado em vez de inverter, e o streak só é creditado quando a refeição passa de pendente para feita.
+
+## Dúvida do scanner (05/11)
+
+- A análise devolve `alternatives`. O cache passou para `items-weight-alt-v3`.
+- A migração `025_meal_items_scan.sql` (manual) guarda `ai_confidence` e `ai_alternatives` no item, com `source = 'ai_vision'`. Sem ela, o registro é gravado como antes.
+- O coach vê os registros duvidosos como `(scanner, confiança N%; podia ser: …)`.
+
 ## Lock em voo do `/step` (OP1)
 
 `POST /diets/jobs/:id/step` tem rate limit de **30 requisições/minuto** (por usuário, não por

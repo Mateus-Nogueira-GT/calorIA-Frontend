@@ -237,5 +237,68 @@
     ],
     "expectTool": true,
     "expectToolName": "propose_meal_correction"
+  },
+  {
+    "name": "ações: registrar refeição → propose_log_meal",
+    "hasActiveDiet": true,
+    "knownData": "",
+    "context": "## CONTEXTO DO USUÁRIO\nDieta ativa: \"Plano personalizado\" — meta 2100 kcal | 148g prot | 210g carb | 58g gord.\nHoje (2026-11-04): consumidas 420 kcal / 38g prot (plano: 0 de 4 refeições concluídas; diário livre: 1 item(ns)).\nRegistros de hoje no diário (mais recentes primeiro):\n- [ref abcdef] 20:14 Carne suína grelhada — 180 g · 420 kcal · P 38 g · C 0 g · G 29 g.\nINSTRUÇÃO: quando o usuário falar de \"minha refeição\", do que comeu ou de um registro, use esta lista (é a fonte da verdade); se o item não estiver nela, diga que não há esse registro hoje.\nPlano de hoje:\n- [plano 9f8e7d] 12:30 Almoço — 650 kcal: arroz 120 g, feijão 100 g, frango grelhado 150 g.",
+    "proposals": true,
+    "features": ["meal_proposal", "log_meal", "log_weight", "complete_plan_meal"],
+    "messages": [
+      {
+        "role": "user",
+        "content": "[05/11 12:00] Registra aí que comi 2 ovos cozidos no café."
+      }
+    ],
+    "expectTool": true,
+    "expectToolName": "propose_log_meal"
+  },
+  {
+    "name": "ações: peso novo → propose_log_weight (não gera plano)",
+    "hasActiveDiet": true,
+    "knownData": "",
+    "context": "## CONTEXTO DO USUÁRIO\nDieta ativa: \"Plano personalizado\" — meta 2100 kcal | 148g prot | 210g carb | 58g gord.\nHoje (2026-11-04): consumidas 420 kcal / 38g prot (plano: 0 de 4 refeições concluídas; diário livre: 1 item(ns)).\nRegistros de hoje no diário (mais recentes primeiro):\n- [ref abcdef] 20:14 Carne suína grelhada — 180 g · 420 kcal · P 38 g · C 0 g · G 29 g.\nINSTRUÇÃO: quando o usuário falar de \"minha refeição\", do que comeu ou de um registro, use esta lista (é a fonte da verdade); se o item não estiver nela, diga que não há esse registro hoje.\nPlano de hoje:\n- [plano 9f8e7d] 12:30 Almoço — 650 kcal: arroz 120 g, feijão 100 g, frango grelhado 150 g.",
+    "proposals": true,
+    "features": ["meal_proposal", "log_meal", "log_weight", "complete_plan_meal"],
+    "messages": [
+      {
+        "role": "user",
+        "content": "[05/11 12:00] Meu peso hoje é 78 kg."
+      }
+    ],
+    "expectTool": true,
+    "expectToolName": "propose_log_weight"
+  },
+  {
+    "name": "ações: marcar refeição do plano → propose_complete_plan_meal",
+    "hasActiveDiet": true,
+    "knownData": "",
+    "context": "## CONTEXTO DO USUÁRIO\nDieta ativa: \"Plano personalizado\" — meta 2100 kcal | 148g prot | 210g carb | 58g gord.\nHoje (2026-11-04): consumidas 420 kcal / 38g prot (plano: 0 de 4 refeições concluídas; diário livre: 1 item(ns)).\nRegistros de hoje no diário (mais recentes primeiro):\n- [ref abcdef] 20:14 Carne suína grelhada — 180 g · 420 kcal · P 38 g · C 0 g · G 29 g.\nINSTRUÇÃO: quando o usuário falar de \"minha refeição\", do que comeu ou de um registro, use esta lista (é a fonte da verdade); se o item não estiver nela, diga que não há esse registro hoje.\nPlano de hoje:\n- [plano 9f8e7d] 12:30 Almoço — 650 kcal: arroz 120 g, feijão 100 g, frango grelhado 150 g.",
+    "proposals": true,
+    "features": ["meal_proposal", "log_meal", "log_weight", "complete_plan_meal"],
+    "messages": [
+      {
+        "role": "user",
+        "content": "[05/11 12:00] Marca meu almoço como feito."
+      }
+    ],
+    "expectTool": true,
+    "expectToolName": "propose_complete_plan_meal"
+  },
+  {
+    "name": "ações: apagar continua sem tool (indica a lixeira)",
+    "hasActiveDiet": true,
+    "knownData": "",
+    "context": "## CONTEXTO DO USUÁRIO\nDieta ativa: \"Plano personalizado\" — meta 2100 kcal | 148g prot | 210g carb | 58g gord.\nHoje (2026-11-04): consumidas 420 kcal / 38g prot (plano: 0 de 4 refeições concluídas; diário livre: 1 item(ns)).\nRegistros de hoje no diário (mais recentes primeiro):\n- [ref abcdef] 20:14 Carne suína grelhada — 180 g · 420 kcal · P 38 g · C 0 g · G 29 g.\nINSTRUÇÃO: quando o usuário falar de \"minha refeição\", do que comeu ou de um registro, use esta lista (é a fonte da verdade); se o item não estiver nela, diga que não há esse registro hoje.\nPlano de hoje:\n- [plano 9f8e7d] 12:30 Almoço — 650 kcal: arroz 120 g, feijão 100 g, frango grelhado 150 g.",
+    "proposals": true,
+    "features": ["meal_proposal", "log_meal", "log_weight", "complete_plan_meal"],
+    "messages": [
+      {
+        "role": "user",
+        "content": "[05/11 12:00] Apaga esse registro da carne suína."
+      }
+    ],
+    "expectTool": false
   }
 ]

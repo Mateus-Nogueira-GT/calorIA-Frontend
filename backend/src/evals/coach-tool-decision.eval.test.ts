@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import OpenAI from 'openai'
 import { describe, expect, it } from 'vitest'
+import { actionFeatures, actionTools } from '../modules/chat/action-proposals.js'
 import {
   COLLECT_DIET_DATA_TOOL,
   assembleSystemPrompt,
@@ -25,9 +26,11 @@ interface Fixture {
   messages: { role: 'user' | 'assistant' | 'system'; content: string }[]
   expectTool: boolean | 'either'
   /** Qual tool, quando expectTool = true (padrão: collect_diet_data). */
-  expectToolName?: 'collect_diet_data' | 'update_logged_meal' | 'propose_meal_correction'
+  expectToolName?: string
   /** App com o cartão de proposta (client_features: ['meal_proposal']). */
   proposals?: boolean
+  /** Marcas de ação do app (log_meal, log_weight, complete_plan_meal). */
+  features?: string[]
   /** Bloco de CONTEXTO (ex.: registros do diário com ref), como o servidor monta. */
   context?: string
   healthConditionsNonEmptyIfCalled?: boolean
@@ -51,6 +54,7 @@ describe.skipIf(!process.env.RUN_AI_EVALS)('eval: decisão de tool do coach', ()
         f.hasActiveDiet,
         'text',
         f.proposals ? 'proposal' : 'update',
+        actionFeatures(f.features),
       )
       const completion = await openai.chat.completions.create(
         {
@@ -59,6 +63,7 @@ describe.skipIf(!process.env.RUN_AI_EVALS)('eval: decisão de tool do coach', ()
           tools: [
             COLLECT_DIET_DATA_TOOL,
             f.proposals ? PROPOSE_MEAL_CORRECTION_TOOL : UPDATE_LOGGED_MEAL_TOOL,
+            ...actionTools(actionFeatures(f.features)),
           ],
           tool_choice: 'auto',
           parallel_tool_calls: false,
