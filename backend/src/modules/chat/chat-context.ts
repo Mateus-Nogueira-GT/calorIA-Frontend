@@ -187,7 +187,7 @@ function planLines(today: TodayPlan | null): string[] {
     const at = m.suggestedTime ? `${m.suggestedTime} ` : ''
     const done = m.completedToday ? ' (concluída)' : ''
     out.push(
-      `- ${at}${m.title}${done} — ${Math.round(m.calories)} kcal${items.length ? `: ${items.join(', ')}` : ''}.`,
+      `- [plano ${mealRef(m.id)}] ${at}${m.title}${done} — ${Math.round(m.calories)} kcal${items.length ? `: ${items.join(', ')}` : ''}.`,
     )
   }
   out.push(
