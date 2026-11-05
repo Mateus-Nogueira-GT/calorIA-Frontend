@@ -136,3 +136,38 @@ describe('toggleMealCompleted — estado derivado da data (B1)', () => {
     )
   })
 })
+
+describe('toggle com estado pedido (05/11, cartão "Marcar como feita")', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-11-05T15:00:00Z'))
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('completed: true com a refeição já marcada não desmarca nem credita streak de novo', async () => {
+    const { fastify, calls } = fakeFastify([[{ is_completed: true, was_completed: true }]])
+    const r = await toggleMealCompleted(fastify, USER, MEAL, '2026-11-05', -180, true)
+    expect(r).toEqual({ is_completed: true })
+    expect(calls).toHaveLength(1)
+    expect(calls[0].sql).toContain('COALESCE(')
+    expect(calls[0].params).toContain(true)
+  })
+
+  it('completed: true numa refeição pendente marca e credita o streak', async () => {
+    const { fastify, calls } = fakeFastify([
+      [{ is_completed: true, was_completed: false }],
+      [],
+      [{ current_streak: 2 }],
+    ])
+    await toggleMealCompleted(fastify, USER, MEAL, '2026-11-05', -180, true)
+    expect(calls.some((c) => c.sql.includes('update_user_streak'))).toBe(true)
+  })
+
+  it('sem completed, o parâmetro vai nulo (inverte como antes)', async () => {
+    const { fastify, calls } = fakeFastify([[{ is_completed: false }]])
+    await toggleMealCompleted(fastify, USER, MEAL, '2026-11-05', -180)
+    expect(calls[0].params).toContain(null)
+  })
+})

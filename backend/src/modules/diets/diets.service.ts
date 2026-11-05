@@ -382,6 +382,12 @@ export async function toggleMealCompleted(
   mealId: string,
   localDate?: string,
   tzOffsetMinutes?: number,
+  /**
+   * 05/11: estado pedido (cartão "Marcar como feita" do coach). Com ele o
+   * servidor não inverte — tocar depois de já ter marcado pela tela Hoje não
+   * desmarca. Ausente = alterna, como sempre.
+   */
+  completed?: boolean,
 ): Promise<{ is_completed: boolean }> {
   if (localDate && !isWithinDateWindow(localDate)) {
     throw new AppError(400, 'INVALID_DATE', 'Data fora da janela permitida')
@@ -408,7 +414,8 @@ export async function toggleMealCompleted(
   //
   // Continua ATÔMICO (B10): o CTE calcula o estado e o UPDATE acontece na mesma
   // instrução — select-then-update permitia double-toggle em taps rápidos.
-  const [meal] = await fastify.db<{ is_completed: boolean }[]>`
+  const desired = completed ?? null
+  const [meal] = await fastify.db<{ is_completed: boolean; was_completed?: boolean }[]>`
     WITH target AS (
       SELECT dm.id,
              (
@@ -427,18 +434,23 @@ export async function toggleMealCompleted(
         AND d.user_id = ${userId}
     )
     UPDATE diet_meals dm
-    SET is_completed = NOT target.completed_on_date,
-        completed_at = CASE WHEN target.completed_on_date THEN NULL ELSE NOW() END
+    SET is_completed = COALESCE(${desired}::boolean, NOT target.completed_on_date),
+        completed_at = CASE
+          WHEN NOT COALESCE(${desired}::boolean, NOT target.completed_on_date) THEN NULL
+          WHEN target.completed_on_date THEN dm.completed_at
+          ELSE NOW()
+        END
     FROM target
     WHERE dm.id = target.id
-    RETURNING dm.is_completed
+    RETURNING dm.is_completed, target.completed_on_date AS was_completed
   `
 
   if (!meal) throw new AppError(404, 'MEAL_NOT_FOUND', 'Refeição não encontrada')
 
   const newState = meal.is_completed
 
-  if (newState) {
+  // Só ao passar de pendente para feita (marcar de novo não credita streak duas vezes).
+  if (newState && !meal.was_completed) {
     // Mesma data usada para decidir o estado acima (local do cliente, ou UTC).
     await fastify.db`
       SELECT update_user_streak(${userId}, ${date}::date)

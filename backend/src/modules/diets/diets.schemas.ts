@@ -128,6 +128,8 @@ export const toggleMealBodySchema = z
   .object({
     date: localDateSchema.optional(),
     tzOffsetMinutes: tzOffsetMinutesSchema.optional(),
+    /** 05/11: estado pedido; ausente = alterna. */
+    completed: z.boolean().optional(),
   })
   .nullish()
 
