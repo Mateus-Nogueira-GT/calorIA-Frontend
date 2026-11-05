@@ -12,6 +12,11 @@ import { createDietJob, getPendingJob } from '../diets/jobs.service.js'
 import { fetchUserContext, formatKnownData, formatUserContext } from './chat-context.js'
 import type { ChatMessageBody, ChatResponse } from './chat.schemas.js'
 import { DIET_STARTED_MARKER_PREFIX, isInternalChatMarker } from './history-markers.js'
+import {
+  MEAL_CORRECTION_INSTRUCTION,
+  UPDATE_LOGGED_MEAL_TOOL,
+  applyMealCorrection,
+} from './meal-correction.js'
 
 // ─── System prompt ─────────────────────────────────────────────────────────
 
@@ -93,12 +98,18 @@ const KNOWN_DATA_INSTRUCTION =
 const EXISTING_DIET_INSTRUCTION =
   'INSTRUÇÃO IMPORTANTE: o usuário JÁ TEM uma dieta ativa. NÃO chame ' +
   'collect_diet_data para confirmar dados, nem em resposta a agradecimentos, ' +
-  '"ok", "sim" ou perguntas sobre a dieta atual. Chame a tool APENAS se o ' +
+  '"ok", "sim" ou perguntas sobre a dieta atual. Chame collect_diet_data APENAS se o ' +
   'usuário pedir EXPLICITAMENTE um plano novo ou uma alteração no plano ' +
   '(ex.: "gera outra dieta", "quero trocar meu cardápio", "refaz com menos ' +
   'carboidrato"). Cada chamada gera um plano NOVO que substitui o atual e ' +
   'zera as refeições já marcadas como concluídas — por isso, na dúvida, ' +
   'pergunte antes em vez de chamar a tool.'
+
+/** 04/11: a conversa é uma só e é retomada dias depois — o coach respondia ao assunto antigo. */
+const LATEST_MESSAGE_INSTRUCTION =
+  'INSTRUÇÃO: responda sempre à ÚLTIMA mensagem do usuário. As mensagens trazem a data entre ' +
+  'colchetes; as de dias anteriores são só contexto — não retome um assunto antigo a menos que o ' +
+  'usuário peça. Nunca escreva datas entre colchetes nas suas respostas.'
 
 /** Mensagem que chegou por voz: a resposta vai ser falada pelo app (TTS). */
 export const VOICE_REPLY_INSTRUCTION =
@@ -116,7 +127,7 @@ export function assembleSystemPrompt(
   hasActiveDiet = false,
   inputMode: 'text' | 'voice' = 'text',
 ): string {
-  const parts = [base]
+  const parts = [base, LATEST_MESSAGE_INSTRUCTION, MEAL_CORRECTION_INSTRUCTION]
   if (contextBlock) {
     parts.push(contextBlock, CONTEXT_INSTRUCTION)
   }
@@ -153,6 +164,52 @@ export const CHAT_CONTEXT_WINDOW = 30
 
 export function windowedHistory<T>(history: T[], limit: number = CHAT_CONTEXT_WINDOW): T[] {
   return history.length > limit ? history.slice(-limit) : history
+}
+
+const STAMP_PREFIX = /^\s*\[\d{2}\/\d{2} \d{2}:\d{2}\]\s*/
+
+/** Pausa a partir da qual a conversa é tratada como retomada. */
+const RESUME_GAP_MS = 6 * 60 * 60 * 1000
+
+type ModelMessage = { role: 'user' | 'assistant' | 'system'; content: string }
+
+function stamp(d: Date, tzOffsetMinutes = 0): { date: string; time: string } {
+  const l = new Date(d.getTime() + tzOffsetMinutes * 60_000)
+  const p = (n: number) => String(n).padStart(2, '0')
+  return {
+    date: `${p(l.getUTCDate())}/${p(l.getUTCMonth() + 1)}`,
+    time: `${p(l.getUTCHours())}:${p(l.getUTCMinutes())}`,
+  }
+}
+
+/**
+ * Feedback de 04/11: o coach respondeu a uma pergunta da semana anterior —
+ * sem datas, uma conversa retomada dias depois parecia contínua. Para o
+ * modelo (nunca para o app): cada mensagem com `at` ganha "[dd/mm hh:mm]" e,
+ * se a última atividade foi há mais de 6 h, um marcador de retomada entra
+ * antes da mensagem nova (cobre também o histórico antigo, sem `at`).
+ */
+export function toModelMessages(
+  history: ChatHistoryMessage[],
+  opts: { now: Date; tzOffsetMinutes?: number; lastActivity: Date | null },
+): ModelMessage[] {
+  const out: ModelMessage[] = history.map((m) => {
+    const at = m.at ? new Date(m.at) : null
+    if (!at || Number.isNaN(at.getTime())) return { role: m.role, content: m.content }
+    const s = stamp(at, opts.tzOffsetMinutes)
+    return { role: m.role, content: `[${s.date} ${s.time}] ${m.content}` }
+  })
+  const resumed =
+    opts.lastActivity && opts.now.getTime() - opts.lastActivity.getTime() > RESUME_GAP_MS
+  const lastUser = history.map((m) => m.role).lastIndexOf('user')
+  if (resumed && lastUser >= 0) {
+    const s = stamp(opts.now, opts.tzOffsetMinutes)
+    out.splice(lastUser, 0, {
+      role: 'system',
+      content: `[Retomada em ${s.date} às ${s.time} — as mensagens acima são de conversas anteriores. Responda à mensagem a seguir.]`,
+    })
+  }
+  return out
 }
 
 /** Mapeia erros do SDK OpenAI para AppError com status/mensagem claros. */
@@ -259,7 +316,15 @@ export const COLLECT_DIET_DATA_TOOL: OpenAI.Chat.ChatCompletionTool = {
 interface ChatHistoryMessage {
   role: 'user' | 'assistant'
   content: string
+  /** Quando a mensagem aconteceu (ISO). Ausente no histórico anterior a 04/11. */
+  at?: string
 }
+
+const said = (role: ChatHistoryMessage['role'], content: string): ChatHistoryMessage => ({
+  role,
+  content,
+  at: new Date().toISOString(),
+})
 
 // ─── Serviço principal ───────────────────────────────────────────────────────
 
@@ -322,9 +387,13 @@ async function sendChatMessageCore(
       throw new AppError(404, 'NOT_FOUND', 'Conversa não encontrada.')
     }
   }
-  const history = await loadHistory(fastify, userId, conversationId)
+  const { messages: history, updatedAt: lastActivity } = await loadHistory(
+    fastify,
+    userId,
+    conversationId,
+  )
 
-  history.push({ role: 'user', content: data.message })
+  history.push(said('user', data.message))
 
   // Personaliza o tom do coach conforme a preferência do usuário.
   const [profile] = await fastify.db<{ coach_personality: string | null }[]>`
@@ -352,13 +421,14 @@ async function sendChatMessageCore(
   )
   // Geração de dieta é gratuita também com a carteira ligada (decisão de 21/10;
   // ver AI_FEATURE_TARIFFS): a tool só sai quando já há geração em voo.
-  const toolParams = pendingJob
-    ? {}
-    : {
-        tools: [COLLECT_DIET_DATA_TOOL],
-        tool_choice: 'auto' as const,
-        parallel_tool_calls: false,
-      }
+  // 04/11: a correção de registro vale sempre; a geração de dieta só sem job em voo.
+  const toolParams = {
+    tools: pendingJob
+      ? [UPDATE_LOGGED_MEAL_TOOL]
+      : [COLLECT_DIET_DATA_TOOL, UPDATE_LOGGED_MEAL_TOOL],
+    tool_choice: 'auto' as const,
+    parallel_tool_calls: false,
+  }
 
   // ── Chamada à OpenAI com suporte a function calling ──────────────────────
   const baseParams = {
@@ -370,7 +440,11 @@ async function sendChatMessageCore(
         role: 'system' as const,
         content: systemPrompt,
       },
-      ...windowedHistory(history),
+      ...toModelMessages(windowedHistory(history), {
+        now: new Date(),
+        tzOffsetMinutes: data.tzOffsetMinutes,
+        lastActivity,
+      }),
     ],
     ...toolParams,
     // O modelo é reasoning: não aceita temperature custom (só o default) e
@@ -448,9 +522,33 @@ async function sendChatMessageCore(
 
   // ── Detecta chamada de função: IA coletou todos os dados ─────────────────
   if (choice.finish_reason === 'tool_calls' && choice.message.tool_calls?.length) {
-    assertAiTariffConfigured('diet_generation')
     const toolCall = choice.message.tool_calls[0]
+    if (toolCall.function.name === 'update_logged_meal') {
+      let rawArgs: unknown = null
+      try {
+        rawArgs = JSON.parse(toolCall.function.arguments)
+      } catch {
+        rawArgs = null
+      }
+      const correction = await applyMealCorrection(fastify, userId, rawArgs, context.date)
+      history.push(said('assistant', correction.message))
+      if (deferHistory) deferHistory(history)
+      else await persistHistory(fastify, userId, conversationId, history, 'collecting')
+      return {
+        conversation_id: conversationId,
+        message: {
+          role: 'assistant',
+          content: correction.message,
+          created_at: new Date().toISOString(),
+        },
+        diet_generated: false,
+        diet_id: null,
+        diet_job_id: null,
+        meal_updated: correction.ok ? { id: correction.mealId, date: correction.date } : null,
+      }
+    }
     if (toolCall.function.name === 'collect_diet_data') {
+      assertAiTariffConfigured('diet_generation')
       return handleDietGeneration(
         fastify,
         userId,
@@ -467,12 +565,13 @@ async function sendChatMessageCore(
   }
 
   // ── Resposta de conversa normal ──────────────────────────────────────────
-  const assistantMessage = choice.message.content?.trim() ?? ''
+  // O modelo vê "[dd/mm hh:mm]" nas mensagens e às vezes copia no começo da resposta.
+  const assistantMessage = (choice.message.content ?? '').replace(STAMP_PREFIX, '').trim()
   if (!assistantMessage) {
     // Sem texto e sem tool válida: não há o que mostrar nem o que persistir.
     throw new AppError(502, 'AI_TRUNCATED', 'A IA devolveu uma resposta vazia. Tente novamente.')
   }
-  history.push({ role: 'assistant', content: assistantMessage })
+  history.push(said('assistant', assistantMessage))
   if (deferHistory) deferHistory(history)
   else await persistHistory(fastify, userId, conversationId, history, 'collecting')
 
@@ -506,7 +605,7 @@ async function handleDietGeneration(
     )
     // S4: pergunta específica por campo (altura em metros, peso implausível…).
     const fallbackMsg = describeInvalidFields(parseResult.error.issues, rawArgs)
-    history.push({ role: 'assistant', content: fallbackMsg })
+    history.push(said('assistant', fallbackMsg))
     await persistHistory(fastify, userId, conversationId, history, 'collecting')
     return {
       conversation_id: conversationId,
@@ -525,7 +624,7 @@ async function handleDietGeneration(
   const safety = assessSafety(userData)
   if (!safety.ok) {
     fastify.log.info({ userId, reason: safety.reason }, 'Geração de dieta recusada por segurança')
-    history.push({ role: 'assistant', content: safety.userMessage })
+    history.push(said('assistant', safety.userMessage))
     await persistHistory(fastify, userId, conversationId, history, 'collecting')
     return {
       conversation_id: conversationId,
@@ -553,7 +652,7 @@ async function handleDietGeneration(
     fastify.log.error({ err }, 'Erro ao criar job de geração de dieta')
     const retryMsg =
       'Tive um problema ao iniciar sua dieta agora. Podemos tentar de novo em instantes?'
-    history.push({ role: 'assistant', content: retryMsg })
+    history.push(said('assistant', retryMsg))
     await persistHistory(fastify, userId, conversationId, history, 'collecting')
     return {
       conversation_id: conversationId,
@@ -587,10 +686,10 @@ async function handleDietGeneration(
   `
 
   // Sinaliza que está gerando; o front faz polling em /diets/jobs/:id/step.
-  history.push({ role: 'assistant', content: userMessage })
+  history.push(said('assistant', userMessage))
   // C2: marcador só no histórico — a resposta ao app continua sendo só a
   // mensagem do coach, mas nas próximas rodadas o modelo vê que já gerou.
-  history.push({ role: 'assistant', content: formatDietStartedMarker(new Date(), tzOffsetMinutes) })
+  history.push(said('assistant', formatDietStartedMarker(new Date(), tzOffsetMinutes)))
   await persistHistory(fastify, userId, conversationId, history, 'generating')
 
   fastify.log.info({ userId, jobId: job.jobId }, 'Job de dieta enfileirado')
@@ -649,13 +748,17 @@ async function loadHistory(
   fastify: FastifyInstance,
   userId: string,
   conversationId: string,
-): Promise<ChatHistoryMessage[]> {
+): Promise<{ messages: ChatHistoryMessage[]; updatedAt: Date | null }> {
   try {
-    const [row] = await fastify.db<{ messages: unknown }[]>`
-      SELECT messages FROM chat_history
+    const [row] = await fastify.db<{ messages: unknown; updated_at: Date | string | null }[]>`
+      SELECT messages, updated_at FROM chat_history
       WHERE id = ${conversationId} AND user_id = ${userId}
     `
-    return normalizeHistory(row?.messages)
+    const updated = row?.updated_at ? new Date(row.updated_at) : null
+    return {
+      messages: normalizeHistory(row?.messages),
+      updatedAt: updated && !Number.isNaN(updated.getTime()) ? updated : null,
+    }
   } catch {
     if (env.CREDITS_ENFORCEMENT_ENABLED)
       throw new AppError(
@@ -663,7 +766,7 @@ async function loadHistory(
         'CREDITS_UNAVAILABLE',
         'Não foi possível recuperar a conversa. Tente novamente.',
       )
-    return []
+    return { messages: [], updatedAt: null }
   }
 }
 

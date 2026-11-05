@@ -13,6 +13,8 @@ export interface Meal {
   fat: number;
   /** Fibra (g). null/ausente = sem dado. */
   fiber?: number | null;
+  /** Peso do registro (g); ausente em respostas antigas. */
+  weightGrams?: number | null;
   loggedAt: string;
   mealType: AppMealType;
 }

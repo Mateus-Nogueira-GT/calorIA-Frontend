@@ -52,7 +52,9 @@ const KNOWN_GOAL_LABELS: Record<string, string> = {
   health: 'manter peso / melhorar saúde (use goal=maintain)',
 }
 
-const CONTEXT_MAX_CHARS = 1400
+// 04/11: a lista dos registros do dia entrou no contexto (até 8 linhas).
+const CONTEXT_MAX_CHARS = 2400
+const DIARY_MAX_ITEMS = 8
 const LIST_MAX_ITEMS = 6
 
 interface ContextProfile {
@@ -81,6 +83,10 @@ export interface UserContextData {
   streak: number | null
   mealsPerDay: number | null
   date: string
+  /** Fuso do app (min): horário local dos registros na lista do diário. */
+  tzOffsetMinutes?: number
+  /** Registro mais recente da Evolução (faixa plausível); mais novo que o cadastro. */
+  lastWeight?: { kg: number; date: string } | null
 }
 
 /** Idade (anos) a partir de 'YYYY-MM-DD'; null se ausente/inválida. */
@@ -92,6 +98,53 @@ export function ageFromBirthDate(birthDate: string | null, now: Date = new Date(
   const m = now.getUTCMonth() - born.getUTCMonth()
   if (m < 0 || (m === 0 && now.getUTCDate() < born.getUTCDate())) age--
   return age >= 0 && age < 130 ? age : null
+}
+
+const pad2 = (n: number) => String(n).padStart(2, '0')
+
+/** "2026-11-03 23:14:00+00" → "20:14" no fuso do app; '' se não der para ler. */
+function localTime(loggedAt: string, tzOffsetMinutes = 0): string {
+  const d = new Date(loggedAt.replace(' ', 'T').replace(/\+00$/, 'Z'))
+  if (Number.isNaN(d.getTime())) return ''
+  const local = new Date(d.getTime() + tzOffsetMinutes * 60_000)
+  return `${pad2(local.getUTCHours())}:${pad2(local.getUTCMinutes())}`
+}
+
+/** Referência curta do registro, usada pela tool update_logged_meal. */
+export function mealRef(id: string): string {
+  return id.replace(/-/g, '').slice(0, 6)
+}
+
+const fmtG = (n: number) => `${Math.round(n * 10) / 10}`
+
+/**
+ * Feedback de 04/11: o contexto trazia só "diário livre: 2 item(ns)" — o
+ * coach não sabia O QUE foi registrado e não conseguia analisar "minha
+ * refeição". Agora a lista vai com nome, peso, valores e ref.
+ */
+function diaryLines(data: UserContextData): string[] {
+  const out: string[] = []
+  const done = (data.today?.meals ?? []).filter((m) => m.completedToday)
+  if (done.length > 0)
+    out.push(`Do plano, concluídas hoje: ${done.map((m) => m.title).join('; ')}.`)
+  if (data.freeMeals.length === 0) return out
+  const recent = [...data.freeMeals]
+    .sort((a, b) => (a.loggedAt < b.loggedAt ? 1 : a.loggedAt > b.loggedAt ? -1 : 0))
+    .slice(0, DIARY_MAX_ITEMS)
+  out.push('Registros de hoje no diário (mais recentes primeiro):')
+  for (const m of recent) {
+    const time = localTime(m.loggedAt, data.tzOffsetMinutes)
+    const weight = m.weightGrams != null ? `${fmtG(m.weightGrams)} g · ` : ''
+    out.push(
+      `- [ref ${mealRef(m.id)}] ${time ? `${time} ` : ''}${m.name} — ${weight}${Math.round(m.calories)} kcal · ` +
+        `P ${fmtG(m.protein)} g · C ${fmtG(m.carbs)} g · G ${fmtG(m.fat)} g.`,
+    )
+  }
+  out.push(
+    'INSTRUÇÃO: quando o usuário falar de "minha refeição", do que comeu ou de um registro, use esta lista ' +
+      '(é a fonte da verdade); se o item não estiver nela, diga que não há esse registro hoje.',
+  )
+  return out
 }
 
 /**
@@ -194,6 +247,20 @@ export async function fetchUserContext(
     streak = null
   }
 
+  // 04/11: o coach só conhecia o peso do cadastro, não o registrado na Evolução.
+  let lastWeight: { kg: number; date: string } | null = null
+  try {
+    const [row] = await fastify.db<{ weight_kg: string | number; date: string }[]>`
+      SELECT weight_kg, date::TEXT AS date FROM weight_entries
+      WHERE user_id = ${userId}
+        AND weight_kg BETWEEN ${BODY_LIMITS.weightKg.min} AND ${BODY_LIMITS.weightKg.max}
+      ORDER BY date DESC LIMIT 1
+    `
+    lastWeight = row ? { kg: Number(row.weight_kg), date: row.date } : null
+  } catch {
+    lastWeight = null
+  }
+
   let mealsPerDay: number | null = null
   try {
     const [row] = await fastify.db<{ input: unknown }[]>`
@@ -204,7 +271,17 @@ export async function fetchUserContext(
     mealsPerDay = null
   }
 
-  return { profile, diet, today, freeMeals, streak, mealsPerDay, date }
+  return {
+    profile,
+    diet,
+    today,
+    freeMeals,
+    streak,
+    mealsPerDay,
+    date,
+    tzOffsetMinutes: query.tzOffsetMinutes,
+    lastWeight,
+  }
 }
 
 // ─── I1: bloco de CONTEXTO (progresso do dia, metas, próxima refeição) ────────
@@ -277,6 +354,8 @@ export function formatUserContext(raw: UserContextData): string {
     }
   }
 
+  lines.push(...diaryLines(data))
+
   if (ignored > 0) {
     const one = ignored === 1
     lines.push(
@@ -308,6 +387,10 @@ export function formatUserContext(raw: UserContextData): string {
     lines.push(`${parts.join('. ')}.`)
   }
 
+  if (data.lastWeight) {
+    const [, mm, dd] = data.lastWeight.date.split('-')
+    lines.push(`Último peso registrado na Evolução: ${data.lastWeight.kg} kg em ${dd}/${mm}.`)
+  }
   if (data.streak != null && data.streak > 0) lines.push(`Streak atual: ${data.streak} dias.`)
 
   if (lines.length === 0) return ''
@@ -333,7 +416,9 @@ export function formatKnownData(data: UserContextData): string {
   const p = plausibleProfile(data.profile)
   if (!p) return ''
   const bits: string[] = []
-  if (p.weight_kg) bits.push(`peso: ${p.weight_kg}kg`)
+  // O peso da Evolução é mais recente que o do cadastro.
+  const weight = data.lastWeight?.kg ?? p.weight_kg
+  if (weight) bits.push(`peso: ${weight}kg`)
   if (p.height_cm) bits.push(`altura: ${p.height_cm}cm`)
   const age = ageFromBirthDate(p.birth_date)
   if (age != null) bits.push(`idade: ${age} anos`)

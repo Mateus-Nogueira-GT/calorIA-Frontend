@@ -40,6 +40,12 @@ FROM ai_usage WHERE feature = 'diet_day' AND created_at >= NOW() - interval '30 
 GROUP BY job_id ORDER BY tokens DESC LIMIT 20;
 ```
 
+## Coach antenado aos registros (04/11)
+
+- **Contexto:** o coach recebe os registros do dia (até 8, com nome, peso, valores e uma `ref` de 6 caracteres) e o último peso da Evolução.
+- **Tempo da conversa:** as mensagens novas guardam `at`. O modelo vê `[dd/mm hh:mm]` e, depois de mais de 6 h sem atividade, um marcador de retomada. O app nunca vê nenhum dos dois.
+- **Tool `update_logged_meal`:** corrige um registro de hoje ou de ontem, no mesmo peso, depois da confirmação do usuário. Fica no log como `Registro corrigido pelo coach`. Atenção: ela também marca `tool_called = TRUE` em `ai_usage`, então a consulta "Loop de geração" abaixo passa a contar correções. Antes de concluir que há um loop de dieta, confira se a conversa gerou job (`diet_jobs.conversation_id`).
+
 ## Lock em voo do `/step` (OP1)
 
 `POST /diets/jobs/:id/step` tem rate limit de **30 requisições/minuto** (por usuário, não por

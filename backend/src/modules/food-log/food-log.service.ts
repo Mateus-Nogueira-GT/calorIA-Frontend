@@ -47,6 +47,7 @@ export async function listMeals(
       total_carbs: string
       total_fat: string
       total_fiber: string | null
+      weight_grams?: string | null
       logged_at: string
     }[]
   >`
@@ -55,6 +56,8 @@ export async function listMeals(
       total_calories, total_protein, total_carbs, total_fat,
       -- to_jsonb: funciona com ou sem a coluna da migration 022 (null sem ela).
       to_jsonb(m)->>'total_fiber' AS total_fiber,
+      -- Peso do registro: o coach usa para recalcular "no mesmo peso" (04/11).
+      (SELECT SUM(mi.quantity_g) FROM meal_items mi WHERE mi.meal_id = m.id)::TEXT AS weight_grams,
       logged_at::TEXT AS logged_at
     FROM meals m
     WHERE user_id = ${userId} AND meal_date = ${date}
@@ -69,6 +72,7 @@ export async function listMeals(
     carbs: Number(row.total_carbs),
     fat: Number(row.total_fat),
     fiber: row.total_fiber == null ? null : Number(row.total_fiber),
+    weightGrams: row.weight_grams == null ? null : Number(row.weight_grams),
     loggedAt: row.logged_at,
     mealType: toApiMealType(row.meal_type),
   }))

@@ -170,4 +170,22 @@ describe('AddMealModal', () => {
       await waitFor(() => expect(onSubmit).toHaveBeenCalled());
     });
   });
+
+  describe('corrigir com o coach (04/11)', () => {
+    it('na edição, o link chama onAskCoach', () => {
+      const onAskCoach = jest.fn();
+      const { getByText } = render(
+        <AddMealModal visible onClose={() => {}} onSubmit={jest.fn()} initialMeal={existing} onAskCoach={onAskCoach} />,
+      );
+      fireEvent.press(getByText('Não sabe os valores? Corrija com o coach'));
+      expect(onAskCoach).toHaveBeenCalled();
+    });
+
+    it('no registro novo não aparece', () => {
+      const { queryByText } = render(
+        <AddMealModal visible onClose={() => {}} onSubmit={jest.fn()} onAskCoach={jest.fn()} />,
+      );
+      expect(queryByText('Não sabe os valores? Corrija com o coach')).toBeNull();
+    });
+  });
 });
