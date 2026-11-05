@@ -9,9 +9,6 @@ import { AppError } from '../../shared/errors.js'
 import { assessSafety, describeInvalidFields } from '../../shared/guardrails/index.js'
 import { type CreditTransaction, runCreditOperation } from '../credits/credits.service.js'
 import { createDietJob, getPendingJob } from '../diets/jobs.service.js'
-import { fetchUserContext, formatKnownData, formatUserContext } from './chat-context.js'
-import type { ChatMessageBody, ChatResponse } from './chat.schemas.js'
-import { DIET_STARTED_MARKER_PREFIX, isInternalChatMarker } from './history-markers.js'
 import {
   type ActionFeature,
   type ActionResult,
@@ -22,6 +19,9 @@ import {
   proposeLogMeal,
   proposeLogWeight,
 } from './action-proposals.js'
+import { fetchUserContext, formatKnownData, formatUserContext } from './chat-context.js'
+import type { ChatMessageBody, ChatResponse } from './chat.schemas.js'
+import { DIET_STARTED_MARKER_PREFIX, isInternalChatMarker } from './history-markers.js'
 import {
   MEAL_CORRECTION_INSTRUCTION,
   MEAL_PROPOSAL_INSTRUCTION,
