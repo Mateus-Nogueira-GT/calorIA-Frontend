@@ -8,9 +8,13 @@ import { env } from '../../shared/env.js'
 import { AppError } from '../../shared/errors.js'
 import { VISION_MAX_KCAL, sanitizeVisionResult } from '../../shared/guardrails/index.js'
 import { runCreditOperation } from '../credits/credits.service.js'
+import { isImplausibleMeal } from '../food-log/food-log.schemas.js'
 import {
+  type ScanAlternative,
   type ScanResponse,
+  type VisionAnalysis,
   scanItemSchema,
+  visionAnalysisReadSchema,
   visionAnalysisSchema,
   visionItemSchema,
 } from './scanner.schemas.js'
@@ -33,6 +37,28 @@ const cacheSchema = z.discriminatedUnion('notFood', [
   }),
 ])
 type CacheResult = z.infer<typeof cacheSchema>
+
+/** Mesma tolerância da correção pelo coach (chat/meal-correction.ts). */
+const MACROS_WEIGHT_TOLERANCE = 1.05
+
+/**
+ * 05/11 (S1): alternativa passa pelo mesmo saneamento do item; a que sair
+ * absurda (tetos de uma refeição ou macros mais pesados que o alimento) some.
+ */
+function sanitizeAlternatives(item: VisionAnalysis['items'][number]): ScanAlternative[] {
+  const out: ScanAlternative[] = []
+  for (const alt of item.alternatives ?? []) {
+    const { calories, protein, carbs, fat, fiber } = sanitizeVisionResult(
+      { ...alt, confidence: 1 },
+      Number.POSITIVE_INFINITY,
+    )
+    const values = { calories, protein, carbs, fat, fiber }
+    if (isImplausibleMeal(values)) continue
+    if (protein + carbs + fat > item.weightGrams * MACROS_WEIGHT_TOLERANCE) continue
+    out.push({ name: alt.name, ...values })
+  }
+  return out
+}
 
 async function readCache(fastify: FastifyInstance, hash: string): Promise<CacheResult | null> {
   try {
@@ -115,7 +141,7 @@ async function analyzePhotoCore(
     return { items: cached.items.map((item) => ({ id: randomUUID(), ...item })) }
   }
 
-  let analysis: import('./scanner.schemas.js').VisionAnalysis
+  let analysis: VisionAnalysis
   try {
     const completion = await fastify.openai.beta.chat.completions.parse({
       model: env.OPENAI_VISION_MODEL,
@@ -148,7 +174,7 @@ async function analyzePhotoCore(
     })
     const parsed = completion.choices[0].message.parsed
     if (!parsed) throw new Error('OpenAI retornou análise vazia')
-    analysis = visionAnalysisSchema.parse(parsed)
+    analysis = visionAnalysisReadSchema.parse(parsed)
     if (analysis.is_food && analysis.items.length === 0) throw new Error('Análise sem alimentos')
   } catch (err) {
     fastify.log.error({ err }, 'Erro ao analisar foto via Vision')
@@ -165,6 +191,7 @@ async function analyzePhotoCore(
     weightGrams: item.weightGrams,
     // Uma panela pode exceder o teto de uma porção sem ser uma saída absurda.
     ...sanitizeVisionResult(item, Math.max(VISION_MAX_KCAL, item.weightGrams * 9)),
+    alternatives: sanitizeAlternatives(item),
   }))
   writeCache(fastify, hash, { version: 2, notFood: false, items })
   return { items: items.map((item) => ({ id: randomUUID(), ...item })) }

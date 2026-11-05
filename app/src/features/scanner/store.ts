@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { creditErrorMessage } from '@shared/services/credits.service';
 import { useAuthStore } from '@features/auth/store';
 import { scannerService } from '@shared/services/scanner.service';
-import type { ScanItem } from '@shared/services/scanner.service';
+import type { ScanAlternative, ScanItem } from '@shared/services/scanner.service';
 import { foodLogService } from '@shared/services/food-log.service';
 import { useFoodLogStore } from '@features/food-log/store';
 import {
@@ -24,6 +24,8 @@ interface ScannerState {
 
   analyze: (image: string, options?: { guest?: boolean }) => Promise<void>;
   updateItem: (id: string, patch: Partial<ScanItem>) => void;
+  /** 05/11: troca o item pela alternativa `index` (e guarda o atual para desfazer). */
+  chooseAlternative: (id: string, index: number) => void;
   removeItem: (id: string) => void;
   addManualItem: () => void;
   confirm: () => Promise<void>;
@@ -39,6 +41,30 @@ const initialState = {
   isAnalyzing: false,
   error: null as string | null,
 };
+
+const VALUE_KEYS = ['calories', 'protein', 'carbs', 'fat', 'fiber'] as const;
+
+/** Item recém-analisado: guarda o peso-base das alternativas e o dono dos valores. */
+function fromAnalysis(item: ScanItem): ScanItem {
+  return {
+    ...item,
+    alternatives: item.alternatives ?? [],
+    baseWeightGrams: item.weightGrams ?? null,
+    valuesFrom: item.name.trim(),
+    fromScan: true,
+  };
+}
+
+/** Dúvida que vai para o diário (o servidor aceita até 2 nomes de 60 caracteres). */
+function scanDoubt(item: ScanItem): { confidence: number; alternatives: string[] } {
+  return {
+    confidence: Math.min(1, Math.max(0, item.confidence)),
+    alternatives: (item.alternatives ?? [])
+      .map((a) => a.name.trim().slice(0, 60))
+      .filter(Boolean)
+      .slice(0, 2),
+  };
+}
 
 let manualSeq = 0;
 let analysisGeneration = 0;
@@ -64,7 +90,7 @@ export const useScannerStore = create<ScannerState>((set, get) => ({
         request !== analysisGeneration
       )
         return;
-      set({ items: res.items, invalidWeightIds: [], isAnalyzing: false });
+      set({ items: res.items.map(fromAnalysis), invalidWeightIds: [], isAnalyzing: false });
       void res.acknowledge?.();
     } catch (e) {
       if (
@@ -108,10 +134,48 @@ export const useScannerStore = create<ScannerState>((set, get) => ({
                 ...item,
                 ...(patch.weightGrams != null ? scaleScanPortion(item, patch.weightGrams) : {}),
                 ...patch,
+                // Mexer num valor = o usuário assumiu os números do nome atual.
+                ...(VALUE_KEYS.some((k) => k in patch)
+                  ? { valuesFrom: (patch.name ?? item.name).trim() }
+                  : {}),
               },
         ),
       };
     }),
+
+  chooseAlternative: (id, index) =>
+    set((s) => ({
+      items: s.items.map((item) => {
+        const alt = item.alternatives?.[index];
+        if (item.id !== id || !alt) return item;
+        // Alternativas valem para o peso da análise; o item pode ter sido ajustado.
+        const ratio =
+          item.weightGrams != null && item.baseWeightGrams
+            ? item.weightGrams / item.baseWeightGrams
+            : 1;
+        const scale = (n: number | null | undefined) => (n == null ? null : n * ratio);
+        const unscale = (n: number | null | undefined) => (n == null ? null : n / ratio);
+        const previous: ScanAlternative = {
+          name: item.name,
+          calories: unscale(item.calories) ?? 0,
+          protein: unscale(item.protein) ?? 0,
+          carbs: unscale(item.carbs) ?? 0,
+          fat: unscale(item.fat) ?? 0,
+          fiber: unscale(item.fiber),
+        };
+        return {
+          ...item,
+          name: alt.name,
+          calories: alt.calories * ratio,
+          protein: alt.protein * ratio,
+          carbs: alt.carbs * ratio,
+          fat: alt.fat * ratio,
+          fiber: scale(alt.fiber),
+          valuesFrom: alt.name,
+          alternatives: item.alternatives?.map((a, i) => (i === index ? previous : a)),
+        };
+      }),
+    })),
 
   removeItem: (id) =>
     set((s) => ({
@@ -177,6 +241,7 @@ export const useScannerStore = create<ScannerState>((set, get) => ({
               fat: roundScanAmount(i.fat),
               fiber: i.fiber == null ? null : roundScanAmount(i.fiber),
               ...(i.weightGrams != null ? { weightGrams: i.weightGrams } : {}),
+              ...(i.fromScan ? { scan: scanDoubt(i) } : {}),
             },
             owner,
           )

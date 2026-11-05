@@ -10,6 +10,7 @@ import {
   type UpdateMealBody,
 } from './food-log.schemas.js'
 import { hasMealFiberColumns } from './meal-fiber-columns.js'
+import { hasMealScanColumns } from './meal-scan-columns.js'
 
 /**
  * Refeições do "diário livre" são modeladas como uma linha em `meals` com um
@@ -48,6 +49,8 @@ export async function listMeals(
       total_fat: string
       total_fiber: string | null
       weight_grams?: string | null
+      ai_confidence?: string | null
+      ai_alternatives?: string | null
       logged_at: string
     }[]
   >`
@@ -58,6 +61,11 @@ export async function listMeals(
       to_jsonb(m)->>'total_fiber' AS total_fiber,
       -- Peso do registro: o coach usa para recalcular "no mesmo peso" (04/11).
       (SELECT SUM(mi.quantity_g) FROM meal_items mi WHERE mi.meal_id = m.id)::TEXT AS weight_grams,
+      -- Dúvida do scanner (05/11): to_jsonb funciona com ou sem a migration 025.
+      (SELECT to_jsonb(mi)->>'ai_confidence' FROM meal_items mi
+        WHERE mi.meal_id = m.id ORDER BY mi.created_at LIMIT 1) AS ai_confidence,
+      (SELECT (to_jsonb(mi)->'ai_alternatives')::TEXT FROM meal_items mi
+        WHERE mi.meal_id = m.id ORDER BY mi.created_at LIMIT 1) AS ai_alternatives,
       logged_at::TEXT AS logged_at
     FROM meals m
     WHERE user_id = ${userId} AND meal_date = ${date}
@@ -73,9 +81,24 @@ export async function listMeals(
     fat: Number(row.total_fat),
     fiber: row.total_fiber == null ? null : Number(row.total_fiber),
     weightGrams: row.weight_grams == null ? null : Number(row.weight_grams),
+    scan: toScan(row.ai_confidence, row.ai_alternatives),
     loggedAt: row.logged_at,
     mealType: toApiMealType(row.meal_type),
   }))
+}
+
+function toScan(confidence?: string | null, alternatives?: string | null): Meal['scan'] {
+  if (confidence == null) return null
+  let names: unknown = []
+  try {
+    names = alternatives ? JSON.parse(alternatives) : []
+  } catch {
+    names = []
+  }
+  return {
+    confidence: Number(confidence),
+    alternatives: Array.isArray(names) ? names.filter((n) => typeof n === 'string') : [],
+  }
 }
 
 type MealValues = Pick<
@@ -112,6 +135,7 @@ export async function addMeal(
     throw new AppError(400, 'INVALID_DATE', 'Data fora da janela permitida')
   }
   const withFiber = await hasMealFiberColumns(fastify)
+  const withScan = data.scan ? await hasMealScanColumns(fastify) : false
 
   return fastify.db.begin(async (sql) => {
     // Data local do cliente quando presente; CURRENT_DATE (UTC) como fallback
@@ -123,6 +147,14 @@ export async function addMeal(
     `
 
     await insertMealItem(sql, meal.id, data, withFiber)
+    if (withScan && data.scan) {
+      await sql`
+        UPDATE meal_items
+        SET source = 'ai_vision', ai_confidence = ${data.scan.confidence},
+            ai_alternatives = ${data.scan.alternatives}
+        WHERE meal_id = ${meal.id}
+      `
+    }
 
     return {
       id: meal.id,

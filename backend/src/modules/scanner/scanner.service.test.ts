@@ -248,3 +248,87 @@ describe('contrato e limites do scanner por porção', () => {
     expect(first.items[0].id).not.toBe(second.items[0].id)
   })
 })
+
+describe('alternativas quando o alimento é ambíguo (05/11, S1)', () => {
+  const pork = {
+    name: 'Carne suína grelhada',
+    weightGrams: 180,
+    calories: 420,
+    protein: 38,
+    carbs: 0,
+    fat: 29,
+    fiber: 0,
+    confidence: 0.45,
+  }
+  const salmon = {
+    name: 'Salmão grelhado',
+    calories: 376,
+    protein: 40,
+    carbs: 0,
+    fat: 24,
+    fiber: 0,
+  }
+
+  it('devolve as alternativas válidas e descarta a absurda', async () => {
+    const absurd = { name: 'Lixo', calories: 999_999, protein: 999, carbs: 0, fat: 0, fiber: 0 }
+    const { fastify } = fakeFastify([], {
+      parse: async () => ({
+        choices: [
+          {
+            message: {
+              parsed: { is_food: true, items: [{ ...pork, alternatives: [salmon, absurd] }] },
+            },
+          },
+        ],
+        usage: null,
+      }),
+    })
+    const r = await analyzePhoto(fastify, IMG, USER)
+    expect(r.items[0].alternatives).toEqual([
+      { name: 'Salmão grelhado', calories: 376, protein: 40, carbs: 0, fat: 24, fiber: 0 },
+    ])
+  })
+
+  it('alternativa com macros pesando mais que o item é descartada', async () => {
+    const heavy = { ...salmon, name: 'Pesado', protein: 150, fat: 60, calories: 1140 }
+    const { fastify } = fakeFastify([], {
+      parse: async () => ({
+        choices: [
+          { message: { parsed: { is_food: true, items: [{ ...pork, alternatives: [heavy] }] } } },
+        ],
+        usage: null,
+      }),
+    })
+    const r = await analyzePhoto(fastify, IMG, USER)
+    expect(r.items[0].alternatives).toEqual([])
+  })
+
+  it('sem alternativas (ou resposta antiga sem o campo) → lista vazia', async () => {
+    const { fastify } = fakeFastify([], {
+      parse: async () => ({
+        choices: [{ message: { parsed: { is_food: true, items: [pork] } } }],
+        usage: null,
+      }),
+    })
+    const r = await analyzePhoto(fastify, IMG, USER)
+    expect(r.items[0].alternatives).toEqual([])
+  })
+
+  it('o cache guarda as alternativas e o prompt pede identidade, não só quantidade', async () => {
+    const { VISION_SYSTEM_PROMPT, SCANNER_ANALYSIS_VERSION } = await import('./scanner.prompt.js')
+    expect(SCANNER_ANALYSIS_VERSION).toBe('items-weight-alt-v3')
+    expect(VISION_SYSTEM_PROMPT).toMatch(/alternatives/)
+    expect(VISION_SYSTEM_PROMPT).toMatch(/salmão/i)
+    const { fastify, calls } = fakeFastify([], {
+      parse: async () => ({
+        choices: [
+          { message: { parsed: { is_food: true, items: [{ ...pork, alternatives: [salmon] }] } } },
+        ],
+        usage: null,
+      }),
+    })
+    await analyzePhoto(fastify, IMG, USER)
+    const write = calls.find((c) => c.sql.includes('INSERT INTO scan_cache'))
+    expect(String(write?.params[1])).toContain('Salmão grelhado')
+  })
+})

@@ -10,6 +10,7 @@ interface Props {
   onChange: (id: string, patch: Partial<ScanItem>) => void;
   onRemove: (id: string) => void;
   onAddManual: () => void;
+  onChooseAlternative?: (id: string, index: number) => void;
 }
 
 export function ScanResultList({
@@ -17,12 +18,19 @@ export function ScanResultList({
   onChange,
   onRemove,
   onAddManual,
+  onChooseAlternative,
 }: Props): React.JSX.Element {
   const totalKcal = items.reduce((acc, i) => acc + (i.calories || 0), 0);
   return (
     <View>
       {items.map((i) => (
-        <ScanItemRow key={i.id} item={i} onChange={onChange} onRemove={onRemove} />
+        <ScanItemRow
+          key={i.id}
+          item={i}
+          onChange={onChange}
+          onRemove={onRemove}
+          onChooseAlternative={onChooseAlternative}
+        />
       ))}
       <Pressable onPress={onAddManual} style={styles.add} accessibilityRole="button">
         <Text style={styles.addText}>＋ Adicionar item</Text>

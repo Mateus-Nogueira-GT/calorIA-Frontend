@@ -659,3 +659,38 @@ describe('dias anteriores no contexto (05/11, M6)', () => {
     expect(ctx2.recentDays).toBeNull()
   })
 })
+
+describe('registro duvidoso do scanner no contexto (05/11, S4)', () => {
+  const base = {
+    id: 'abcdef12-0000-0000-0000-000000000000',
+    name: 'Carne suína grelhada',
+    calories: 420,
+    protein: 38,
+    carbs: 0,
+    fat: 29,
+    fiber: null,
+    weightGrams: 180,
+    loggedAt: '2026-07-24 23:14:00+00',
+    mealType: 'dinner' as const,
+  }
+
+  it('confiança baixa ou alternativas → sufixo com a dúvida', () => {
+    const out = formatUserContext({
+      ...emptyData,
+      tzOffsetMinutes: -180,
+      freeMeals: [
+        { ...base, scan: { confidence: 0.45, alternatives: ['Salmão grelhado', 'Truta'] } },
+      ],
+    })
+    expect(out).toContain('G 29 g (scanner, confiança 45%; podia ser: Salmão grelhado, Truta).')
+    expect(out).toMatch(/duvidoso.*mencione a dúvida/i)
+  })
+
+  it('confiança alta e sem alternativas → sem sufixo', () => {
+    const out = formatUserContext({
+      ...emptyData,
+      freeMeals: [{ ...base, scan: { confidence: 0.9, alternatives: [] } }],
+    })
+    expect(out).not.toContain('(scanner, confiança')
+  })
+})

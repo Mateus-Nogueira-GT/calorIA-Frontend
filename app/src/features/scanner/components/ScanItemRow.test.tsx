@@ -174,3 +174,73 @@ it('calorias impossíveis mostram o erro no item, em leitura e em edição', () 
     getByText('Valores acima do possível para um alimento: até 5.000 kcal e 500 g de proteína, carboidratos ou gordura.'),
   ).toBeTruthy();
 });
+
+describe('ScanItemRow — alimento duvidoso (05/11, S2)', () => {
+  const pork = {
+    ...item,
+    id: 'p1',
+    name: 'Carne suína grelhada',
+    weightGrams: 180,
+    calories: 420,
+    protein: 38,
+    carbs: 0,
+    fat: 29,
+    confidence: 0.45,
+    valuesFrom: 'Carne suína grelhada',
+    alternatives: [
+      { name: 'Salmão grelhado', calories: 376, protein: 40, carbs: 0, fat: 24, fiber: 0 },
+    ],
+  };
+
+  it('mostra as alternativas e o destaque; tocar escolhe', () => {
+    const onChoose = jest.fn();
+    const s = render(
+      <ScanItemRow
+        item={pork}
+        onChange={() => {}}
+        onRemove={() => {}}
+        onChooseAlternative={onChoose}
+      />,
+    );
+    expect(s.getByText('É outro alimento?')).toBeTruthy();
+    expect(s.getByText('Confira o alimento')).toBeTruthy();
+    fireEvent.press(s.getByRole('button', { name: 'Trocar para Salmão grelhado' }));
+    expect(onChoose).toHaveBeenCalledWith('p1', 0);
+  });
+
+  it('sem alternativas: nem chips nem destaque', () => {
+    const s = render(
+      <ScanItemRow item={{ ...pork, alternatives: [] }} onChange={() => {}} onRemove={() => {}} />,
+    );
+    expect(s.queryByText('É outro alimento?')).toBeNull();
+    expect(s.queryByText('Confira o alimento')).toBeNull();
+  });
+
+  it('nome trocado sem mexer nos valores → aviso de que os valores são do anterior', () => {
+    const s = render(
+      <ScanItemRow item={{ ...pork, name: 'Salmão' }} onChange={() => {}} onRemove={() => {}} />,
+    );
+    expect(s.getByText(/Os valores ainda são de "Carne suína grelhada"/)).toBeTruthy();
+    s.rerender(
+      <ScanItemRow
+        item={{ ...pork, name: 'Salmão', valuesFrom: 'Salmão' }}
+        onChange={() => {}}
+        onRemove={() => {}}
+      />,
+    );
+    expect(s.queryByText(/Os valores ainda são de/)).toBeNull();
+  });
+
+  it('ao entrar em edição, os campos mostram os valores atuais (depois de uma troca)', () => {
+    const s = render(<ScanItemRow item={pork} onChange={() => {}} onRemove={() => {}} />);
+    s.rerender(
+      <ScanItemRow
+        item={{ ...pork, name: 'Salmão grelhado', calories: 376 }}
+        onChange={() => {}}
+        onRemove={() => {}}
+      />,
+    );
+    fireEvent.press(s.getByText('Editar'));
+    expect(s.getByTestId('scan-item-calories').props.value).toBe('376');
+  });
+});

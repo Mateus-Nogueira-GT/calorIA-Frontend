@@ -127,6 +127,18 @@ function shortName(name: string): string {
   return name.length > NAME_MAX_CHARS ? `${name.slice(0, NAME_MAX_CHARS - 1).trimEnd()}…` : name
 }
 
+/** Abaixo disto o registro do scanner aparece como duvidoso para o coach. */
+const SCAN_DOUBT_BELOW = 0.7
+
+/** 05/11 (S4): o coach não sabia que o "carne suína" do scanner era incerto. */
+function doubtSuffix(m: Meal): string {
+  if (!m.scan) return ''
+  const { confidence, alternatives } = m.scan
+  if (confidence >= SCAN_DOUBT_BELOW && alternatives.length === 0) return ''
+  const alt = alternatives.length ? `; podia ser: ${alternatives.map(shortName).join(', ')}` : ''
+  return ` (scanner, confiança ${Math.round(confidence * 100)}%${alt})`
+}
+
 /**
  * Feedback de 04/11: o contexto trazia só "diário livre: 2 item(ns)" — o
  * coach não sabia O QUE foi registrado e não conseguia analisar "minha
@@ -144,13 +156,14 @@ function diaryLines(data: UserContextData): string[] {
     const weight = m.weightGrams != null ? `${fmtG(m.weightGrams)} g · ` : ''
     out.push(
       `- [ref ${mealRef(m.id)}] ${time ? `${time} ` : ''}${shortName(m.name)} — ${weight}${Math.round(m.calories)} kcal · ` +
-        `P ${fmtG(m.protein)} g · C ${fmtG(m.carbs)} g · G ${fmtG(m.fat)} g.`,
+        `P ${fmtG(m.protein)} g · C ${fmtG(m.carbs)} g · G ${fmtG(m.fat)} g${doubtSuffix(m)}.`,
     )
   }
   out.push(
     'INSTRUÇÃO: quando o usuário falar de "minha refeição", do que comeu ou de um registro, use esta lista ' +
       '(é a fonte da verdade); se o item não estiver nela nem o usuário citar a ref dele, diga que ' +
-      'não há esse registro hoje.',
+      'não há esse registro hoje. Registro marcado "(scanner, …)" é duvidoso: se o usuário analisar ' +
+      'o dia ou estranhar um valor, mencione a dúvida e ofereça a correção.',
   )
   return out
 }
