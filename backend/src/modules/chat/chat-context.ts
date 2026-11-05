@@ -131,9 +131,6 @@ function shortName(name: string): string {
  */
 function diaryLines(data: UserContextData): string[] {
   const out: string[] = []
-  const done = (data.today?.meals ?? []).filter((m) => m.completedToday)
-  if (done.length > 0)
-    out.push(`Do plano, concluídas hoje: ${done.map((m) => m.title).join('; ')}.`)
   if (data.freeMeals.length === 0) return out
   const recent = [...data.freeMeals]
     .sort((a, b) => (a.loggedAt < b.loggedAt ? 1 : a.loggedAt > b.loggedAt ? -1 : 0))
@@ -150,6 +147,35 @@ function diaryLines(data: UserContextData): string[] {
   out.push(
     'INSTRUÇÃO: quando o usuário falar de "minha refeição", do que comeu ou de um registro, use esta lista ' +
       '(é a fonte da verdade); se o item não estiver nela, diga que não há esse registro hoje.',
+  )
+  return out
+}
+
+const PLAN_ITEMS_MAX = 6
+
+/**
+ * 05/11 (M5): do plano o coach só via a próxima refeição (título e kcal).
+ * "O que tem no meu almoço?" e "Sugira uma refeição" eram respondidos sem o
+ * plano. Uma linha por refeição, com os itens.
+ */
+function planLines(today: TodayPlan | null): string[] {
+  if (!today?.meals.length) return []
+  const out = ['Plano de hoje:']
+  for (const m of today.meals) {
+    const items = m.items
+      .slice(0, PLAN_ITEMS_MAX)
+      .map((i) => `${shortName(i.name)} ${fmtG(i.quantity)} ${i.unit}`)
+    const extra = m.items.length - PLAN_ITEMS_MAX
+    if (extra > 0) items.push(`+${extra} ${extra === 1 ? 'item' : 'itens'}`)
+    const at = m.suggestedTime ? `${m.suggestedTime} ` : ''
+    const done = m.completedToday ? ' (concluída)' : ''
+    out.push(
+      `- ${at}${m.title}${done} — ${Math.round(m.calories)} kcal${items.length ? `: ${items.join(', ')}` : ''}.`,
+    )
+  }
+  out.push(
+    'INSTRUÇÃO: perguntas sobre o plano usam esta lista. Se o usuário quiser trocar um item, ' +
+      'sugira a troca com quantidade equivalente, sem dizer que alterou o plano.',
   )
   return out
 }
@@ -403,7 +429,7 @@ export function formatUserContext(raw: UserContextData): string {
     lines.push(`${parts.join('. ')}.`)
   }
 
-  lines.push(...diaryLines(data))
+  lines.push(...planLines(data.today), ...diaryLines(data))
 
   if (data.streak != null && data.streak > 0) lines.push(`Streak atual: ${data.streak} dias.`)
 

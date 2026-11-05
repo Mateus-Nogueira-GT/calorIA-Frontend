@@ -441,7 +441,7 @@ describe('registros de hoje no contexto (coach antenado, 04/11)', () => {
 
   it('refeições do plano concluídas aparecem pelo nome', () => {
     const out = formatUserContext({ ...emptyData, diet, today: todayPlan(), freeMeals: [] })
-    expect(out).toMatch(/Do plano, concluídas hoje: .+/)
+    expect(out).toContain('- 12:00 Almoço (concluída) — 620 kcal')
   })
 
   it('instrui a usar a lista quando o usuário fala da refeição', () => {
@@ -556,5 +556,64 @@ describe('ordem do corte com contexto longo (05/11, M9)', () => {
     const line = out.split('\n').find((l) => l.startsWith('- [ref 0bcdef]')) ?? ''
     const name = line.replace(/^- \[ref \w+\] \d\d:\d\d /, '').split(' — ')[0]
     expect(name.length).toBeLessThanOrEqual(60)
+  })
+})
+
+describe('plano de hoje no contexto (05/11, M5)', () => {
+  const diet = {
+    name: 'Plano',
+    targetCalories: 2100,
+    targetProtein: 148,
+    targetCarbs: 210,
+    targetFat: 58,
+  }
+  const item = (name: string, quantity: number, unit = 'g') => ({
+    name,
+    quantity,
+    unit,
+    calories: 100,
+  })
+
+  it('lista cada refeição com horário, status, kcal e itens', () => {
+    const plan = todayPlan()
+    plan.meals[0].items = [item('arroz', 120), item('ovo', 2, 'un')]
+    plan.meals[1].items = [item('frango grelhado', 150)]
+    const out = formatUserContext({ ...emptyData, diet, today: plan })
+    expect(out).toContain('Plano de hoje:')
+    expect(out).toContain('- 12:00 Almoço (concluída) — 620 kcal: arroz 120 g, ovo 2 un.')
+    expect(out).toContain('- 19:00 Jantar — 620 kcal: frango grelhado 150 g.')
+    expect(out).toMatch(/troca.*sem dizer que alterou o plano/i)
+  })
+
+  it('mais de 6 itens → "+N itens"', () => {
+    const plan = todayPlan()
+    plan.meals[1].items = Array.from({ length: 8 }, (_, i) => item(`item${i}`, 10))
+    const out = formatUserContext({ ...emptyData, diet, today: plan })
+    expect(out).toContain('item5 10 g, +2 itens.')
+    expect(out).not.toContain('item6')
+  })
+
+  it('o plano vem antes do diário e depois do perfil', () => {
+    const out = formatUserContext({
+      ...emptyData,
+      profile: fullProfile,
+      diet,
+      today: todayPlan(),
+      freeMeals: [
+        {
+          id: 'abcdef12-0000-0000-0000-000000000000',
+          name: 'Maçã',
+          calories: 95,
+          protein: 0,
+          carbs: 25,
+          fat: 0,
+          fiber: null,
+          loggedAt: '2026-07-24 16:00:00+00',
+          mealType: 'snack' as const,
+        },
+      ],
+    })
+    expect(out.indexOf('Perfil:')).toBeLessThan(out.indexOf('Plano de hoje:'))
+    expect(out.indexOf('Plano de hoje:')).toBeLessThan(out.indexOf('Registros de hoje'))
   })
 })
