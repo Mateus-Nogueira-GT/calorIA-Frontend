@@ -19,6 +19,8 @@ export interface CoachMessage {
   dietGenerated?: boolean;
   dietId?: string | null;
   dietJobId?: string | null;
+  /** 04/11: o coach corrigiu um registro do diário (id e dia). */
+  mealUpdated?: { id: string; date: string } | null;
 }
 
 export interface HistoryResult {
@@ -37,6 +39,7 @@ interface BackendChatResponse {
   diet_generated: boolean;
   diet_id: string | null;
   diet_job_id: string | null;
+  meal_updated?: { id: string; date: string } | null;
 }
 
 export type TranscribeMimeType = 'audio/m4a' | 'audio/mp4' | 'audio/aac' | 'audio/webm';
@@ -135,6 +138,7 @@ export const coachService = {
               dietGenerated: r.data.diet_generated,
               dietId: r.data.diet_id,
               dietJobId: r.data.diet_job_id,
+              mealUpdated: r.data.meal_updated ?? null,
             },
           };
         })

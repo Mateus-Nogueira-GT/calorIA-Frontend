@@ -21,6 +21,21 @@ import {
 } from '@shared/services/voice-player.service';
 import { useDietStore } from '@features/diet/store';
 import { coachQuotaMessage } from './quota-message';
+import { foodLogService } from '@shared/services/food-log.service';
+import { useFoodLogStore } from '@features/food-log/store';
+
+/**
+ * 04/11: o coach corrigiu um registro (ex.: carne suína → salmão). Recarrega
+ * aquele dia para o Diário e a tela Hoje mostrarem o registro novo. Falha de
+ * rede aqui não é erro da conversa: o dia recarrega na próxima abertura.
+ */
+async function refreshCorrectedDay(date: string): Promise<void> {
+  try {
+    useFoodLogStore.getState().setMeals(date, await foodLogService.getMeals(date));
+  } catch {
+    /* o Diário busca de novo ao abrir */
+  }
+}
 
 const SEND_ERROR_MESSAGE = 'Não foi possível enviar sua mensagem. Tente novamente.';
 
@@ -268,6 +283,7 @@ export const useCoachStore = create<CoachState>()(
           if (voice) void speakReply(reply.id, conversationId);
           // Dieta é gerada de forma assíncrona (1 dia por chamada) — inicia o polling.
           if (message.dietJobId) void get().runDietGeneration(message.dietJobId);
+          if (message.mealUpdated) await refreshCorrectedDay(message.mealUpdated.date);
           return true;
         } catch (e) {
           if (!isCurrent()) return false;
