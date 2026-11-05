@@ -11,16 +11,33 @@ export interface VoiceRequestContext {
   isValid: () => boolean;
 }
 
+/** 05/11: correção de registro proposta pelo coach — o usuário confirma no cartão. */
+export interface MealProposal {
+  id: string;
+  date: string;
+  currentName: string;
+  name: string;
+  weightGrams: number | null;
+  mealType: 'breakfast' | 'lunch' | 'snack' | 'dinner' | 'other';
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  fiber: number | null;
+}
+
 export interface CoachMessage {
   id: string;
   role: 'coach' | 'user';
   content: string;
-  timestamp: string;
+  /** ISO; null = mensagem antiga, gravada sem horário (anterior a 04/11). */
+  timestamp: string | null;
   dietGenerated?: boolean;
   dietId?: string | null;
   dietJobId?: string | null;
   /** 04/11: o coach corrigiu um registro do diário (id e dia). */
   mealUpdated?: { id: string; date: string } | null;
+  mealProposal?: MealProposal | null;
 }
 
 export interface HistoryResult {
@@ -31,6 +48,7 @@ export interface HistoryResult {
 interface BackendHistoryMessage {
   role: 'user' | 'assistant';
   content: string;
+  created_at?: string;
 }
 
 interface BackendChatResponse {
@@ -40,6 +58,7 @@ interface BackendChatResponse {
   diet_id: string | null;
   diet_job_id: string | null;
   meal_updated?: { id: string; date: string } | null;
+  meal_proposal?: MealProposal | null;
 }
 
 export type TranscribeMimeType = 'audio/m4a' | 'audio/mp4' | 'audio/aac' | 'audio/webm';
@@ -64,7 +83,8 @@ export const coachService = {
           id: `${conversationId}-${i}`,
           role: toCoachRole(m.role),
           content: m.content,
-          timestamp: new Date().toISOString(),
+          // 05/11: antes, toda mensagem antiga aparecia com o horário de agora.
+          timestamp: m.created_at ?? null,
         })),
       })),
 
@@ -117,6 +137,8 @@ export const coachService = {
             tzOffsetMinutes: request.tzOffsetMinutes,
             // Veio de áudio: o Coach escreve para ser ouvido (a resposta é falada).
             ...(voice ? { input_mode: 'voice' as const } : {}),
+            // O app sabe mostrar o cartão "Atualizar registro" (05/11).
+            client_features: ['meal_proposal'],
           },
           {
             timeout: 60000,
@@ -139,6 +161,7 @@ export const coachService = {
               dietId: r.data.diet_id,
               dietJobId: r.data.diet_job_id,
               mealUpdated: r.data.meal_updated ?? null,
+              mealProposal: r.data.meal_proposal ?? null,
             },
           };
         })

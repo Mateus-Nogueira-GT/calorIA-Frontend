@@ -7,13 +7,16 @@ import { CoachMark } from './CoachMark';
 interface Props {
   message: string;
   role: 'coach' | 'user';
-  timestamp: Date;
+  /** null = mensagem antiga, sem horário gravado: a hora não aparece. */
+  timestamp: Date | null;
   /** Resposta falada disponível: botão Ouvir/Parar. */
   audio?: { speaking: boolean; onToggle: () => void };
 }
 
 export function ChatBubble({ message, role, timestamp, audio }: Props): React.JSX.Element {
-  const time = timestamp.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  const time = timestamp
+    ? timestamp.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+    : null;
 
   if (role === 'coach') {
     return (
@@ -38,9 +41,11 @@ export function ChatBubble({ message, role, timestamp, audio }: Props): React.JS
               </Text>
             </Pressable>
           )}
-          <Text variant="caption" style={styles.time}>
-            {time}
-          </Text>
+          {time && (
+            <Text variant="caption" style={styles.time}>
+              {time}
+            </Text>
+          )}
         </View>
       </View>
     );
@@ -53,9 +58,11 @@ export function ChatBubble({ message, role, timestamp, audio }: Props): React.JS
         <View style={styles.userBubble}>
           <Text style={styles.userMessage}>{message}</Text>
         </View>
-        <Text variant="caption" style={[styles.time, styles.timeRight]}>
-          {time}
-        </Text>
+        {time && (
+          <Text variant="caption" style={[styles.time, styles.timeRight]}>
+            {time}
+          </Text>
+        )}
       </View>
     </View>
   );

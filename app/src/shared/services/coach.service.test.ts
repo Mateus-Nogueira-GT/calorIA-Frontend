@@ -138,3 +138,43 @@ describe('coachService.sendMessage — modo de entrada', () => {
     expect(messageBody()).not.toHaveProperty('input_mode');
   });
 });
+
+describe('coachService — varredura de 05/11', () => {
+  const proposal = {
+    id: 'm1', date: '2026-11-04', currentName: 'Carne suína', name: 'Salmão grelhado',
+    weightGrams: 180, mealType: 'dinner', calories: 376, protein: 40, carbs: 0, fat: 24, fiber: 0,
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('avisa que sabe mostrar o cartão e mapeia meal_proposal', async () => {
+    api.post.mockResolvedValue({
+      data: {
+        conversation_id: 'conv-1',
+        message: { role: 'assistant', content: 'Para os mesmos 180 g…', created_at: '2026-11-05T00:00:00Z' },
+        diet_generated: false, diet_id: null, diet_job_id: null,
+        meal_proposal: proposal,
+      },
+    });
+    const r = await coachService.sendMessage('não era suína', null);
+    const body = api.post.mock.calls.find(([url]: [string]) => url === '/chat/message')?.[1];
+    expect(body).toMatchObject({ client_features: ['meal_proposal'] });
+    expect(r.message.mealProposal).toEqual(proposal);
+  });
+
+  it('histórico usa a hora gravada; sem ela, timestamp null', async () => {
+    api.get.mockResolvedValue({
+      data: {
+        status: 'collecting',
+        messages: [
+          { role: 'user', content: 'antiga' },
+          { role: 'assistant', content: 'nova', created_at: '2026-11-02T13:00:00.000Z' },
+        ],
+      },
+    });
+    const h = await coachService.getHistory('conv-1');
+    expect(h.messages.map((m: { timestamp: string | null }) => m.timestamp)).toEqual([null, '2026-11-02T13:00:00.000Z']);
+  });
+});

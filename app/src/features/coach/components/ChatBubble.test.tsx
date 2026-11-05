@@ -39,3 +39,17 @@ describe('ChatBubble', () => {
     });
   });
 });
+
+describe('ChatBubble sem horário (05/11)', () => {
+  it('mensagem antiga, sem horário gravado, não mostra hora', () => {
+    const screen = render(<ChatBubble message="antiga" role="user" timestamp={null} />);
+    expect(screen.queryByText(/\d{2}:\d{2}/)).toBeNull();
+  });
+
+  it('mensagem com horário mostra a hora dela, não a de agora', () => {
+    const screen = render(
+      <ChatBubble message="nova" role="coach" timestamp={new Date(2026, 10, 2, 9, 7)} />,
+    );
+    expect(screen.getByText('09:07')).toBeTruthy();
+  });
+});

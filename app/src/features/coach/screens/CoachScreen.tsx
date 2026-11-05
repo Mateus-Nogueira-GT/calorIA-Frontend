@@ -22,6 +22,8 @@ import { DietJobBanner } from '../components/DietJobBanner';
 import { Text, screenShellStyle } from '@shared/components';
 import { colors, typography, spacing, radius } from '@theme';
 import { CoachMark } from '../components/CoachMark';
+import { MealProposalCard } from '../components/MealProposalCard';
+import { daySeparators } from '../day-separators';
 
 const conversationSuggestions = [
   'Analise meu dia de alimentação',
@@ -41,6 +43,8 @@ export function CoachScreen(): React.JSX.Element {
     speakingMessageId,
     toggleSpeech,
     stopSpeaking,
+    applyProposal,
+    dismissProposal,
   } = useCoachStore();
   const nav = useNavigation<TabScreenProps<'Coach'>['navigation']>();
   const isFocused = useIsFocused();
@@ -62,6 +66,8 @@ export function CoachScreen(): React.JSX.Element {
     });
     return () => subscription.remove();
   }, [stopSpeaking]);
+
+  const separators = useMemo(() => daySeparators(messages), [messages]);
 
   const lastCoachWithFlag = useMemo(() => {
     for (let i = messages.length - 1; i >= 0; i--) {
@@ -125,8 +131,13 @@ export function CoachScreen(): React.JSX.Element {
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.chatContent}
         style={styles.list}
-        renderItem={({ item }) => (
+        renderItem={({ item, index }) => (
           <View>
+            {separators[index] && (
+              <Text variant="caption" style={styles.daySeparator}>
+                {separators[index]}
+              </Text>
+            )}
             <ChatBubble
               message={item.content}
               role={item.role}
@@ -140,6 +151,13 @@ export function CoachScreen(): React.JSX.Element {
                   : undefined
               }
             />
+            {item.mealProposal && (
+              <MealProposalCard
+                proposal={item.mealProposal}
+                onApply={() => void applyProposal(item.id)}
+                onDismiss={() => dismissProposal(item.id)}
+              />
+            )}
             {item.id === lastCoachWithFlag && (
               <GenerateDietButton onSuccess={() => nav.navigate('Dashboard')} />
             )}
@@ -295,6 +313,11 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   suggestions: { width: '100%', marginTop: spacing.xxl, gap: 10 },
+  daySeparator: {
+    alignSelf: 'center',
+    marginBottom: spacing.md,
+    color: colors.brandTextMuted,
+  },
   suggestionButton: {
     minHeight: 44,
     backgroundColor: colors.brandSurface,
