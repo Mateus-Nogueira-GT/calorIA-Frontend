@@ -6,7 +6,8 @@ import { getActiveDiet, getTodayPlan } from '../diets/diets.service.js'
 import { parseInput } from '../diets/jobs.service.js'
 import type { Meal } from '../food-log/food-log.schemas.js'
 import { isImplausibleMeal } from '../food-log/food-log.schemas.js'
-import { listMeals } from '../food-log/food-log.service.js'
+import type { DaySummary } from '../food-log/food-log.schemas.js'
+import { getSummary, listMeals } from '../food-log/food-log.service.js'
 
 /**
  * Contexto do usuário para o coach (Workstream I1/I2). Sem isto o coach é
@@ -89,6 +90,8 @@ export interface UserContextData {
   tzOffsetMinutes?: number
   /** Registro mais recente da Evolução (faixa plausível); mais novo que o cadastro. */
   lastWeight?: { kg: number; date: string } | null
+  /** Totais do diário nos 6 dias anteriores (só os dias com registro). */
+  recentDays?: DaySummary[] | null
 }
 
 /** Idade (anos) a partir de 'YYYY-MM-DD'; null se ausente/inválida. */
@@ -294,6 +297,14 @@ export async function fetchUserContext(
     lastWeight = null
   }
 
+  // 05/11 (M6): "como foi minha semana?" ficava sem nenhum dado.
+  let recentDays: DaySummary[] | null = null
+  try {
+    recentDays = await getSummary(fastify, userId, shiftDate(date, -6), shiftDate(date, -1))
+  } catch {
+    recentDays = null
+  }
+
   let mealsPerDay: number | null = null
   try {
     const [row] = await fastify.db<{ input: unknown }[]>`
@@ -314,6 +325,7 @@ export async function fetchUserContext(
     date,
     tzOffsetMinutes: query.tzOffsetMinutes,
     lastWeight,
+    recentDays,
   }
 }
 
@@ -431,12 +443,39 @@ export function formatUserContext(raw: UserContextData): string {
 
   lines.push(...planLines(data.today), ...diaryLines(data))
 
+  lines.push(...recentDaysLines(data))
   if (data.streak != null && data.streak > 0) lines.push(`Streak atual: ${data.streak} dias.`)
 
   if (lines.length === 0) return ''
 
   const header = '## CONTEXTO DO USUÁRIO (dados reais — use-os; não invente valores)'
   return truncateByLines(header, lines, CONTEXT_MAX_CHARS)
+}
+
+/** 'YYYY-MM-DD' deslocada em N dias. */
+function shiftDate(date: string, days: number): string {
+  const d = new Date(`${date}T12:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + days)
+  return d.toISOString().slice(0, 10)
+}
+
+/** Os 6 dias anteriores, inclusive os sem registro; nada se não houver nenhum. */
+function recentDaysLines(data: UserContextData): string[] {
+  if (!data.recentDays?.length) return []
+  const byDate = new Map(data.recentDays.map((d) => [d.date, d]))
+  const days: string[] = []
+  for (let i = -6; i <= -1; i++) {
+    const date = shiftDate(data.date, i)
+    const d = byDate.get(date)
+    days.push(
+      d ? `${ddmm(date)} ${d.calories} kcal / ${d.protein}g prot` : `${ddmm(date)} sem registro`,
+    )
+  }
+  return [
+    `Últimos dias (só diário): ${days.join(' · ')}.`,
+    'INSTRUÇÃO: refeições do plano marcadas como concluídas em dias passados não aparecem nesses ' +
+      'totais — não conclua que o usuário não comeu; pergunte.',
+  ]
 }
 
 /** 'YYYY-MM-DD' → 'dd/mm'. */

@@ -617,3 +617,45 @@ describe('plano de hoje no contexto (05/11, M5)', () => {
     expect(out.indexOf('Plano de hoje:')).toBeLessThan(out.indexOf('Registros de hoje'))
   })
 })
+
+describe('dias anteriores no contexto (05/11, M6)', () => {
+  it('uma linha com os 6 dias anteriores, dias sem registro incluídos', () => {
+    const out = formatUserContext({
+      ...emptyData,
+      date: '2026-11-05',
+      recentDays: [
+        { date: '2026-10-30', calories: 1850, protein: 95, carbs: 0, fat: 0 },
+        { date: '2026-11-04', calories: 2010, protein: 120, carbs: 0, fat: 0 },
+      ],
+    })
+    expect(out).toContain(
+      'Últimos dias (só diário): 30/10 1850 kcal / 95g prot · 31/10 sem registro · ' +
+        '01/11 sem registro · 02/11 sem registro · 03/11 sem registro · 04/11 2010 kcal / 120g prot.',
+    )
+    expect(out).toMatch(/plano.*dias passados.*não aparecem/i)
+  })
+
+  it('sem nenhum registro nos dias anteriores → sem a linha', () => {
+    const out = formatUserContext({ ...emptyData, profile: fullProfile, recentDays: [] })
+    expect(out).not.toContain('Últimos dias')
+  })
+
+  it('fetchUserContext busca os 6 dias anteriores; falha não derruba o contexto', async () => {
+    const ok = fakeFastify([
+      [
+        'GROUP BY meal_date',
+        [{ date: '2026-11-04', calories: 2010, protein: 120, carbs: 1, fat: 1 }],
+      ],
+    ])
+    const ctx = await fetchUserContext(ok.fastify, 'u1', { date: '2026-11-05' })
+    expect(Array.from(ctx.recentDays ?? [])).toEqual([
+      { date: '2026-11-04', calories: 2010, protein: 120, carbs: 1, fat: 1 },
+    ])
+    const q = ok.calls.find((c) => c.sql.includes('GROUP BY meal_date'))
+    expect(q?.params).toEqual(expect.arrayContaining(['2026-10-30', '2026-11-04']))
+
+    const broken = fakeFastify([['GROUP BY meal_date', new Error('db')]])
+    const ctx2 = await fetchUserContext(broken.fastify, 'u1', { date: '2026-11-05' })
+    expect(ctx2.recentDays).toBeNull()
+  })
+})
