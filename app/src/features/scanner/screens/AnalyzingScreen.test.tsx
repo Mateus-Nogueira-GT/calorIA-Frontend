@@ -52,5 +52,5 @@ it('desmontar depois de concluir (ir ao resultado) não cancela nada', async () 
   expect(nav.replace).toHaveBeenCalledWith('ScanResult');
   screen.unmount();
   expect(useScannerStore.getState().error).toBeNull();
-  expect(useScannerStore.getState().items).toEqual([item]);
+  expect(useScannerStore.getState().items).toEqual([expect.objectContaining(item)]);
 });

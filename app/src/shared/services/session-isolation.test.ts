@@ -200,7 +200,7 @@ it('A volta e reenvia a mesma foto: mesma chave, sem nova chave', async () => {
   await useScannerStore.getState().analyze(image);
   expect(keys).toHaveLength(2);
   expect(keys[1]).toBe(keys[0]);
-  expect(useScannerStore.getState().items).toEqual([item]);
+  expect(useScannerStore.getState().items).toEqual([expect.objectContaining(item)]);
   expect(await pendingRequests(A.id)).toHaveLength(0);
 });
 

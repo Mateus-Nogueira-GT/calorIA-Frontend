@@ -333,3 +333,81 @@ describe('porções do scanner até a escrita no diário', () => {
     );
   });
 });
+
+describe('dúvida de alimento na revisão (05/11, S2/S3)', () => {
+  const pork = {
+    id: 'p1',
+    name: 'Carne suína grelhada',
+    weightGrams: 180,
+    calories: 420,
+    protein: 38,
+    carbs: 0,
+    fat: 29,
+    fiber: 0,
+    confidence: 0.45,
+    alternatives: [
+      { name: 'Salmão grelhado', calories: 376, protein: 40, carbs: 0, fat: 24, fiber: 0 },
+      { name: 'Truta', calories: 300, protein: 42, carbs: 0, fat: 14, fiber: 0 },
+    ],
+  };
+
+  beforeEach(async () => {
+    useScannerStore.setState({ image: null, items: [], isAnalyzing: false, error: null });
+    jest.clearAllMocks();
+    scannerService.analyzePhoto.mockResolvedValue({
+      items: [pork],
+      acknowledge: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
+    });
+    await useScannerStore.getState().analyze('data:image/jpeg;base64,AAA');
+  });
+
+  const current = () => useScannerStore.getState().items[0];
+
+  it('escolher a alternativa troca nome e valores; o anterior vira alternativa', () => {
+    useScannerStore.getState().chooseAlternative('p1', 0);
+    expect(current()).toMatchObject({
+      name: 'Salmão grelhado',
+      calories: 376,
+      protein: 40,
+      fat: 24,
+      weightGrams: 180,
+      valuesFrom: 'Salmão grelhado',
+    });
+    expect(current().alternatives?.map((a) => a.name)).toEqual([
+      'Carne suína grelhada',
+      'Truta',
+    ]);
+    useScannerStore.getState().chooseAlternative('p1', 0);
+    expect(current()).toMatchObject({ name: 'Carne suína grelhada', calories: 420 });
+  });
+
+  it('com o peso alterado, a alternativa sai escalada', () => {
+    useScannerStore.getState().updateItem('p1', { weightGrams: 90 });
+    useScannerStore.getState().chooseAlternative('p1', 0);
+    expect(current().calories).toBeCloseTo(188);
+    expect(current().protein).toBeCloseTo(20);
+    // Desfazer volta aos valores da carne para 90 g.
+    useScannerStore.getState().chooseAlternative('p1', 0);
+    expect(current().calories).toBeCloseTo(210);
+  });
+
+  it('renomear não muda valuesFrom; editar um valor muda', () => {
+    useScannerStore.getState().updateItem('p1', { name: 'Salmão' });
+    expect(current().valuesFrom).toBe('Carne suína grelhada');
+    useScannerStore.getState().updateItem('p1', { calories: 370 });
+    expect(current().valuesFrom).toBe('Salmão');
+  });
+
+  it('confirm envia a dúvida só para itens da análise', async () => {
+    foodLogService.addMeal.mockResolvedValue({ id: 'm1' });
+    useScannerStore.getState().addManualItem();
+    const manual = useScannerStore.getState().items[1];
+    useScannerStore.getState().updateItem(manual.id, { name: 'Água', calories: 0 });
+    await useScannerStore.getState().confirm();
+    const payloads = foodLogService.addMeal.mock.calls.map((c: unknown[]) => c[0]);
+    expect(payloads[0]).toMatchObject({
+      scan: { confidence: 0.45, alternatives: ['Salmão grelhado', 'Truta'] },
+    });
+    expect(payloads[1]).not.toHaveProperty('scan');
+  });
+});

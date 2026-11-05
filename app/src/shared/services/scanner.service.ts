@@ -17,6 +17,23 @@ export interface ScanItem {
   weightGrams?: number | null;
   confidence: number;
   uncertain?: boolean;
+  /** 05/11: outros alimentos que o item pode ser, valores para `baseWeightGrams`. */
+  alternatives?: ScanAlternative[];
+  /** Peso a que os valores das alternativas se referem (o da análise). */
+  baseWeightGrams?: number | null;
+  /** Alimento dono dos valores atuais — difere do nome quando só o nome foi trocado. */
+  valuesFrom?: string;
+  /** Veio da análise (não é item manual): a dúvida vai junto ao salvar. */
+  fromScan?: boolean;
+}
+
+export interface ScanAlternative {
+  name: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  fiber: number | null;
 }
 
 export interface ScanResponse {

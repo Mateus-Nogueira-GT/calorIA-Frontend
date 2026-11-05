@@ -16,6 +16,7 @@ export function ScanResultScreen({ navigation }: Props): React.JSX.Element {
   const error = useScannerStore((s) => s.error);
   const updateItem = useScannerStore((s) => s.updateItem);
   const removeItem = useScannerStore((s) => s.removeItem);
+  const chooseAlternative = useScannerStore((s) => s.chooseAlternative);
   const addManualItem = useScannerStore((s) => s.addManualItem);
   const confirm = useScannerStore((s) => s.confirm);
   const [saving, setSaving] = useState(false);
@@ -67,6 +68,7 @@ export function ScanResultScreen({ navigation }: Props): React.JSX.Element {
           onChange={updateItem}
           onRemove={removeItem}
           onAddManual={addManualItem}
+          onChooseAlternative={chooseAlternative}
         />
       </ScrollView>
       <View style={styles.footer}>

@@ -33,6 +33,8 @@ export interface AddMealPayload {
   date?: string;
   /** Tipo da refeição — 'other' cai no agrupamento por horário. */
   mealType?: AppMealType;
+  /** 05/11: veio do scanner — a dúvida fica guardada para o coach. */
+  scan?: { confidence: number; alternatives: string[] };
 }
 
 export interface DaySummary {

@@ -14,7 +14,12 @@ interface Props {
   item: ScanItem;
   onChange: (id: string, patch: Partial<ScanItem>) => void;
   onRemove: (id: string) => void;
+  /** 05/11: troca pelo alimento alternativo `index`. */
+  onChooseAlternative?: (id: string, index: number) => void;
 }
+
+/** Abaixo disto, item com alternativas pede para conferir o alimento. */
+const CHECK_FOOD_BELOW = 0.6;
 
 const NUM_FIELDS: { key: keyof ScanItem; label: string }[] = [
   { key: 'weightGrams', label: 'Peso (g)' },
@@ -54,17 +59,28 @@ function parseField(key: keyof ScanItem, raw: string): number | null | undefined
   return raw.trim() === '' ? null : undefined;
 }
 
-export function ScanItemRow({ item, onChange, onRemove }: Props): React.JSX.Element {
+function draftsFrom(item: ScanItem): DraftState {
+  return Object.fromEntries(
+    NUM_FIELDS.map((f) => [f.key, item[f.key] == null ? '' : String(item[f.key])]),
+  );
+}
+
+export function ScanItemRow({
+  item,
+  onChange,
+  onRemove,
+  onChooseAlternative,
+}: Props): React.JSX.Element {
   // Feedback 2026-10-12: os campos já eram editáveis, mas nada dizia isso.
   // Agora o item aparece em leitura com um botão "Editar" explícito; o item
   // manual (sem nome) já nasce em edição.
   const [weightTouched, setWeightTouched] = useState(false);
   const [editing, setEditing] = useState(item.name.trim() === '');
-  const [drafts, setDrafts] = useState<DraftState>(() =>
-    Object.fromEntries(
-      NUM_FIELDS.map((f) => [f.key, item[f.key] == null ? '' : String(item[f.key])]),
-    ),
-  );
+  const [drafts, setDrafts] = useState<DraftState>(() => draftsFrom(item));
+  const alternatives = item.alternatives ?? [];
+  // 05/11: renomear "Carne suína" para "Salmão" deixava os valores da carne.
+  const staleValues =
+    item.valuesFrom != null && item.name.trim() !== '' && item.name.trim() !== item.valuesFrom;
 
   const weightError =
     (weightTouched || item.weightGrams != null) &&
@@ -162,7 +178,11 @@ export function ScanItemRow({ item, onChange, onRemove }: Props): React.JSX.Elem
       ) : null}
       <Pressable
         disabled={editing && weightError}
-        onPress={() => setEditing((e) => !e)}
+        onPress={() => {
+          // Uma troca de alimento muda os valores: os campos partem do estado atual.
+          if (!editing) setDrafts(draftsFrom(item));
+          setEditing((e) => !e);
+        }}
         accessibilityRole="button"
         accessibilityLabel={editing ? 'Concluir edição' : `Editar ${item.name || 'item'}`}
         style={styles.editBtn}
@@ -170,7 +190,38 @@ export function ScanItemRow({ item, onChange, onRemove }: Props): React.JSX.Elem
       >
         <Text style={styles.editLabel}>{editing ? 'Concluir' : 'Editar'}</Text>
       </Pressable>
+      {staleValues ? (
+        <Text style={styles.staleValues} accessibilityRole="alert">
+          {`Os valores ainda são de "${item.valuesFrom}". Confira${
+            alternatives.length ? ' ou toque numa opção abaixo' : ''
+          }.`}
+        </Text>
+      ) : null}
+      {alternatives.length > 0 ? (
+        <View style={styles.alternatives}>
+          <Text style={styles.altLabel}>É outro alimento?</Text>
+          <View style={styles.altChips}>
+            {alternatives.map((alt, index) => (
+              <Pressable
+                key={`${alt.name}-${index}`}
+                onPress={() => onChooseAlternative?.(item.id, index)}
+                accessibilityRole="button"
+                accessibilityLabel={`Trocar para ${alt.name}`}
+                style={styles.altChip}
+                hitSlop={4}
+              >
+                <Text style={styles.altChipText}>{alt.name}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      ) : null}
       <ConfidenceBadge confidence={item.confidence} />
+      {alternatives.length > 0 && item.confidence < CHECK_FOOD_BELOW ? (
+        <Text style={styles.uncertain} accessibilityRole="text">
+          Confira o alimento
+        </Text>
+      ) : null}
       {item.uncertain ? (
         <Text style={styles.uncertain} accessibilityRole="text">
           Estimativa incerta — confira os valores
@@ -215,6 +266,28 @@ const styles = StyleSheet.create({
     color: colors.brandText,
   },
   uncertain: { fontSize: typography.fontSize.xs, color: colors.warning },
+  staleValues: { fontSize: typography.fontSize.sm, color: colors.warning },
+  alternatives: { gap: spacing.xs },
+  altLabel: {
+    fontSize: typography.fontSize.sm,
+    fontFamily: typography.fontFamily.semiBold,
+    color: colors.brandAnchor,
+  },
+  altChips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  altChip: {
+    minHeight: 36,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.brandDividerStrong,
+    backgroundColor: colors.brandSurface,
+  },
+  altChipText: {
+    fontSize: typography.fontSize.sm,
+    fontFamily: typography.fontFamily.semiBold,
+    color: colors.brandAnchor,
+  },
   readInfo: { flexGrow: 1, flexBasis: '65%', minWidth: 0 },
   readWeight: {
     fontSize: typography.fontSize.sm,
