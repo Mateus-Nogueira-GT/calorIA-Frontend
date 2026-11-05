@@ -128,7 +128,7 @@ describe('formatUserContext (I1)', () => {
     // almoço concluído (620) + maçã (95) = 715 kcal
     expect(out).toContain('consumidas 715 kcal')
     // faltam 2100-715 = 1385
-    expect(out).toContain('Faltam: 1385 kcal')
+    expect(out).toContain('Restante do dia: faltam 1385 kcal; faltam 102g de proteína.')
     // próxima refeição = jantar (não concluído)
     expect(out).toContain('Próxima refeição do plano: Jantar')
     expect(out).toContain('Streak atual: 5 dias')
@@ -161,7 +161,7 @@ describe('formatUserContext — truncamento por linha (C4)', () => {
     return {
       profile: fullProfile,
       diet: {
-        name: 'Plano '.repeat(350).trim(), // ~2100 chars: força o corte (teto 2400)
+        name: 'Plano '.repeat(530).trim(), // ~3180 chars: força o corte (teto 3600)
         targetCalories: 2100,
         targetProtein: 148,
         targetCarbs: 210,
@@ -177,7 +177,7 @@ describe('formatUserContext — truncamento por linha (C4)', () => {
 
   it('nunca corta uma linha no meio: toda linha termina com ponto', () => {
     const out = formatUserContext(bigData())
-    expect(out.length).toBeLessThanOrEqual(2400)
+    expect(out.length).toBeLessThanOrEqual(3600)
     const lines = out.split('\n').slice(1) // sem o cabeçalho
     for (const l of lines) expect(l).toMatch(/\.$/)
   })
@@ -204,14 +204,14 @@ describe('formatUserContext — truncamento por linha (C4)', () => {
       date: '2026-07-24',
     }
     const out = formatUserContext(data)
-    expect(out.indexOf('Faltam:')).toBeGreaterThan(-1)
+    expect(out.indexOf('Restante do dia:')).toBeGreaterThan(-1)
     expect(out.indexOf('Perfil:')).toBeGreaterThan(-1)
-    expect(out.indexOf('Faltam:')).toBeLessThan(out.indexOf('Perfil:'))
+    expect(out.indexOf('Restante do dia:')).toBeLessThan(out.indexOf('Perfil:'))
   })
 
-  it('o que não cabe é a ÚLTIMA linha (streak), não a de "Faltam"', () => {
+  it('o que não cabe é a ÚLTIMA linha (streak), não a do restante do dia', () => {
     const out = formatUserContext(bigData())
-    expect(out).toContain('Faltam: 1480 kcal, 102g proteína.')
+    expect(out).toContain('Restante do dia: faltam 1480 kcal; faltam 102g de proteína.')
     expect(out).not.toContain('Streak')
   })
 })
@@ -457,9 +457,11 @@ describe('último peso da Evolução (04/11)', () => {
       profile: fullProfile,
       lastWeight: { kg: 79.4, date: '2026-11-02' },
     }
-    expect(formatUserContext(data)).toContain(
-      'Último peso registrado na Evolução: 79.4 kg em 02/11.',
-    )
+    const out = formatUserContext(data)
+    // 05/11 (M7): um peso só no contexto — o mais recente, com a origem.
+    expect(out).toContain('Perfil: 79.4kg (Evolução, 02/11), 178cm')
+    expect(out).not.toContain('82kg')
+    expect(out).not.toContain('Último peso registrado')
     const known = formatKnownData(data)
     expect(known).toContain('peso: 79.4kg')
     expect(known).not.toContain('peso: 82kg')
@@ -474,7 +476,85 @@ describe('último peso da Evolução (04/11)', () => {
     })
     expect(ctx.lastWeight).toEqual({ kg: 79.4, date: '2026-11-02' })
     const q = calls.find((c) => c.sql.includes('FROM weight_entries'))
-    expect(q?.sql).toContain('ORDER BY date DESC')
+    expect(q?.sql).toContain('ORDER BY date DESC, created_at DESC')
     expect(q?.params).toEqual(expect.arrayContaining([30, 300]))
+  })
+})
+
+describe('restante do dia sem número negativo (05/11, M8)', () => {
+  const diet = {
+    name: 'Plano',
+    targetCalories: 2100,
+    targetProtein: 148,
+    targetCarbs: 210,
+    targetFat: 58,
+  }
+  const eaten = (calories: number, protein: number) => ({
+    id: 'abcdef12-0000-0000-0000-000000000000',
+    name: 'Rodízio',
+    calories,
+    protein,
+    carbs: 0,
+    fat: 0,
+    fiber: null,
+    loggedAt: '2026-07-24 23:14:00+00',
+    mealType: 'dinner' as const,
+  })
+
+  it('passou da meta → diz quanto passou', () => {
+    const out = formatUserContext({ ...emptyData, diet, freeMeals: [eaten(2450, 160)] })
+    expect(out).toContain(
+      'Restante do dia: passou da meta em 350 kcal; passou da meta de proteína em 12g.',
+    )
+    expect(out).not.toContain('-350')
+    expect(out).not.toContain('-12')
+  })
+
+  it('bateu exatamente → meta atingida', () => {
+    const out = formatUserContext({ ...emptyData, diet, freeMeals: [eaten(2100, 148)] })
+    expect(out).toContain('Restante do dia: meta de calorias atingida; meta de proteína atingida.')
+  })
+})
+
+describe('ordem do corte com contexto longo (05/11, M9)', () => {
+  it('diário cheio de nomes longos não derruba o aviso de registro impossível nem o perfil', () => {
+    const long = (i: number) => ({
+      id: `${i}bcdef12-0000-0000-0000-000000000000`,
+      name: `Prato muito comprido número ${i} `.repeat(5),
+      calories: 400,
+      protein: 30,
+      carbs: 40,
+      fat: 10,
+      fiber: null,
+      weightGrams: 300,
+      loggedAt: `2026-07-24 1${i}:00:00+00`,
+      mealType: 'lunch' as const,
+    })
+    const out = formatUserContext({
+      ...emptyData,
+      profile: fullProfile,
+      diet: {
+        name: 'Plano',
+        targetCalories: 2100,
+        targetProtein: 148,
+        targetCarbs: 210,
+        targetFat: 58,
+      },
+      today: todayPlan(),
+      streak: 3,
+      freeMeals: [
+        ...Array.from({ length: 8 }, (_, i) => long(i)),
+        { ...long(9), calories: 999_999 },
+      ],
+    })
+    expect(out.length).toBeLessThanOrEqual(3600)
+    expect(out).toMatch(/1 registro com valores impossíveis/)
+    expect(out).toContain('Perfil:')
+    expect(out).toContain('Alergias: amendoim')
+    expect(out.indexOf('valores impossíveis')).toBeLessThan(out.indexOf('Registros de hoje'))
+    // Nome do registro cortado em 60 caracteres.
+    const line = out.split('\n').find((l) => l.startsWith('- [ref 0bcdef]')) ?? ''
+    const name = line.replace(/^- \[ref \w+\] \d\d:\d\d /, '').split(' — ')[0]
+    expect(name.length).toBeLessThanOrEqual(60)
   })
 })

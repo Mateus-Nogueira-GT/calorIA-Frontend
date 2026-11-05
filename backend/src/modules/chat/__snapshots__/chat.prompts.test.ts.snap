@@ -144,7 +144,7 @@ INSTRUÇÃO: se o usuário disser que um registro está errado (ex.: "não era c
 ## CONTEXTO DO USUÁRIO (dados reais — use-os; não invente valores)
 Dieta ativa: "Plano personalizado" — meta 1800 kcal | 108g prot | 200g carb | 50g gord.
 Hoje (2026-09-09): consumidas 0 kcal / 0g prot (plano: 0 de 0 refeições concluídas; diário livre: 0 item(ns)).
-Faltam: 1800 kcal, 108g proteína.
+Restante do dia: faltam 1800 kcal; faltam 108g de proteína.
 Perfil: 60kg, 165cm, feminino, objetivo: manter peso, atividade: leve.
 Streak atual: 12 dias.
 

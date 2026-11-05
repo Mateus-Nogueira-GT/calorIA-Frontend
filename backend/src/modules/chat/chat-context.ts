@@ -53,8 +53,10 @@ const KNOWN_GOAL_LABELS: Record<string, string> = {
 }
 
 // 04/11: a lista dos registros do dia entrou no contexto (até 8 linhas).
-const CONTEXT_MAX_CHARS = 2400
+// 05/11: e o plano de hoje e os dias anteriores — o teto subiu de novo.
+const CONTEXT_MAX_CHARS = 3600
 const DIARY_MAX_ITEMS = 8
+const NAME_MAX_CHARS = 60
 const LIST_MAX_ITEMS = 6
 
 interface ContextProfile {
@@ -117,6 +119,11 @@ export function mealRef(id: string): string {
 
 const fmtG = (n: number) => `${Math.round(n * 10) / 10}`
 
+/** Nome de registro/prato no contexto: um nome gigante não pode comer o teto. */
+function shortName(name: string): string {
+  return name.length > NAME_MAX_CHARS ? `${name.slice(0, NAME_MAX_CHARS - 1).trimEnd()}…` : name
+}
+
 /**
  * Feedback de 04/11: o contexto trazia só "diário livre: 2 item(ns)" — o
  * coach não sabia O QUE foi registrado e não conseguia analisar "minha
@@ -136,7 +143,7 @@ function diaryLines(data: UserContextData): string[] {
     const time = localTime(m.loggedAt, data.tzOffsetMinutes)
     const weight = m.weightGrams != null ? `${fmtG(m.weightGrams)} g · ` : ''
     out.push(
-      `- [ref ${mealRef(m.id)}] ${time ? `${time} ` : ''}${m.name} — ${weight}${Math.round(m.calories)} kcal · ` +
+      `- [ref ${mealRef(m.id)}] ${time ? `${time} ` : ''}${shortName(m.name)} — ${weight}${Math.round(m.calories)} kcal · ` +
         `P ${fmtG(m.protein)} g · C ${fmtG(m.carbs)} g · G ${fmtG(m.fat)} g.`,
     )
   }
@@ -254,7 +261,7 @@ export async function fetchUserContext(
       SELECT weight_kg, date::TEXT AS date FROM weight_entries
       WHERE user_id = ${userId}
         AND weight_kg BETWEEN ${BODY_LIMITS.weightKg.min} AND ${BODY_LIMITS.weightKg.max}
-      ORDER BY date DESC LIMIT 1
+      ORDER BY date DESC, created_at DESC LIMIT 1
     `
     lastWeight = row ? { kg: Number(row.weight_kg), date: row.date } : null
   } catch {
@@ -335,9 +342,10 @@ export function formatUserContext(raw: UserContextData): string {
       `Hoje (${data.date}): consumidas ${c.calories} kcal / ${c.protein}g prot ` +
         `(plano: ${c.planCompleted} de ${c.planTotal} refeições concluídas; diário livre: ${data.freeMeals.length} item(ns)).`,
     )
-    const remainingCal = data.diet.targetCalories - c.calories
-    const remainingProt = data.diet.targetProtein - c.protein
-    lines.push(`Faltam: ${remainingCal} kcal, ${remainingProt}g proteína.`)
+    lines.push(
+      `Restante do dia: ${remainingText(data.diet.targetCalories - c.calories, 'kcal')}; ` +
+        `${remainingText(data.diet.targetProtein - c.protein, 'protein')}.`,
+    )
     const next = data.today?.meals.find((m) => !m.completedToday)
     if (next) {
       const at = next.suggestedTime ? ` (${next.suggestedTime})` : ''
@@ -354,8 +362,8 @@ export function formatUserContext(raw: UserContextData): string {
     }
   }
 
-  lines.push(...diaryLines(data))
-
+  // 05/11 (M9): o corte é do fim para o começo. O aviso e o perfil vêm antes
+  // das listas longas (diário, plano), que são as que podem ficar de fora.
   if (ignored > 0) {
     const one = ignored === 1
     lines.push(
@@ -365,9 +373,15 @@ export function formatUserContext(raw: UserContextData): string {
     )
   }
 
-  if (p && (p.weight_kg || p.height_cm || p.goal)) {
+  // 05/11 (M7): um peso só — o da Evolução, se houver, é o mais recente.
+  const weight = data.lastWeight
+    ? `${data.lastWeight.kg}kg (Evolução, ${ddmm(data.lastWeight.date)})`
+    : p?.weight_kg
+      ? `${p.weight_kg}kg`
+      : null
+  if (p && (weight || p.height_cm || p.goal)) {
     const bits: string[] = []
-    if (p.weight_kg) bits.push(`${p.weight_kg}kg`)
+    if (weight) bits.push(weight)
     if (p.height_cm) bits.push(`${p.height_cm}cm`)
     const age = ageFromBirthDate(p.birth_date)
     if (age != null) bits.push(`${age} anos`)
@@ -376,6 +390,8 @@ export function formatUserContext(raw: UserContextData): string {
     if (p.activity_level)
       bits.push(`atividade: ${ACTIVITY_LABELS[p.activity_level] ?? p.activity_level}`)
     lines.push(`Perfil: ${bits.join(', ')}.`)
+  } else if (weight) {
+    lines.push(`Peso atual: ${weight}.`)
   }
 
   if (p?.dietary_restrictions?.length || p?.allergies?.length) {
@@ -387,16 +403,34 @@ export function formatUserContext(raw: UserContextData): string {
     lines.push(`${parts.join('. ')}.`)
   }
 
-  if (data.lastWeight) {
-    const [, mm, dd] = data.lastWeight.date.split('-')
-    lines.push(`Último peso registrado na Evolução: ${data.lastWeight.kg} kg em ${dd}/${mm}.`)
-  }
+  lines.push(...diaryLines(data))
+
   if (data.streak != null && data.streak > 0) lines.push(`Streak atual: ${data.streak} dias.`)
 
   if (lines.length === 0) return ''
 
   const header = '## CONTEXTO DO USUÁRIO (dados reais — use-os; não invente valores)'
   return truncateByLines(header, lines, CONTEXT_MAX_CHARS)
+}
+
+/** 'YYYY-MM-DD' → 'dd/mm'. */
+function ddmm(date: string): string {
+  const [, mm, dd] = date.split('-')
+  return `${dd}/${mm}`
+}
+
+/**
+ * 05/11 (M8): "Faltam: -350 kcal" quando o usuário passou da meta. Cada número
+ * sai na forma certa: falta, passou ou atingida.
+ */
+function remainingText(remaining: number, kind: 'kcal' | 'protein'): string {
+  const n = Math.abs(Math.round(remaining))
+  if (kind === 'kcal') {
+    if (n === 0) return 'meta de calorias atingida'
+    return remaining > 0 ? `faltam ${n} kcal` : `passou da meta em ${n} kcal`
+  }
+  if (n === 0) return 'meta de proteína atingida'
+  return remaining > 0 ? `faltam ${n}g de proteína` : `passou da meta de proteína em ${n}g`
 }
 
 /** Acrescenta linhas inteiras até o teto; a primeira que não couber encerra. */
