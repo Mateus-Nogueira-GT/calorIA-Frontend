@@ -61,5 +61,17 @@ target 'calorIA' do
       :mac_catalyst_enabled => false,
       # :ccache_enabled => true
     )
+
+    # O Xcode do SDK iOS 27 recusa (erro, não aviso) pods com deployment target
+    # abaixo de 15 — GoogleSignIn, Promises, AppAuth, image-picker e os bundles
+    # de privacidade deles ainda declaram 9–13.4. Iguala ao mínimo do app.
+    installer.pods_project.targets.each do |target|
+      target.build_configurations.each do |build_config|
+        current = build_config.build_settings['IPHONEOS_DEPLOYMENT_TARGET']
+        if current.nil? || current.to_f < 16.4
+          build_config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '16.4'
+        end
+      end
+    end
   end
 end

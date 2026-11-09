@@ -2,7 +2,7 @@
   "_doc": "Builds de loja antigos que ainda recebem OTA. Ver scripts/publish-legacy-ota.js. 'verifiedAgainst' é o fingerprint atual em que a compatibilidade foi conferida; se o nativo mudar, o OTA legado é pulado até alguém reconferir e atualizar este arquivo.",
   "verifiedAgainst": {
     "android": "50da5202b7ca7e6c2ec7c3472b488a5ce8a063bd",
-    "ios": "6e8cc6f220bbd716337127379b76643fcb34899f"
+    "ios": "eaa369fb81059f89f624e77c90e7ecea1b88e07d"
   },
   "legacy": {
     "android": [
@@ -11,6 +11,7 @@
       "0457893087a8537c05f9545b55dd20050aed780b"
     ],
     "ios": [
+      "6e8cc6f220bbd716337127379b76643fcb34899f",
       "53c1cf8b180ac12f82360b6c4a4f272ba46bacf5",
       "a0e3c5c63b023d266f778b9d260cbb79fc093abd"
     ]
