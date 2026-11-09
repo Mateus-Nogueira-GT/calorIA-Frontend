@@ -4,8 +4,15 @@ import { AppError } from '../../shared/errors.js'
 import { registerAdminGuard } from '../../shared/require-admin.js'
 import type { JwtPayload } from '../../shared/types.js'
 import { assertInvitesEnabled, createInvite } from '../credit-invites/credit-invites.service.js'
-import { registerCreditErrors } from '../credits/credits.errors.js'
 import { grantCredits, setUnlimited } from '../credits/credit-grants.service.js'
+import { registerCreditErrors } from '../credits/credits.errors.js'
+import { createPlan, listAllPlans, updatePlan } from '../subscriptions/plans.service.js'
+import { assertSubscriptionsEnabled } from '../subscriptions/subscriptions.config.js'
+import {
+  createPlanBodySchema,
+  planIdParamsSchema,
+  updatePlanBodySchema,
+} from '../subscriptions/subscriptions.schemas.js'
 import { listInvites } from './admin-invites.service.js'
 import { getOverview } from './admin-overview.service.js'
 import { listUsers } from './admin-users.service.js'
@@ -85,6 +92,21 @@ const routes: FastifyPluginAsyncZod = async (f) => {
   )
 
   await f.register(invitesRoutes)
+  await f.register(plansRoutes)
+}
+
+/** Planos de assinatura: dependem de SUBSCRIPTIONS_ENABLED (escopo próprio, herda JWT e guard). */
+const plansRoutes: FastifyPluginAsyncZod = async (f) => {
+  f.addHook('preHandler', async () => assertSubscriptionsEnabled())
+  f.get('/subscription-plans', () => listAllPlans(f))
+  f.post('/subscription-plans', { schema: { body: createPlanBodySchema } }, (req) =>
+    createPlan(f, req.body),
+  )
+  f.patch(
+    '/subscription-plans/:id',
+    { schema: { params: planIdParamsSchema, body: updatePlanBodySchema } },
+    (req) => updatePlan(f, req.params.id, req.body),
+  )
 }
 
 /** Convites: dependem de CREDIT_INVITES_ENABLED (escopo próprio, herda JWT e guard). */
