@@ -28,7 +28,6 @@ export async function resetSubscriptionSchema(db: postgres.Sql) {
       await readFile(new URL(`../../../supabase/migrations/${migration}`, import.meta.url), 'utf8'),
     )
 }
-
 ;(url ? describe : describe.skip)('assinaturas / migração em PostgreSQL real', () => {
   const db = postgres(url ?? 'postgres://localhost/unused', { max: 5, onnotice: () => {} })
   const user = randomUUID()
