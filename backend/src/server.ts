@@ -28,6 +28,8 @@ import foodLogRoutes from './modules/food-log/food-log.routes.js'
 import friendsRoutes from './modules/friends/friends.routes.js'
 import notificationsRoutes from './modules/notifications/notifications.routes.js'
 import scannerRoutes from './modules/scanner/scanner.routes.js'
+import asaasWebhookRoutes from './modules/subscriptions/asaas-webhook.routes.js'
+import subscriptionsRoutes from './modules/subscriptions/subscriptions.routes.js'
 import usersRoutes from './modules/users/users.routes.js'
 import weightRoutes from './modules/weight/weight.routes.js'
 
@@ -221,6 +223,9 @@ export async function buildApp() {
   await app.register(scannerRoutes, { prefix: '/scanner' })
   await app.register(notificationsRoutes, { prefix: '/notifications' })
   await app.register(weightRoutes, { prefix: '/weight' })
+  // Assinatura (Asaas): 404 com SUBSCRIPTIONS_ENABLED=false. O webhook não usa JWT.
+  await app.register(subscriptionsRoutes, { prefix: '/subscriptions' })
+  await app.register(asaasWebhookRoutes, { prefix: '/webhooks/asaas' })
 
   return app
 }
