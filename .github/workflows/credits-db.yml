@@ -37,3 +37,7 @@ jobs:
         run: npx vitest run src/modules/admin/admin.integration.test.ts
         env:
           TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/caloria_credits_test
+      - name: Assinaturas (migração, webhook, créditos) em banco descartável
+        run: npx vitest run src/modules/subscriptions/
+        env:
+          TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/caloria_credits_test

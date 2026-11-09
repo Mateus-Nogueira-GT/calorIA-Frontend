@@ -1,5 +1,8 @@
 import type { FastifyInstance } from 'fastify'
+import { env } from '../../shared/env.js'
 import { AppError } from '../../shared/errors.js'
+import { asaasFromEnv } from '../subscriptions/subscriptions.config.js'
+import { cancelOnAccountDeletion } from '../subscriptions/subscriptions.service.js'
 import type { Profile, UpdateProfileBody } from './users.schemas.js'
 
 /**
@@ -199,6 +202,10 @@ export async function deleteUserAccount(fastify: FastifyInstance, userId: string
     SELECT is_demo FROM profiles WHERE id = ${userId}
   `
   assertNotDemoAccount(profile)
+
+  // Para as cobranças futuras no Asaas. Best-effort: nunca impede a exclusão.
+  if (env.SUBSCRIPTIONS_ENABLED && env.ASAAS_API_KEY)
+    await cancelOnAccountDeletion(fastify, asaasFromEnv(fastify), userId)
 
   // Best-effort: uma falha aqui não pode impedir o usuário de excluir a conta —
   // o direito à exclusão vale mais do que alguns arquivos órfãos no bucket.

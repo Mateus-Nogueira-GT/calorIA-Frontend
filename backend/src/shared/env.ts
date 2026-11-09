@@ -23,6 +23,34 @@ const envSchema = z
       .refine((value) => new URL(value).protocol === 'https:', 'Invite URL must use HTTPS')
       .default('https://calor-ia-frontend.vercel.app/convite'),
 
+    // Assinatura paga pelo Asaas (spec 2026-11-09). Desligada até aplicar a
+    // migração 026 e cadastrar os planos.
+    SUBSCRIPTIONS_ENABLED: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((v) => v === 'true'),
+    ASAAS_ENV: z.preprocess(
+      (v) => (v === '' || v == null ? undefined : v),
+      z.enum(['sandbox', 'production']).default('sandbox'),
+    ),
+    ASAAS_API_KEY: z.preprocess(
+      (v) => (v === '' || v == null ? undefined : v),
+      z.string().optional(),
+    ),
+    // Mesmo valor cadastrado no webhook do Asaas (header asaas-access-token).
+    ASAAS_WEBHOOK_TOKEN: z.preprocess(
+      (v) => (v === '' || v == null ? undefined : v),
+      z.string().min(32).max(255).optional(),
+    ),
+    ASAAS_SUCCESS_URL: z.preprocess(
+      (v) => (v === '' || v == null ? undefined : v),
+      z
+        .string()
+        .url()
+        .refine((value) => new URL(value).protocol === 'https:', 'Use HTTPS')
+        .optional(),
+    ),
+
     // Supabase
     SUPABASE_URL: z.string().url(),
     SUPABASE_ANON_KEY: z.string(),
