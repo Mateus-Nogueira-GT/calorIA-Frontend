@@ -40,14 +40,30 @@ export async function ensureWallet(tx: CreditTransaction, userId: string): Promi
   if (created.length)
     await tx`INSERT INTO credit_ledger(user_id,kind,units) VALUES(${userId},'welcome',${CREDIT_POLICY.welcome_units})`
 }
+/**
+ * Assinatura ilimitada paga (spec 2026-11-09). Só consulta com a flag ligada:
+ * antes da migração 026 a tabela não existe, e a cobrança não pode quebrar.
+ */
+export async function hasUnlimitedSubscription(
+  tx: CreditTransaction,
+  userId: string,
+): Promise<boolean> {
+  if (!env.SUBSCRIPTIONS_ENABLED) return false
+  const rows =
+    await tx`SELECT 1 FROM subscriptions WHERE user_id=${userId} AND unlimited AND paid_until > now() LIMIT 1`
+  return rows.length > 0
+}
 export async function wallet(fastify: FastifyInstance, userId: string) {
   if (!env.CREDITS_ENFORCEMENT_ENABLED && !env.CREDIT_INVITES_ENABLED)
     return { balance_units: 0, reserved_units: 0, available_units: 0, unlimited: false }
   const [row] = await fastify.db.begin(async (tx) => {
     await ensureWallet(tx, userId)
-    return tx<
+    const rows = await tx<
       { balance_units: number; reserved_units: number; unlimited: boolean }[]
     >`SELECT balance_units,reserved_units,unlimited FROM credit_wallets WHERE user_id=${userId}`
+    if (rows[0] && !rows[0].unlimited && (await hasUnlimitedSubscription(tx, userId)))
+      rows[0].unlimited = true
+    return rows
   })
   return {
     balance_units: row?.balance_units ?? 0,
@@ -151,7 +167,7 @@ export async function runCreditOperation<T>(
         return
       }
       // Operação já reservada antes de ligar o ilimitado segue o fluxo acima e é debitada.
-      if (w.unlimited) {
+      if (w.unlimited || (await hasUnlimitedSubscription(tx, input.userId))) {
         unlimited = true
         return
       }

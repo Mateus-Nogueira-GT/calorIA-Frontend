@@ -1,7 +1,11 @@
 import { randomUUID } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
+import type { FastifyInstance } from 'fastify'
 import postgres from 'postgres'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { env } from '../../shared/env.js'
+import { runCreditOperation, wallet } from '../credits/credits.service.js'
+import { type AsaasEvent, handleAsaasEvent } from './asaas-webhook.service.js'
 
 const url = process.env.TEST_DATABASE_URL
 if (url && !['localhost', '127.0.0.1', '[::1]'].includes(new URL(url).hostname))
@@ -120,5 +124,169 @@ export async function resetSubscriptionSchema(db: postgres.Sql) {
       WHERE grantee IN ('anon','authenticated') AND table_name IN
       ('subscription_plans','payment_customers','subscriptions','subscription_payments','payment_webhook_events')`
     expect(rows).toHaveLength(0)
+  })
+})
+;(url ? describe : describe.skip)('assinaturas / webhook e créditos em PostgreSQL real', () => {
+  const db = postgres(url ?? 'postgres://localhost/unused', { max: 5, onnotice: () => {} })
+  const noop = () => {}
+  const f = {
+    db,
+    log: { info: noop, warn: noop, error: noop, debug: noop },
+  } as unknown as FastifyInstance
+  const user = randomUUID()
+  let planId = ''
+  const flags = { credits: env.CREDITS_ENFORCEMENT_ENABLED, subs: env.SUBSCRIPTIONS_ENABLED }
+  beforeAll(() => resetSubscriptionSchema(db))
+  beforeEach(async () => {
+    await db`TRUNCATE payment_webhook_events,subscription_payments,subscriptions,subscription_plans,payment_customers,credit_ledger,credit_operations,credit_wallets,profiles,auth.users CASCADE`
+    await db`INSERT INTO auth.users(id) VALUES(${user})`
+    await db`INSERT INTO profiles(id) VALUES(${user})`
+    const [p] =
+      await db`INSERT INTO subscription_plans(code,name,price_cents,cycle,credits_per_cycle,unlimited)
+      VALUES('pro','Pro',2990,'MONTHLY',100,false) RETURNING id`
+    planId = p.id
+  })
+  afterAll(async () => {
+    env.CREDITS_ENFORCEMENT_ENABLED = flags.credits
+    env.SUBSCRIPTIONS_ENABLED = flags.subs
+    await db.end()
+  })
+
+  const subscribe = (
+    over: { credits?: number | null; unlimited?: boolean; status?: string } = {},
+  ) =>
+    db`INSERT INTO subscriptions(user_id,plan_id,asaas_subscription_id,status,price_cents,cycle,credits_per_cycle,unlimited)
+      VALUES(${user},${planId},'sub_1',${over.status ?? 'pending'},2990,'MONTHLY',
+        ${over.credits === undefined ? 100 : over.credits},${over.unlimited ?? false}) RETURNING id`
+  const payment = (event: string, id = `evt_${randomUUID()}`, pay = 'pay_1'): AsaasEvent => ({
+    id,
+    event,
+    payment: {
+      id: pay,
+      subscription: 'sub_1',
+      value: 29.9,
+      dueDate: '2026-11-09',
+      invoiceUrl: 'https://asaas/i/1',
+    },
+  })
+  const balance = async () =>
+    (await db`SELECT balance_units FROM credit_wallets WHERE user_id=${user}`)[0]?.balance_units
+  const sub = async () => (await db`SELECT * FROM subscriptions WHERE user_id=${user}`)[0]
+
+  it('pagamento confirmado: ativa, libera o ciclo e credita uma vez só', async () => {
+    await subscribe()
+    expect(await handleAsaasEvent(f, payment('PAYMENT_CONFIRMED', 'evt_1'))).toBe('paid')
+    const s = await sub()
+    expect(s.status).toBe('active')
+    // 09/11 + 1 mês + 1 dia, meia-noite em São Paulo (03:00 UTC).
+    expect(new Date(s.paid_until).toISOString()).toBe('2026-12-10T03:00:00.000Z')
+    expect(await balance()).toBe(75 + 500)
+    // Mesmo evento de novo, e depois RECEIVED do mesmo pagamento: nada muda.
+    expect(await handleAsaasEvent(f, payment('PAYMENT_CONFIRMED', 'evt_1'))).toBe('duplicate')
+    expect(await handleAsaasEvent(f, payment('PAYMENT_RECEIVED', 'evt_2'))).toBe('paid')
+    expect(await balance()).toBe(75 + 500)
+    const ledger =
+      await db`SELECT kind,units FROM credit_ledger WHERE user_id=${user} AND kind='subscription'`
+    expect(ledger).toEqual([{ kind: 'subscription', units: 500 }])
+    // Fora de ordem: PAYMENT_CREATED atrasado não volta o pagamento a "em aberto".
+    await handleAsaasEvent(f, payment('PAYMENT_CREATED', 'evt_3'))
+    const [p] = await db`SELECT status FROM subscription_payments WHERE asaas_payment_id='pay_1'`
+    expect(p.status).toBe('RECEIVED')
+  })
+
+  it('renovação estende a partir do vencimento seguinte e credita de novo', async () => {
+    await subscribe()
+    await handleAsaasEvent(f, payment('PAYMENT_CONFIRMED'))
+    await handleAsaasEvent(f, {
+      id: 'evt_renova',
+      event: 'PAYMENT_RECEIVED',
+      payment: { id: 'pay_2', subscription: 'sub_1', value: 29.9, dueDate: '2026-12-09' },
+    })
+    expect(new Date((await sub()).paid_until).toISOString()).toBe('2027-01-10T03:00:00.000Z')
+    expect(await balance()).toBe(75 + 1000)
+  })
+
+  it('estorno: retira até o saldo disponível e encerra o período', async () => {
+    await subscribe()
+    await handleAsaasEvent(f, payment('PAYMENT_CONFIRMED'))
+    // O usuário já gastou parte: sobram 175 unidades.
+    await db`UPDATE credit_wallets SET balance_units=175 WHERE user_id=${user}`
+    expect(await handleAsaasEvent(f, payment('PAYMENT_REFUNDED'))).toBe('reversed')
+    expect(await balance()).toBe(0)
+    expect(new Date((await sub()).paid_until).getTime()).toBeLessThanOrEqual(Date.now())
+    // Chargeback depois do estorno não retira de novo.
+    await db`UPDATE credit_wallets SET balance_units=300 WHERE user_id=${user}`
+    await handleAsaasEvent(f, payment('PAYMENT_CHARGEBACK_REQUESTED'))
+    expect(await balance()).toBe(300)
+    const rev = await db`SELECT units FROM credit_ledger WHERE kind='subscription_reversal'`
+    expect(rev).toEqual([{ units: -175 }])
+    // Confirmação atrasada depois do estorno não libera nada.
+    await handleAsaasEvent(f, payment('PAYMENT_RECEIVED'))
+    expect(await balance()).toBe(300)
+  })
+
+  it('atraso, cancelamento e evento de fora do CalorIA', async () => {
+    await subscribe({ status: 'active' })
+    expect(await handleAsaasEvent(f, payment('PAYMENT_OVERDUE'))).toBe('overdue')
+    expect((await sub()).status).toBe('past_due')
+    expect(
+      await handleAsaasEvent(f, {
+        id: 'evt_del',
+        event: 'SUBSCRIPTION_DELETED',
+        subscription: { id: 'sub_1' },
+      }),
+    ).toBe('subscription_canceled')
+    expect((await sub()).status).toBe('canceled')
+    expect(
+      await handleAsaasEvent(f, {
+        id: 'evt_outro',
+        event: 'PAYMENT_CONFIRMED',
+        payment: { id: 'pay_x', subscription: 'sub_de_outro_produto' },
+      }),
+    ).toBe('ignored')
+    expect(
+      await handleAsaasEvent(f, {
+        id: 'evt_avulso',
+        event: 'PAYMENT_CONFIRMED',
+        payment: { id: 'pay_y' },
+      }),
+    ).toBe('ignored')
+    const events = await db`SELECT event_id FROM payment_webhook_events ORDER BY event_id`
+    expect(events.map((e) => e.event_id)).toContain('evt_outro')
+  })
+
+  it('plano ilimitado pago: foto não debita; vencido, volta a debitar', async () => {
+    env.CREDITS_ENFORCEMENT_ENABLED = true
+    env.SUBSCRIPTIONS_ENABLED = true
+    await subscribe({ credits: null, unlimited: true })
+    await handleAsaasEvent(f, payment('PAYMENT_CONFIRMED'))
+    const op = (key: string) =>
+      runCreditOperation(
+        f,
+        { userId: user, key, payload: { k: key }, type: 'photo', costUnits: 15 },
+        async () => 'ok',
+      )
+    const pago = await op('chave-ilimitado-0001')
+    expect(pago.receipt).toBeNull()
+    expect((await wallet(f, user)).unlimited).toBe(true)
+    expect(await balance()).toBe(75)
+
+    await db`UPDATE subscriptions SET paid_until = now() - interval '1 minute' WHERE user_id=${user}`
+    const vencido = await op('chave-ilimitado-0002')
+    expect(vencido.receipt?.charged_units).toBe(15)
+    expect((await wallet(f, user)).unlimited).toBe(false)
+  })
+
+  it('flag desligada: a cobrança de créditos ignora a assinatura', async () => {
+    env.CREDITS_ENFORCEMENT_ENABLED = true
+    env.SUBSCRIPTIONS_ENABLED = false
+    await subscribe({ credits: null, unlimited: true })
+    await handleAsaasEvent(f, payment('PAYMENT_CONFIRMED'))
+    const r = await runCreditOperation(
+      f,
+      { userId: user, key: 'chave-flag-off-00001', payload: {}, type: 'photo', costUnits: 15 },
+      async () => 'ok',
+    )
+    expect(r.receipt?.charged_units).toBe(15)
   })
 })
