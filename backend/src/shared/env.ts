@@ -51,35 +51,6 @@ const envSchema = z
         .optional(),
     ),
 
-    // Assinatura paga pelo Asaas (spec 2026-11-09). Ligar só depois da migração 026.
-    SUBSCRIPTIONS_ENABLED: z
-      .enum(['true', 'false'])
-      .default('false')
-      .transform((v) => v === 'true'),
-    ASAAS_ENV: z.enum(['sandbox', 'production']).default('sandbox'),
-    ASAAS_API_KEY: z.preprocess(
-      (v) => (v === '' || v == null ? undefined : v),
-      z.string().min(10).optional(),
-    ),
-    // Mesmo valor cadastrado no webhook do Asaas (header asaas-access-token).
-    ASAAS_WEBHOOK_TOKEN: z.preprocess(
-      (v) => (v === '' || v == null ? undefined : v),
-      z
-        .string()
-        .min(32)
-        .max(255)
-        .regex(/^\S+$/, 'sem espaços')
-        .optional(),
-    ),
-    ASAAS_SUCCESS_URL: z.preprocess(
-      (v) => (v === '' || v == null ? undefined : v),
-      z
-        .string()
-        .url()
-        .refine((value) => new URL(value).protocol === 'https:', 'Use HTTPS')
-        .optional(),
-    ),
-
     // Supabase
     SUPABASE_URL: z.string().url(),
     SUPABASE_ANON_KEY: z.string(),
