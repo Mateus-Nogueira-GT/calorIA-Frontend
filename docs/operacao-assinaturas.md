@@ -1,4 +1,40 @@
-# Operação: assinatura paga pelo Asaas
+# Operação: pagamentos pelo Asaas (recarga de créditos e assinatura)
+
+> **Modelo em uso (12/11/2026): recarga de créditos** (spec
+> `docs/superpowers/specs/2026-11-12-recarga-de-creditos.md`). A assinatura segue no código,
+> desligada. A parte do Asaas (chave, webhook, sandbox/produção) é a mesma para as duas.
+
+## Recarga de créditos — ordem para ligar
+1. **Migrações:** rodar `026_subscriptions.sql` e depois `027_credit_purchases.sql` no SQL
+   Editor.
+2. **Vercel:**
+   - `ASAAS_ENV`, `ASAAS_API_KEY` e `ASAAS_WEBHOOK_TOKEN`;
+   - `CREDIT_PURCHASES_ENABLED=true`;
+   - redeploy.
+3. **Webhook no Asaas:** eventos de cobrança (`PAYMENT_*`), como no passo 2 abaixo.
+4. **Pacotes:** no app, em Perfil › Administração › aba **Pacotes**. Também dá pela API
+   `POST /admin/credit-packages`.
+   - Preço mínimo: R$ 5,00, o mínimo do Asaas.
+   - 1 crédito = 5 unidades; uma foto custa 3 créditos.
+5. **Teste no sandbox:**
+   - Perfil › Créditos › Comprar créditos;
+   - na primeira vez, informe nome e CPF;
+   - pague a fatura no sandbox e volte ao app: os créditos entram em segundos.
+6. **Produção:** troque `ASAAS_ENV`, a chave e o token, cadastre o webhook na conta de produção
+   e faça o redeploy.
+7. **Cobrança de créditos:** só **depois** do passo 6, `CREDITS_ENFORCEMENT_ENABLED=true` e
+   redeploy. Com o sandbox, ninguém consegue pagar de verdade e o saldo de todos acaba.
+
+Consultas:
+```sql
+SELECT status, count(*), sum(price_cents)/100.0 AS reais FROM credit_purchases GROUP BY 1;
+SELECT kind, count(*), sum(units)/5 AS creditos FROM credit_ledger
+WHERE kind IN ('purchase','purchase_reversal') GROUP BY 1;
+```
+
+---
+
+# Assinatura (desligada)
 
 Spec: `docs/superpowers/specs/2026-11-09-assinaturas-asaas.md`. O backend está pronto e
 **desligado** (`SUBSCRIPTIONS_ENABLED=false`). Siga a ordem abaixo. Os nomes de menu do painel

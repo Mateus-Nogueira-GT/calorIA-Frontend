@@ -76,6 +76,7 @@ CREATE TABLE IF NOT EXISTS public.payment_webhook_events (
 ALTER TABLE public.credit_ledger ADD COLUMN IF NOT EXISTS payment_ref text;
 ALTER TABLE public.credit_ledger DROP CONSTRAINT IF EXISTS credit_ledger_kind_check;
 ALTER TABLE public.credit_ledger DROP CONSTRAINT IF EXISTS credit_ledger_units_check;
+ALTER TABLE public.credit_ledger DROP CONSTRAINT IF EXISTS credit_ledger_subscription_ref_check;
 ALTER TABLE public.credit_ledger
   ADD CONSTRAINT credit_ledger_kind_check
     CHECK(kind IN ('welcome','debit','grant','subscription','subscription_reversal')),

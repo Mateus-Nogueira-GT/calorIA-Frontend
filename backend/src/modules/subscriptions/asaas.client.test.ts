@@ -86,6 +86,28 @@ describe('cliente Asaas', () => {
     expect(payments[0].invoiceUrl).toBe('https://x/i/1')
   })
 
+  it('cobrança avulsa vai para POST /payments', async () => {
+    const f = fakeFetch([{ status: 200, body: { id: 'pay_9', invoiceUrl: 'https://x/i/9' } }])
+    const client = createAsaasClient({
+      apiKey: 'k',
+      env: 'sandbox',
+      fetchImpl: f.impl,
+      log: silentLog,
+    })
+    const r = await client.createPayment({
+      customer: 'cus_1',
+      billingType: 'UNDEFINED',
+      value: 60,
+      dueDate: '2026-11-13',
+      description: 'CalorIA — 10 créditos',
+      externalReference: 'p1',
+    })
+    expect(r.invoiceUrl).toBe('https://x/i/9')
+    expect(`${f.calls[0].init.method} ${f.calls[0].url}`).toBe(
+      'POST https://api-sandbox.asaas.com/v3/payments',
+    )
+  })
+
   it('id com caractere estranho é recusado antes da chamada', async () => {
     const f = fakeFetch([])
     const client = createAsaasClient({

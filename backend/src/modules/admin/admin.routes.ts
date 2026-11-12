@@ -6,8 +6,18 @@ import type { JwtPayload } from '../../shared/types.js'
 import { assertInvitesEnabled, createInvite } from '../credit-invites/credit-invites.service.js'
 import { grantCredits, setUnlimited } from '../credits/credit-grants.service.js'
 import { registerCreditErrors } from '../credits/credits.errors.js'
+import {
+  createPackage,
+  createPackageBodySchema,
+  listAllPackages,
+  updatePackage,
+  updatePackageBodySchema,
+} from '../subscriptions/credit-purchases.service.js'
 import { createPlan, listAllPlans, updatePlan } from '../subscriptions/plans.service.js'
-import { assertSubscriptionsEnabled } from '../subscriptions/subscriptions.config.js'
+import {
+  assertCreditPurchasesEnabled,
+  assertSubscriptionsEnabled,
+} from '../subscriptions/subscriptions.config.js'
 import {
   createPlanBodySchema,
   planIdParamsSchema,
@@ -93,6 +103,21 @@ const routes: FastifyPluginAsyncZod = async (f) => {
 
   await f.register(invitesRoutes)
   await f.register(plansRoutes)
+  await f.register(packagesRoutes)
+}
+
+/** Pacotes de recarga: dependem de CREDIT_PURCHASES_ENABLED (escopo próprio, herda JWT e guard). */
+const packagesRoutes: FastifyPluginAsyncZod = async (f) => {
+  f.addHook('preHandler', async () => assertCreditPurchasesEnabled())
+  f.get('/credit-packages', async () => ({ packages: await listAllPackages(f) }))
+  f.post('/credit-packages', { schema: { body: createPackageBodySchema } }, (req) =>
+    createPackage(f, req.body),
+  )
+  f.patch(
+    '/credit-packages/:id',
+    { schema: { params: planIdParamsSchema, body: updatePackageBodySchema } },
+    (req) => updatePackage(f, req.params.id, req.body),
+  )
 }
 
 /** Planos de assinatura: dependem de SUBSCRIPTIONS_ENABLED (escopo próprio, herda JWT e guard). */

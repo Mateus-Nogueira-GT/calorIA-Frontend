@@ -48,6 +48,8 @@ export type ScannerStackParamList = {
 export type RootStackParamList = {
   Auth: undefined;
   Credits: undefined;
+  /** Recarga de créditos pelo Asaas (spec 2026-11-12). */
+  BuyCredits: undefined;
   Admin: undefined;
   App: undefined;
   ProfileGoals: undefined;

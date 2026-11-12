@@ -82,7 +82,29 @@ export interface AdminUserRow {
   unlimited: boolean;
 }
 
+/** Pacote de recarga (spec 2026-11-12). */
+export interface AdminCreditPackage {
+  id: string;
+  code: string;
+  name: string;
+  credits: number;
+  price_cents: number;
+  active: boolean;
+  sort_order: number;
+}
+export type CreditPackageInput = Pick<AdminCreditPackage, 'code' | 'name' | 'credits' | 'price_cents'>;
+
 export const adminService = {
+  creditPackages: () =>
+    api
+      .get<{ packages: AdminCreditPackage[] }>('/admin/credit-packages')
+      .then((r) => r.data.packages),
+  createCreditPackage: (input: CreditPackageInput) =>
+    api.post<AdminCreditPackage>('/admin/credit-packages', input).then((r) => r.data),
+  updateCreditPackage: (
+    id: string,
+    patch: Partial<Pick<AdminCreditPackage, 'name' | 'credits' | 'price_cents' | 'active'>>,
+  ) => api.patch<AdminCreditPackage>(`/admin/credit-packages/${id}`, patch).then((r) => r.data),
   overview: (days: AdminPeriod) =>
     api.get<AdminOverview>('/admin/overview', { params: { days } }).then((r) => r.data),
   users: (params: { q?: string; sort: AdminUserSort; cursor?: string; days: AdminPeriod }) =>

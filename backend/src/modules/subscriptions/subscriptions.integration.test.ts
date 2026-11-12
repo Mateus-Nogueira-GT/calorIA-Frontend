@@ -16,6 +16,7 @@ export const SUBSCRIPTION_MIGRATIONS = [
   '20261021204335_credits_deletion_key_fix.sql',
   '20261023120000_credit_grants_unlimited.sql',
   '026_subscriptions.sql',
+  '027_credit_purchases.sql',
 ]
 
 /** Recria os schemas do banco descartável e aplica as migrações de crédito e assinatura. */
@@ -37,7 +38,7 @@ export async function resetSubscriptionSchema(db: postgres.Sql) {
   const user = randomUUID()
   beforeAll(() => resetSubscriptionSchema(db))
   beforeEach(async () => {
-    await db`TRUNCATE payment_webhook_events,subscription_payments,subscriptions,subscription_plans,payment_customers,credit_ledger,credit_wallets,profiles,auth.users CASCADE`
+    await db`TRUNCATE credit_purchases,credit_packages,payment_webhook_events,subscription_payments,subscriptions,subscription_plans,payment_customers,credit_ledger,credit_wallets,profiles,auth.users CASCADE`
     await db`INSERT INTO auth.users(id) VALUES(${user})`
   })
   afterAll(async () => {
@@ -138,7 +139,7 @@ export async function resetSubscriptionSchema(db: postgres.Sql) {
   const flags = { credits: env.CREDITS_ENFORCEMENT_ENABLED, subs: env.SUBSCRIPTIONS_ENABLED }
   beforeAll(() => resetSubscriptionSchema(db))
   beforeEach(async () => {
-    await db`TRUNCATE payment_webhook_events,subscription_payments,subscriptions,subscription_plans,payment_customers,credit_ledger,credit_operations,credit_wallets,profiles,auth.users CASCADE`
+    await db`TRUNCATE credit_purchases,credit_packages,payment_webhook_events,subscription_payments,subscriptions,subscription_plans,payment_customers,credit_ledger,credit_operations,credit_wallets,profiles,auth.users CASCADE`
     await db`INSERT INTO auth.users(id) VALUES(${user})`
     await db`INSERT INTO profiles(id) VALUES(${user})`
     const [p] =
@@ -288,5 +289,99 @@ export async function resetSubscriptionSchema(db: postgres.Sql) {
       async () => 'ok',
     )
     expect(r.receipt?.charged_units).toBe(15)
+  })
+})
+;(url ? describe : describe.skip)('recarga de créditos / webhook em PostgreSQL real', () => {
+  const db = postgres(url ?? 'postgres://localhost/unused', { max: 5, onnotice: () => {} })
+  const noop = () => {}
+  const f = {
+    db,
+    log: { info: noop, warn: noop, error: noop, debug: noop },
+  } as unknown as FastifyInstance
+  const user = randomUUID()
+  let purchaseId = ''
+  beforeAll(() => resetSubscriptionSchema(db))
+  beforeEach(async () => {
+    await db`TRUNCATE credit_purchases,credit_packages,payment_webhook_events,payment_customers,credit_ledger,credit_wallets,profiles,auth.users CASCADE`
+    await db`INSERT INTO auth.users(id) VALUES(${user})`
+    const [p] =
+      await db`INSERT INTO credit_packages(code,name,credits,price_cents) VALUES('p10','10 créditos',10,6000) RETURNING id`
+    const [c] =
+      await db`INSERT INTO credit_purchases(user_id,package_id,credits,price_cents,asaas_payment_id)
+      VALUES(${user},${p.id},10,6000,'pay_c1') RETURNING id`
+    purchaseId = c.id
+  })
+  afterAll(async () => {
+    await db.end()
+  })
+  const ev = (
+    event: string,
+    id = `evt_${randomUUID()}`,
+    pay = 'pay_c1',
+    ref?: string,
+  ): AsaasEvent => ({
+    id,
+    event,
+    payment: { id: pay, value: 60, dueDate: '2026-11-13', externalReference: ref },
+  })
+  const balance = async () =>
+    (await db`SELECT balance_units FROM credit_wallets WHERE user_id=${user}`)[0]?.balance_units
+  const purchase = async () => (await db`SELECT * FROM credit_purchases WHERE id=${purchaseId}`)[0]
+
+  it('pago: credita 10 créditos (50 unidades) uma vez, mesmo com CONFIRMED + RECEIVED e repetição', async () => {
+    expect(await handleAsaasEvent(f, ev('PAYMENT_CONFIRMED', 'evt_a'))).toBe('purchase_paid')
+    expect(await handleAsaasEvent(f, ev('PAYMENT_CONFIRMED', 'evt_a'))).toBe('duplicate')
+    expect(await handleAsaasEvent(f, ev('PAYMENT_RECEIVED', 'evt_b'))).toBe('purchase_paid')
+    expect(await balance()).toBe(75 + 50)
+    const p = await purchase()
+    expect(p.status).toBe('paid')
+    expect(p.paid_at).not.toBeNull()
+    expect(await db`SELECT units FROM credit_ledger WHERE kind='purchase'`).toEqual([{ units: 50 }])
+  })
+
+  it('webhook antes de gravar o id do pagamento: acha pela referência', async () => {
+    await db`UPDATE credit_purchases SET asaas_payment_id=NULL WHERE id=${purchaseId}`
+    expect(await handleAsaasEvent(f, ev('PAYMENT_RECEIVED', 'evt_c', 'pay_novo', purchaseId))).toBe(
+      'purchase_paid',
+    )
+    expect((await purchase()).asaas_payment_id).toBe('pay_novo')
+    expect(await balance()).toBe(125)
+  })
+
+  it('estorno: retira até o saldo; segundo estorno e confirmação atrasada não mexem', async () => {
+    await handleAsaasEvent(f, ev('PAYMENT_CONFIRMED'))
+    await db`UPDATE credit_wallets SET balance_units=20 WHERE user_id=${user}`
+    expect(await handleAsaasEvent(f, ev('PAYMENT_REFUNDED'))).toBe('purchase_reversed')
+    expect(await balance()).toBe(0)
+    expect((await purchase()).status).toBe('refunded')
+    await db`UPDATE credit_wallets SET balance_units=100 WHERE user_id=${user}`
+    await handleAsaasEvent(f, ev('PAYMENT_CHARGEBACK_REQUESTED'))
+    await handleAsaasEvent(f, ev('PAYMENT_RECEIVED'))
+    expect(await balance()).toBe(100)
+    expect(await db`SELECT units FROM credit_ledger WHERE kind='purchase_reversal'`).toEqual([
+      { units: -20 },
+    ])
+  })
+
+  it('vencida ou removida sem pagamento fecha a compra; pagamento de outro sistema é ignorado', async () => {
+    expect(await handleAsaasEvent(f, ev('PAYMENT_OVERDUE'))).toBe('purchase_closed')
+    expect((await purchase()).status).toBe('expired')
+    expect(await handleAsaasEvent(f, ev('PAYMENT_CONFIRMED', 'evt_x', 'pay_de_outro'))).toBe(
+      'ignored',
+    )
+    expect(await balance()).toBeUndefined()
+  })
+
+  it('migração: pacote abaixo de R$ 5 é recusado; uma compra em criação por pacote', async () => {
+    const [p] = await db`SELECT id FROM credit_packages WHERE code='p10'`
+    await expect(
+      db`INSERT INTO credit_packages(code,name,credits,price_cents) VALUES('p1','1',1,400)`,
+    ).rejects.toMatchObject({ code: '23514' })
+    await db`INSERT INTO credit_purchases(user_id,package_id,credits,price_cents) VALUES(${user},${p.id},10,6000)`
+    await expect(
+      db`INSERT INTO credit_purchases(user_id,package_id,credits,price_cents) VALUES(${user},${p.id},10,6000)`,
+    ).rejects.toMatchObject({ code: '23505' })
+    await db`DELETE FROM auth.users WHERE id=${user}`
+    expect((await purchase()).user_id).toBeNull()
   })
 })

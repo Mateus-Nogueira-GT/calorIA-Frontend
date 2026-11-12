@@ -7,6 +7,8 @@ import { AnalyzingAnimation } from '../components/AnalyzingAnimation';
 import { useScannerStore } from '../store';
 import { useIsGuestScanner } from '../mode';
 import type { ScannerStackScreenProps } from '@navigation/types';
+import { INSUFFICIENT_CREDITS_MESSAGE } from '@shared/services/credits.service';
+import { BuyCreditsButton } from '@features/credits/components/BuyCreditsButton';
 
 const cancelLabel = 'Cancelar análise';
 const backLabel = 'Voltar';
@@ -46,7 +48,13 @@ export function AnalyzingScreen({ navigation, route }: Props): React.JSX.Element
       {error && !isAnalyzing ? (
         <View style={styles.errorBox}>
           <Text style={styles.errorText}>{error}</Text>
-          <Button onPress={() => navigation.goBack()}>{backLabel}</Button>
+          {error === INSUFFICIENT_CREDITS_MESSAGE && <BuyCreditsButton />}
+          <Button
+            variant={error === INSUFFICIENT_CREDITS_MESSAGE ? 'secondary' : 'primary'}
+            onPress={() => navigation.goBack()}
+          >
+            {backLabel}
+          </Button>
         </View>
       ) : (
         <View style={styles.analyzing}>

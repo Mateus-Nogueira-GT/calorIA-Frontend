@@ -8,6 +8,17 @@ export function assertSubscriptionsEnabled(): void {
   if (!env.SUBSCRIPTIONS_ENABLED) throw new AppError(404, 'NOT_FOUND', 'Recurso não encontrado')
 }
 
+/** Recarga de créditos: flag própria. */
+export function assertCreditPurchasesEnabled(): void {
+  if (!env.CREDIT_PURCHASES_ENABLED) throw new AppError(404, 'NOT_FOUND', 'Recurso não encontrado')
+}
+
+/** Webhook do Asaas: atende assinatura e recarga. */
+export function assertPaymentsEnabled(): void {
+  if (!env.SUBSCRIPTIONS_ENABLED && !env.CREDIT_PURCHASES_ENABLED)
+    throw new AppError(404, 'NOT_FOUND', 'Recurso não encontrado')
+}
+
 const unavailable = () =>
   new AppError(503, 'PAYMENTS_UNAVAILABLE', 'Pagamentos indisponíveis no momento.')
 

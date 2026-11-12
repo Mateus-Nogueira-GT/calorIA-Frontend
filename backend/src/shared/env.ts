@@ -29,6 +29,12 @@ const envSchema = z
       .enum(['true', 'false'])
       .default('false')
       .transform((v) => v === 'true'),
+    // Recarga de créditos pelo Asaas (spec 2026-11-12). Desligada até aplicar a
+    // migração 027 e cadastrar os pacotes.
+    CREDIT_PURCHASES_ENABLED: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((v) => v === 'true'),
     ASAAS_ENV: z.preprocess(
       (v) => (v === '' || v == null ? undefined : v),
       z.enum(['sandbox', 'production']).default('sandbox'),

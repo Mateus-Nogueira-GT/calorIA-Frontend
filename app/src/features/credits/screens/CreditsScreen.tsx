@@ -8,6 +8,8 @@ import { useAuthStore } from '@features/auth/store';
 import { colors, spacing } from '@theme';
 import { useCreditsStore } from '../store';
 import { PendingOperations } from '../components/PendingOperations';
+import { BuyCreditsButton } from '../components/BuyCreditsButton';
+import { purchasesService } from '@shared/services/purchases.service';
 
 const buttonLabels = {
   more: 'Ver mais',
@@ -19,6 +21,10 @@ const ENTRY_LABELS: Record<LedgerEntry['kind'], string> = {
   welcome: 'Créditos de boas-vindas',
   grant: 'Créditos liberados pela equipe',
   debit: 'Uso de IA',
+  purchase: 'Compra de créditos',
+  purchase_reversal: 'Estorno de compra',
+  subscription: 'Créditos da assinatura',
+  subscription_reversal: 'Estorno da assinatura',
 };
 
 export function CreditsScreen(): React.JSX.Element {
@@ -31,6 +37,8 @@ export function CreditsScreen(): React.JSX.Element {
   const generation = useAuthStore((state) => state.sessionGeneration);
   const historyVersion = useRef(0);
   const active = useRef(false);
+  // A compra só aparece quando o backend tem pacotes à venda (flag ligada).
+  const [canBuy, setCanBuy] = useState(false);
   const readHistory = useCallback(async (next?: string) => {
     const generation = useAuthStore.getState().sessionGeneration;
     const version = ++historyVersion.current;
@@ -60,6 +68,14 @@ export function CreditsScreen(): React.JSX.Element {
       setHistoryError(null);
       void load();
       void readHistory();
+      purchasesService
+        .packages()
+        .then((list) => {
+          if (active.current) setCanBuy(list.length > 0);
+        })
+        .catch(() => {
+          if (active.current) setCanBuy(false);
+        });
       return () => {
         active.current = false;
         historyVersion.current++;
@@ -108,6 +124,7 @@ export function CreditsScreen(): React.JSX.Element {
           )}
         </>
       )}
+      {canBuy && <BuyCreditsButton />}
       <PendingOperations />
       <Text variant="heading3">Extrato</Text>
       {historyLoading && <Text>Carregando extrato…</Text>}

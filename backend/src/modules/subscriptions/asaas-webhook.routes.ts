@@ -2,7 +2,7 @@ import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { z } from 'zod'
 import { env } from '../../shared/env.js'
 import { type AsaasEvent, handleAsaasEvent, webhookTokenMatches } from './asaas-webhook.service.js'
-import { assertSubscriptionsEnabled } from './subscriptions.config.js'
+import { assertPaymentsEnabled } from './subscriptions.config.js'
 
 const eventSchema = z
   .object({
@@ -36,7 +36,7 @@ const eventSchema = z
  * o Asaas reenviar.
  */
 const routes: FastifyPluginAsyncZod = async (f) => {
-  f.addHook('onRequest', async () => assertSubscriptionsEnabled())
+  f.addHook('onRequest', async () => assertPaymentsEnabled())
   f.post('/', { schema: { body: eventSchema } }, async (req, reply) => {
     if (!env.ASAAS_WEBHOOK_TOKEN) {
       f.log.error('asaas_webhook_token_missing')
