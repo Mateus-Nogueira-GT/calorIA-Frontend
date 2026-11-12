@@ -22,6 +22,7 @@ import type { LinkingOptions } from '@react-navigation/native';
 import type { AuthStackParamList, RootStackParamList } from './types';
 
 import { CreditsScreen } from '@features/credits/screens/CreditsScreen';
+import { BuyCreditsScreen } from '@features/credits/screens/BuyCreditsScreen';
 import { AdminScreen } from '@features/admin/screens/AdminScreen';
 import { InviteScreen } from '@features/invites/screens/InviteScreen';
 import { inviteTokenFromURL, useInviteStore } from '@features/invites/store';
@@ -220,6 +221,11 @@ export function RootNavigator(): React.JSX.Element {
             name="Credits"
             component={CreditsScreen}
             options={{ headerShown: true, title: 'Meus créditos' }}
+          />
+          <RootStack.Screen
+            name="BuyCredits"
+            component={BuyCreditsScreen}
+            options={{ headerShown: true, title: 'Comprar créditos' }}
           />
           <RootStack.Screen
             name="Admin"

@@ -13,6 +13,8 @@ import { useIsFocused, useNavigation } from '@react-navigation/native';
 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { TabScreenProps } from '@navigation/types';
+import { INSUFFICIENT_CREDITS_MESSAGE } from '@shared/services/credits.service';
+import { BuyCreditsButton } from '@features/credits/components/BuyCreditsButton';
 import { useCoachStore } from '../store';
 import { ChatBubble } from '../components/ChatBubble';
 import { ChatInput } from '../components/ChatInput';
@@ -226,6 +228,7 @@ export function CoachScreen(): React.JSX.Element {
           >
             <Text style={styles.errorActionText}>Tentar novamente</Text>
           </Pressable>
+          {error === INSUFFICIENT_CREDITS_MESSAGE && <BuyCreditsButton variant="secondary" />}
         </View>
       ) : null}
 

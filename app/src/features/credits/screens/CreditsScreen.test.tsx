@@ -20,6 +20,10 @@ jest.mock('@shared/services/credits.service', () => ({
   ...jest.requireActual('@shared/services/credits.service'),
   creditsService: { wallet: jest.fn(), ledger: jest.fn() },
 }));
+jest.mock('@shared/services/purchases.service', () => ({
+  ...jest.requireActual('@shared/services/purchases.service'),
+  purchasesService: { packages: jest.fn().mockRejectedValue(new Error('404')) },
+}));
 const wallet: Wallet = {
   balance_units: 75,
   reserved_units: 15,
@@ -115,4 +119,18 @@ it('mostra lançamento de liberação da equipe e crédito ilimitado no lugar do
   expect(screen.getByText('Créditos liberados pela equipe')).toBeTruthy();
   expect(screen.queryByText(/créditos disponíveis/)).toBeNull();
   expect(screen.queryByText(/Foto: 3 créditos/)).toBeNull();
+});
+
+it('mostra Comprar créditos só quando há pacotes à venda', async () => {
+  const { purchasesService } = jest.requireMock('@shared/services/purchases.service');
+  purchasesService.packages.mockResolvedValueOnce([
+    { code: 'pacote-10', name: '10 créditos', credits: 10, price_cents: 6000 },
+  ]);
+  const screen = render(<CreditsScreen />);
+  expect(await screen.findByText('Comprar créditos')).toBeTruthy();
+});
+it('recarga desligada: sem botão de compra', async () => {
+  const screen = render(<CreditsScreen />);
+  await screen.findByText('12 créditos disponíveis');
+  expect(screen.queryByText('Comprar créditos')).toBeNull();
 });

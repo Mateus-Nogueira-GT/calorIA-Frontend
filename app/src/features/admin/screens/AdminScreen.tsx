@@ -19,6 +19,7 @@ import { useAuthStore } from '@features/auth/store';
 import { colors, radius, spacing } from '@theme';
 import { OverviewTab } from '../components/OverviewTab';
 import { UsersTab } from '../components/UsersTab';
+import { PackagesTab } from '../components/PackagesTab';
 import { formatDate } from '../format';
 
 const buttonLabels = {
@@ -29,11 +30,12 @@ const buttonLabels = {
   sameLabel: 'Gerar outro com a mesma identificação',
 } as const;
 
-export type AdminTab = 'overview' | 'users' | 'invites';
+export type AdminTab = 'overview' | 'users' | 'invites' | 'packages';
 const TABS: { value: AdminTab; label: string }[] = [
   { value: 'overview', label: 'Visão geral' },
   { value: 'users', label: 'Usuários' },
   { value: 'invites', label: 'Convites' },
+  { value: 'packages', label: 'Pacotes' },
 ];
 /** Na web/tablet a área usa mais largura que o miolo padrão das telas. */
 const WIDE_LAYOUT_MIN = 900;
@@ -355,6 +357,7 @@ export function AdminScreen({
             {tab === 'overview' && <OverviewTab />}
             {tab === 'users' && <UsersTab />}
             {tab === 'invites' && invitesTab}
+            {tab === 'packages' && <PackagesTab />}
           </>
         )}
       </ScrollView>

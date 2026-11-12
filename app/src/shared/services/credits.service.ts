@@ -14,7 +14,14 @@ export interface Wallet {
 export interface LedgerEntry {
   id: string;
   units: number;
-  kind: 'welcome' | 'debit' | 'grant';
+  kind:
+    | 'welcome'
+    | 'debit'
+    | 'grant'
+    | 'purchase'
+    | 'purchase_reversal'
+    | 'subscription'
+    | 'subscription_reversal';
   operation_id: string | null;
   created_at: string;
 }
@@ -50,13 +57,17 @@ export function newOperationKey(): string {
   });
 }
 
+/** Aviso de saldo insuficiente: as telas mostram o botão Comprar créditos junto. */
+export const INSUFFICIENT_CREDITS_MESSAGE =
+  'Seus créditos acabaram. Compre mais créditos para continuar. Sua mensagem ou foto foi preservada.';
+
 export function creditErrorMessage(error: unknown): string | null {
   const body = (error as { response?: { data?: { error?: string } } })?.response?.data;
   if ((error as { code?: string })?.code === 'LOCAL_OPERATION_STORAGE')
     return 'Não foi possível guardar sua tentativa no aparelho. Libere o armazenamento e tente novamente. Nenhuma solicitação foi enviada.';
   switch (body?.error) {
     case 'INSUFFICIENT_CREDITS':
-      return 'Créditos insuficientes. Consulte seu saldo no Perfil. Sua mensagem ou foto foi preservada.';
+      return INSUFFICIENT_CREDITS_MESSAGE;
     case 'CREDITS_UNAVAILABLE':
       return 'Não foi possível consultar os créditos. Tente novamente em instantes.';
     case 'CREDIT_POLICY_UNDEFINED':
