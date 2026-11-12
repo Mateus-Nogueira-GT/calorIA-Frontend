@@ -45,6 +45,10 @@ function fakeAsaas(over: Partial<AsaasClient> = {}) {
         },
       ]
     },
+    createPayment: async (i) => {
+      calls.push(`payment:${i.value}:${i.dueDate}:${i.externalReference}`)
+      return { id: 'pay_9', status: 'PENDING', invoiceUrl: 'https://asaas/i/9' }
+    },
     deleteSubscription: async (id) => {
       calls.push(`delete:${id}`)
     },

@@ -33,6 +33,16 @@ export interface AsaasClient {
     externalReference: string
     callback?: { successUrl: string; autoRedirect?: boolean }
   }): Promise<{ id: string; status?: string }>
+  /** Cobrança avulsa (recarga de créditos). */
+  createPayment(input: {
+    customer: string
+    billingType: 'UNDEFINED' | 'PIX' | 'BOLETO' | 'CREDIT_CARD'
+    value: number
+    dueDate: string
+    description: string
+    externalReference: string
+    callback?: { successUrl: string; autoRedirect?: boolean }
+  }): Promise<AsaasPayment>
   listSubscriptionPayments(subscriptionId: string): Promise<AsaasPayment[]>
   deleteSubscription(subscriptionId: string): Promise<void>
 }
@@ -110,6 +120,7 @@ export function createAsaasClient(opts: {
   return {
     createCustomer: (input) => call('POST', '/customers', input),
     createSubscription: (input) => call('POST', '/subscriptions', input),
+    createPayment: (input) => call('POST', '/payments', input),
     async listSubscriptionPayments(id) {
       assertId(id)
       const r = await call<{ data?: AsaasPayment[] }>('GET', `/subscriptions/${id}/payments`)
