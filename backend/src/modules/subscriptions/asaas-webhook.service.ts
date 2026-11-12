@@ -17,6 +17,7 @@ export interface AsaasEvent {
     value?: number
     dueDate?: string
     invoiceUrl?: string
+    externalReference?: string | null
   }
   subscription?: { id: string }
 }
@@ -67,6 +68,9 @@ export type WebhookOutcome =
   | 'overdue'
   | 'reversed'
   | 'subscription_canceled'
+  | 'purchase_paid'
+  | 'purchase_reversed'
+  | 'purchase_closed'
 
 function statusFromEvent(event: string): string {
   return event.replace(/^PAYMENT_/, '')
@@ -209,7 +213,9 @@ export async function handleAsaasEvent(
     }
 
     const p = ev.payment
-    if (!p?.id || !p.subscription || !ev.event.startsWith('PAYMENT_')) return 'ignored'
+    if (!p?.id || !ev.event.startsWith('PAYMENT_')) return 'ignored'
+    // Cobrança avulsa (sem assinatura): recarga de créditos.
+    if (!p.subscription) return handlePurchaseEvent(tx, ev.event, p)
     const [sub] = await tx<SubRow[]>`
       SELECT id, user_id, status, cycle, credits_per_cycle, paid_until FROM subscriptions
       WHERE asaas_subscription_id = ${p.subscription} FOR UPDATE`
@@ -246,4 +252,90 @@ export async function handleAsaasEvent(
     }
     return 'ignored'
   })
+}
+
+interface PurchaseRow {
+  id: string
+  user_id: string | null
+  status: string
+  credits: number
+  credited_units: number
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/**
+ * Recarga de créditos (spec 2026-11-12). Acha a compra pelo id do pagamento;
+ * se o webhook chegar antes de o id ser gravado, pelo externalReference (id
+ * local). Créditos uma vez por pagamento; estorno retira até o saldo.
+ */
+async function handlePurchaseEvent(
+  tx: Tx,
+  event: string,
+  p: NonNullable<AsaasEvent['payment']>,
+): Promise<WebhookOutcome> {
+  let [purchase] = await tx<PurchaseRow[]>`
+    SELECT id, user_id, status, credits, credited_units FROM credit_purchases
+    WHERE asaas_payment_id = ${p.id} FOR UPDATE`
+  if (!purchase && p.externalReference && UUID.test(p.externalReference))
+    [purchase] = await tx<PurchaseRow[]>`
+      SELECT id, user_id, status, credits, credited_units FROM credit_purchases
+      WHERE id = ${p.externalReference} AND (asaas_payment_id IS NULL OR asaas_payment_id = ${p.id})
+      FOR UPDATE`
+  if (!purchase) return 'ignored'
+
+  if (PAID.has(event)) {
+    if (purchase.status === 'refunded' || purchase.credited_units > 0) return 'purchase_paid'
+    const units = purchase.credits * CREDIT_POLICY.units_per_credit
+    await tx`
+      UPDATE credit_purchases SET status = 'paid', paid_at = COALESCE(paid_at, now()),
+        asaas_payment_id = ${p.id}, updated_at = now()
+      WHERE id = ${purchase.id}`
+    if (!purchase.user_id) return 'purchase_paid'
+    await ensureWallet(tx, purchase.user_id)
+    await tx`SELECT user_id FROM credit_wallets WHERE user_id = ${purchase.user_id} FOR UPDATE`
+    const inserted = await tx`
+      INSERT INTO credit_ledger(user_id, kind, units, payment_ref)
+      VALUES(${purchase.user_id}, 'purchase', ${units}, ${p.id})
+      ON CONFLICT (payment_ref, kind) DO NOTHING RETURNING id`
+    if (inserted.length) {
+      await tx`UPDATE credit_wallets SET balance_units = balance_units + ${units} WHERE user_id = ${purchase.user_id}`
+      await tx`UPDATE credit_purchases SET credited_units = ${units} WHERE id = ${purchase.id}`
+    }
+    return 'purchase_paid'
+  }
+
+  if (REVERSED.has(event)) {
+    if (purchase.status === 'refunded') return 'purchase_reversed'
+    await tx`UPDATE credit_purchases SET status = 'refunded', updated_at = now() WHERE id = ${purchase.id}`
+    if (!purchase.user_id || purchase.credited_units <= 0) return 'purchase_reversed'
+    const [w] = await tx<{ available: number }[]>`
+      SELECT balance_units - reserved_units AS available FROM credit_wallets
+      WHERE user_id = ${purchase.user_id} FOR UPDATE`
+    const take = Math.min(purchase.credited_units, Math.max(0, w?.available ?? 0))
+    if (take <= 0) return 'purchase_reversed'
+    const inserted = await tx`
+      INSERT INTO credit_ledger(user_id, kind, units, payment_ref)
+      VALUES(${purchase.user_id}, 'purchase_reversal', ${-take}, ${p.id})
+      ON CONFLICT (payment_ref, kind) DO NOTHING RETURNING id`
+    if (inserted.length) {
+      await tx`UPDATE credit_wallets SET balance_units = balance_units - ${take} WHERE user_id = ${purchase.user_id}`
+      await tx`UPDATE credit_purchases SET reversed_units = ${take} WHERE id = ${purchase.id}`
+    }
+    return 'purchase_reversed'
+  }
+
+  if (event === 'PAYMENT_DELETED' || event === 'PAYMENT_OVERDUE') {
+    await tx`
+      UPDATE credit_purchases SET status = ${event === 'PAYMENT_DELETED' ? 'canceled' : 'expired'},
+        updated_at = now()
+      WHERE id = ${purchase.id} AND status = 'pending'`
+    return 'purchase_closed'
+  }
+  if (event === 'PAYMENT_RESTORED') {
+    await tx`UPDATE credit_purchases SET status = 'pending', updated_at = now()
+      WHERE id = ${purchase.id} AND status IN ('canceled','expired')`
+    return 'purchase_closed'
+  }
+  return 'ignored'
 }
