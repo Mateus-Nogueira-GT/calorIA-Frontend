@@ -149,8 +149,33 @@ describe('LoginScreen', () => {
     fireEvent.press(getByTestId('login-btn'));
 
     await waitFor(() =>
-      expect(alertSpy).toHaveBeenCalledWith('Erro', expect.stringContaining('conexão')),
+      expect(alertSpy).toHaveBeenCalledWith(
+        'Não foi possível entrar',
+        expect.stringContaining('conexão'),
+      ),
     );
+    alertSpy.mockRestore();
+  });
+
+  it('conta criada pelo Google: explica que não há senha e qual botão usar', async () => {
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    mockLogin.mockRejectedValueOnce({
+      isAxiosError: true,
+      response: { status: 401, data: { error: 'GOOGLE_LOGIN_ACCOUNT' } },
+    });
+    const { getByPlaceholderText, getByTestId } = render(
+      <LoginScreen navigation={{ navigate: mockNavigate, replace: mockReplace } as never} route={{} as never} />,
+    );
+    fireEvent.changeText(getByPlaceholderText('seu@email.com'), 'rafael@test.com');
+    fireEvent.changeText(getByPlaceholderText('Sua senha'), 'senha12345');
+    fireEvent.press(getByTestId('login-btn'));
+    await waitFor(() =>
+      expect(alertSpy).toHaveBeenCalledWith(
+        'Não foi possível entrar',
+        expect.stringContaining('Continuar com Google'),
+      ),
+    );
+    expect(alertSpy).not.toHaveBeenCalledWith(expect.anything(), expect.stringContaining('Credenciais'));
     alertSpy.mockRestore();
   });
 });

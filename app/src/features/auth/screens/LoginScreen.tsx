@@ -9,10 +9,13 @@ import {
   View,
 } from 'react-native';
 import { authService } from '@shared/services/auth.service';
-import { getAppleSignInPayload, isAppleSignInAvailable } from '@shared/services/apple-signin.service';
+import {
+  getAppleSignInPayload,
+  isAppleSignInAvailable,
+} from '@shared/services/apple-signin.service';
 import { getGoogleIdToken, isGoogleSignInAvailable } from '@shared/services/google-signin.service';
 import { useAuthStore } from '@features/auth/store';
-import { isNetworkError } from '@shared/utils/api-error';
+import { loginErrorMessage } from '@features/auth/login-error';
 import { Button, Input, Text } from '@shared/components';
 import { colors, typography, spacing, radius } from '@theme';
 import type { AuthStackScreenProps } from '@navigation/types';
@@ -71,12 +74,7 @@ export function LoginScreen({ navigation }: AuthStackScreenProps<'Login'>): Reac
       const res = await authService.login({ email, password });
       setToken(res.token, res.user, res.refreshToken);
     } catch (err) {
-      Alert.alert(
-        'Erro',
-        isNetworkError(err)
-          ? 'Não foi possível falar com o servidor. Verifique sua conexão e tente novamente.'
-          : 'Credenciais inválidas. Verifique e tente novamente.',
-      );
+      Alert.alert('Não foi possível entrar', loginErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -115,108 +113,115 @@ export function LoginScreen({ navigation }: AuthStackScreenProps<'Login'>): Reac
       style={styles.screen}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-    <ScrollView
-      style={styles.screen}
-      contentContainerStyle={styles.container}
-      keyboardShouldPersistTaps="handled"
-    >
-      <View style={styles.header}>
-        <Text
-          accessibilityRole="header"
-          variant="heading1"
-          style={styles.logo}
+      <ScrollView
+        style={styles.screen}
+        contentContainerStyle={styles.container}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.header}>
+          <Text accessibilityRole="header" variant="heading1" style={styles.logo}>
+            calor
+            <Text variant="heading1" style={styles.logoAccent}>
+              IA
+            </Text>
+          </Text>
+          <Text variant="heading2" style={styles.title}>
+            {titleLabel}
+          </Text>
+          <Text variant="body" style={styles.subtitle}>
+            {subtitleLabel}
+          </Text>
+        </View>
+
+        <Input
+          label="E-mail"
+          placeholder="seu@email.com"
+          value={email}
+          onChangeText={handleEmailChange}
+          onBlur={() => validateEmail(email)}
+          error={emailError}
+          keyboardType="email-address"
+          autoCapitalize="none"
+        />
+
+        <Input
+          label="Senha"
+          placeholder="Sua senha"
+          value={password}
+          onChangeText={setPassword}
+          onBlur={() => validatePassword(password)}
+          error={passwordError}
+          secureTextEntry
+        />
+
+        <TouchableOpacity
+          accessibilityRole="button"
+          onPress={() => navigation.navigate('ForgotPassword')}
+          style={styles.forgotLink}
         >
-          calor<Text variant="heading1" style={styles.logoAccent}>IA</Text>
-        </Text>
-        <Text variant="heading2" style={styles.title}>{titleLabel}</Text>
-        <Text variant="body" style={styles.subtitle}>{subtitleLabel}</Text>
-      </View>
+          <Text variant="caption" style={styles.linkText}>
+            Esqueci minha senha
+          </Text>
+        </TouchableOpacity>
 
-      <Input
-        label="E-mail"
-        placeholder="seu@email.com"
-        value={email}
-        onChangeText={handleEmailChange}
-        onBlur={() => validateEmail(email)}
-        error={emailError}
-        keyboardType="email-address"
-        autoCapitalize="none"
-      />
+        <Button
+          onPress={handleLogin}
+          loading={loading}
+          disabled={!isFormValid}
+          testID="login-btn"
+          size="lg"
+          style={[styles.btn, styles.primaryButton]}
+          labelStyle={styles.primaryButtonLabel}
+        >
+          {loginButtonLabel}
+        </Button>
 
-      <Input
-        label="Senha"
-        placeholder="Sua senha"
-        value={password}
-        onChangeText={setPassword}
-        onBlur={() => validatePassword(password)}
-        error={passwordError}
-        secureTextEntry
-      />
+        {hasSocialAuth ? (
+          <>
+            <View style={styles.divider}>
+              <View style={styles.line} />
+              <Text variant="caption" style={styles.orText}>
+                ou
+              </Text>
+              <View style={styles.line} />
+            </View>
 
-      <TouchableOpacity
-        accessibilityRole="button"
-        onPress={() => navigation.navigate('ForgotPassword')}
-        style={styles.forgotLink}
-      >
-        <Text variant="caption" style={styles.linkText}>Esqueci minha senha</Text>
-      </TouchableOpacity>
+            {isGoogleSignInAvailable ? (
+              <Button
+                variant="secondary"
+                onPress={handleGoogle}
+                size="lg"
+                style={[styles.btn, styles.secondaryButton]}
+                labelStyle={styles.secondaryButtonLabel}
+              >
+                {googleButtonLabel}
+              </Button>
+            ) : null}
 
-      <Button
-        onPress={handleLogin}
-        loading={loading}
-        disabled={!isFormValid}
-        testID="login-btn"
-        size="lg"
-        style={[styles.btn, styles.primaryButton]}
-        labelStyle={styles.primaryButtonLabel}
-      >
-        {loginButtonLabel}
-      </Button>
+            {isAppleSignInAvailable ? (
+              <Button
+                variant="secondary"
+                onPress={handleApple}
+                size="lg"
+                style={[styles.btn, styles.secondaryButton]}
+                labelStyle={styles.secondaryButtonLabel}
+              >
+                {appleButtonLabel}
+              </Button>
+            ) : null}
+          </>
+        ) : null}
 
-      {hasSocialAuth ? (
-        <>
-          <View style={styles.divider}>
-            <View style={styles.line} />
-            <Text variant="caption" style={styles.orText}>ou</Text>
-            <View style={styles.line} />
-          </View>
-
-          {isGoogleSignInAvailable ? (
-            <Button
-              variant="secondary"
-              onPress={handleGoogle}
-              size="lg"
-              style={[styles.btn, styles.secondaryButton]}
-              labelStyle={styles.secondaryButtonLabel}
-            >
-              {googleButtonLabel}
-            </Button>
-          ) : null}
-
-          {isAppleSignInAvailable ? (
-            <Button
-              variant="secondary"
-              onPress={handleApple}
-              size="lg"
-              style={[styles.btn, styles.secondaryButton]}
-              labelStyle={styles.secondaryButtonLabel}
-            >
-              {appleButtonLabel}
-            </Button>
-          ) : null}
-        </>
-      ) : null}
-
-      <Button
-        variant="ghost"
-        onPress={() => navigation.replace('Register')}
-        size="md"
-        style={styles.footerButton}
-        labelStyle={styles.footerButtonLabel}
-      >
-        {registerFooterLabel}
-      </Button>
-    </ScrollView>
+        <Button
+          variant="ghost"
+          onPress={() => navigation.replace('Register')}
+          size="md"
+          style={styles.footerButton}
+          labelStyle={styles.footerButtonLabel}
+        >
+          {registerFooterLabel}
+        </Button>
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 }
@@ -259,7 +264,13 @@ const styles = StyleSheet.create({
     maxWidth: 310,
     textAlign: 'center',
   },
-  forgotLink: { minHeight: 44, justifyContent: 'center', alignSelf: 'flex-end', marginBottom: spacing.xxl, marginTop: -8 },
+  forgotLink: {
+    minHeight: 44,
+    justifyContent: 'center',
+    alignSelf: 'flex-end',
+    marginBottom: spacing.xxl,
+    marginTop: -8,
+  },
   linkText: { color: colors.brandPrimaryText, fontFamily: interfaceFont },
   btn: { borderRadius: radius.lg, marginBottom: spacing.md, minHeight: 52, paddingVertical: 0 },
   primaryButton: { backgroundColor: colors.brandPrimary },
@@ -280,9 +291,18 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.md,
     fontWeight: typography.fontWeight.semiBold,
   },
-  divider: { flexDirection: 'row', alignItems: 'center', marginVertical: spacing.lg, gap: spacing.md },
+  divider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: spacing.lg,
+    gap: spacing.md,
+  },
   line: { flex: 1, height: 1, backgroundColor: colors.brandDivider },
   orText: { color: colors.brandText, fontFamily: interfaceFont },
   footerButton: { marginTop: 10, minHeight: 44, paddingHorizontal: spacing.lg },
-  footerButtonLabel: { color: colors.brandPrimaryText, fontFamily: interfaceSemiBoldFont, fontSize: typography.fontSize.sm },
+  footerButtonLabel: {
+    color: colors.brandPrimaryText,
+    fontFamily: interfaceSemiBoldFont,
+    fontSize: typography.fontSize.sm,
+  },
 });
