@@ -67,7 +67,12 @@ const authRoutes: FastifyPluginAsyncZod = async (fastify) => {
         body: loginBodySchema,
         response: {
           200: authResponseSchema,
-          401: errorSchema.describe('Credenciais inválidas'),
+          401: errorSchema.describe(
+            'INVALID_CREDENTIALS, ou GOOGLE_/APPLE_LOGIN_ACCOUNT (conta sem senha)',
+          ),
+          403: errorSchema.describe('EMAIL_NOT_CONFIRMED'),
+          429: errorSchema.describe('TOO_MANY_ATTEMPTS'),
+          503: errorSchema.describe('AUTH_UNAVAILABLE'),
         },
       },
     },

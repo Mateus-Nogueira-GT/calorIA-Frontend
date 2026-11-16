@@ -97,6 +97,79 @@ async function ensureUsername(
 }
 
 /**
+ * Conta criada só por Google ou Apple (sem senha): o login com senha sempre
+ * falha, e "senha errada" confunde quem entra pelo botão no outro aparelho.
+ * Falha na consulta → null (cai no genérico, nunca quebra o login).
+ */
+async function socialOnlyProvider(
+  fastify: FastifyInstance,
+  email: string,
+): Promise<'google' | 'apple' | null> {
+  try {
+    const [row] = await fastify.db<{ has_password: boolean; providers: string[] }[]>`
+      SELECT (u.encrypted_password IS NOT NULL AND u.encrypted_password <> '') AS has_password,
+        COALESCE(array_agg(i.provider) FILTER (WHERE i.provider IS NOT NULL), '{}') AS providers
+      FROM auth.users u LEFT JOIN auth.identities i ON i.user_id = u.id
+      WHERE lower(u.email) = lower(${email})
+      GROUP BY u.id LIMIT 1`
+    if (!row || row.has_password) return null
+    if (row.providers.includes('google')) return 'google'
+    if (row.providers.includes('apple')) return 'apple'
+    return null
+  } catch (err) {
+    fastify.log.warn({ err }, 'login_provider_lookup_failed')
+    return null
+  }
+}
+
+/**
+ * Traduz a recusa do Supabase num motivo que o app consegue explicar. Antes,
+ * tudo virava "credenciais inválidas" — inclusive conta do Google, e-mail não
+ * confirmado e excesso de tentativas. O motivo vai para o log, sem o e-mail.
+ */
+async function loginError(
+  fastify: FastifyInstance,
+  email: string,
+  error: unknown,
+): Promise<AppError> {
+  const code = (error as { code?: string } | null)?.code ?? null
+  const status = (error as { status?: number } | null)?.status ?? null
+  fastify.log.warn({ login_failed: { code, status } }, 'login_failed')
+  if (code === 'email_not_confirmed')
+    return new AppError(
+      403,
+      'EMAIL_NOT_CONFIRMED',
+      'Confirme seu e-mail pelo link que enviamos antes de entrar.',
+    )
+  if (status === 429 || code === 'over_request_rate_limit')
+    return new AppError(
+      429,
+      'TOO_MANY_ATTEMPTS',
+      'Muitas tentativas seguidas. Aguarde alguns minutos e tente de novo.',
+    )
+  if (status !== null && status >= 500)
+    return new AppError(
+      503,
+      'AUTH_UNAVAILABLE',
+      'Não foi possível entrar agora. Tente novamente em instantes.',
+    )
+  const provider = await socialOnlyProvider(fastify, email)
+  if (provider === 'google')
+    return new AppError(
+      401,
+      'GOOGLE_LOGIN_ACCOUNT',
+      'Esta conta entra pelo Google. Toque em Continuar com Google.',
+    )
+  if (provider === 'apple')
+    return new AppError(
+      401,
+      'APPLE_LOGIN_ACCOUNT',
+      'Esta conta entra pela Apple. Toque em Continuar com Apple.',
+    )
+  return new AppError(401, 'INVALID_CREDENTIALS', 'E-mail ou senha incorretos.')
+}
+
+/**
  * Autentica um usuário com email e senha.
  * Retorna access_token (JWT), refresh_token e dados básicos do usuário.
  */
@@ -106,9 +179,7 @@ export async function loginUser(fastify: FastifyInstance, data: LoginBody): Prom
     password: data.password,
   })
 
-  if (error || !session?.session) {
-    throw new AppError(401, 'INVALID_CREDENTIALS', 'Email ou senha inválidos')
-  }
+  if (error || !session?.session) throw await loginError(fastify, data.email, error)
 
   return {
     access_token: session.session.access_token,

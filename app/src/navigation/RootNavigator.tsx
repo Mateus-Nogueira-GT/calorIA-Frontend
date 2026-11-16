@@ -23,6 +23,7 @@ import type { AuthStackParamList, RootStackParamList } from './types';
 
 import { CreditsScreen } from '@features/credits/screens/CreditsScreen';
 import { BuyCreditsScreen } from '@features/credits/screens/BuyCreditsScreen';
+import { HeaderCloseButton } from '@features/credits/components/HeaderCloseButton';
 import { AdminScreen } from '@features/admin/screens/AdminScreen';
 import { InviteScreen } from '@features/invites/screens/InviteScreen';
 import { inviteTokenFromURL, useInviteStore } from '@features/invites/store';
@@ -225,7 +226,15 @@ export function RootNavigator(): React.JSX.Element {
           <RootStack.Screen
             name="BuyCredits"
             component={BuyCreditsScreen}
-            options={{ headerShown: true, title: 'Comprar créditos' }}
+            // Modal: o scanner também é modal; como tela comum, a compra abria
+            // escondida atrás dele ("Comprar créditos não faz nada").
+            options={({ navigation }) => ({
+              headerShown: true,
+              title: 'Comprar créditos',
+              presentation: 'modal',
+              headerLeft: () => null,
+              headerRight: () => <HeaderCloseButton onPress={() => navigation.goBack()} />,
+            })}
           />
           <RootStack.Screen
             name="Admin"
