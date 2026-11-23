@@ -23,7 +23,7 @@ export function CreateChallengeScreen({ navigation }: Props): React.JSX.Element 
   const [description, setDescription] = useState('');
 
   // N4: sair com o desafio preenchido descartava tudo sem avisar.
-  useConfirmDiscard({
+  const { allowExit } = useConfirmDiscard({
     hasUnsavedChanges: title.trim().length > 0 || description.trim().length > 0,
     navigation,
     message: 'Seu desafio ainda não foi criado. Quer descartar?',
@@ -42,6 +42,7 @@ export function CreateChallengeScreen({ navigation }: Props): React.JSX.Element 
         startDate: start,
         endDate: plusDays(start, 7),
       });
+      allowExit();
       navigation.replace('ChallengeLeaderboard', { challengeId: created.id });
     } catch {
       /* store já alerta em erro de rede */

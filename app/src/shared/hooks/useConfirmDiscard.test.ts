@@ -76,4 +76,17 @@ describe('useConfirmDiscard (N4)', () => {
 
     expect(nav.dispatch).toHaveBeenCalledWith(action);
   });
-})
+
+  it('depois de allowExit (salvou), sai sem perguntar', () => {
+    const nav = fakeNavigation();
+    const { result } = renderHook(() =>
+      useConfirmDiscard({ hasUnsavedChanges: true, navigation: nav as never }),
+    );
+
+    result.current.allowExit();
+    const { preventDefault } = nav.goBack();
+
+    expect(preventDefault).not.toHaveBeenCalled();
+    expect(alertSpy).not.toHaveBeenCalled();
+  });
+});
