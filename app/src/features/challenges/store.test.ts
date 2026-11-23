@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import { act, renderHook } from '@testing-library/react-native';
 import { useChallengesStore } from './store';
+import { todayString } from '@shared/utils/date';
 import type { Challenge, LeaderboardEntry } from '@shared/services/challenges.service';
 
 const challenge = (id: string, over: Partial<Challenge> = {}): Challenge => ({
@@ -140,5 +141,34 @@ describe('useChallengesStore', () => {
       await result.current.checkIn('c1');
     });
     expect(challengesService.checkIn).toHaveBeenCalledTimes(2);
+  });
+
+  it('depois do check-in, o desafio fica marcado como feito hoje', async () => {
+    challengesService.getLeaderboard.mockResolvedValue([] as LeaderboardEntry[]);
+    challengesService.checkIn.mockResolvedValue({ ok: true });
+    useChallengesStore.setState({
+      challenges: [challenge('c1', { joinedByMe: true }), challenge('c2', { joinedByMe: true })],
+    });
+
+    await act(async () => {
+      await useChallengesStore.getState().checkIn('c1');
+    });
+
+    const [c1, c2] = useChallengesStore.getState().challenges;
+    expect(c1!.myLastCheckIn).toBe(todayString());
+    expect(c2!.myLastCheckIn).toBeUndefined();
+  });
+
+  it('"já fez check-in hoje" (409) também marca o desafio como feito', async () => {
+    challengesService.checkIn.mockRejectedValue({
+      response: { status: 409, data: { error: 'ALREADY_CHECKED_IN' } },
+    });
+    useChallengesStore.setState({ challenges: [challenge('c1', { joinedByMe: true })] });
+
+    await act(async () => {
+      await useChallengesStore.getState().checkIn('c1');
+    });
+
+    expect(useChallengesStore.getState().challenges[0]!.myLastCheckIn).toBe(todayString());
   });
 });
