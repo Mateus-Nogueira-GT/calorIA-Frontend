@@ -19,6 +19,7 @@ interface DbChallengeRow {
   participant_count: number
   joined_by_me: boolean
   is_finished: boolean
+  my_last_check_in: string | null
 }
 
 function toChallenge(row: DbChallengeRow): Challenge {
@@ -34,6 +35,7 @@ function toChallenge(row: DbChallengeRow): Challenge {
     joinedByMe: row.joined_by_me,
     inviteCode: row.invite_code,
     finished: row.is_finished,
+    myLastCheckIn: row.my_last_check_in ?? null,
   }
 }
 
@@ -49,7 +51,11 @@ function selectChallenge(fastify: FastifyInstance, userId: string) {
     EXISTS (
       SELECT 1 FROM challenge_members me
       WHERE me.challenge_id = c.id AND me.user_id = ${userId} AND me.status = 'active'
-    ) AS joined_by_me
+    ) AS joined_by_me,
+    (
+      SELECT me.last_check_in::TEXT FROM challenge_members me
+      WHERE me.challenge_id = c.id AND me.user_id = ${userId} AND me.status = 'active'
+    ) AS my_last_check_in
   `
 }
 

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useContext, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -11,6 +11,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { HeaderHeightContext } from '@react-navigation/elements';
 import { colors, spacing, radius, typography } from '@theme';
 import { ErrorState, screenShellStyle } from '@shared/components';
 import { useFeedStore } from '../store';
@@ -27,6 +28,11 @@ export function PostCommentsScreen({ route }: Props): React.JSX.Element {
   const hasError = useFeedStore((s) => s.commentsErrorByPost[postId] ?? false);
   const addComment = useFeedStore((s) => s.addComment);
   const [draft, setDraft] = useState('');
+  // O KeyboardAvoidingView mede a própria posição relativa à tela-mãe, não ao
+  // topo do aparelho. Sem descontar o cabeçalho "Comentários", o recuo ficava
+  // ~100 px menor que o teclado e a caixa de texto sumia atrás dele (iPhone).
+  // O contexto (e não useHeaderHeight) não lança fora de um navigator.
+  const headerHeight = useContext(HeaderHeightContext) ?? 0;
 
   useEffect(() => {
     loadComments(postId);
@@ -44,6 +50,7 @@ export function PostCommentsScreen({ route }: Props): React.JSX.Element {
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? headerHeight : 0}
       >
         {isLoading && comments.length === 0 ? (
           <ActivityIndicator color={colors.brandPrimary} style={styles.loader} />

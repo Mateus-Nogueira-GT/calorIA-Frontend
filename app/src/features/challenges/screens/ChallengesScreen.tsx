@@ -7,6 +7,7 @@ import { ChallengeCard } from '../components/ChallengeCard';
 import { EmptyChallengesState } from '../components/EmptyChallengesState';
 import { MealCardSkeleton } from '@features/diet/components/MealCardSkeleton';
 import { ErrorState, screenShellStyle } from '@shared/components';
+import { todayString } from '@shared/utils/date';
 import type { CommunityStackScreenProps } from '@navigation/types';
 
 type Props = CommunityStackScreenProps<'Challenges'>;
@@ -67,6 +68,7 @@ export function ChallengesScreen({ navigation }: Props): React.JSX.Element {
                 challenge={item}
                 joining={joiningId === item.id}
                 checkingIn={checkingInId === item.id}
+                checkedInToday={item.myLastCheckIn === todayString()}
                 onJoin={() => join(item.id).catch(() => {})}
                 onCheckIn={item.joinedByMe && !item.finished ? () => void checkIn(item.id) : undefined}
                 onPress={() => navigation.navigate('ChallengeLeaderboard', { challengeId: item.id })}

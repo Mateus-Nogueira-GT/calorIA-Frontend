@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { Alert } from 'react-native';
 import type { EventArg, NavigationProp } from '@react-navigation/native';
 
@@ -25,11 +25,20 @@ export function useConfirmDiscard({
   hasUnsavedChanges,
   navigation,
   message = 'Você tem alterações não salvas. Quer descartar?',
-}: Options): void {
+}: Options): { allowExit: () => void } {
+  // Depois de salvar, a própria tela navega (replace/goBack) com o formulário
+  // ainda preenchido. Sem esta saída liberada, o aviso aparecia DEPOIS de o
+  // desafio já ter sido criado, e "Continuar editando" + "Criar" duplicava.
+  const exitAllowed = useRef(false);
+  const allowExit = useCallback(() => {
+    exitAllowed.current = true;
+  }, []);
+
   useEffect(() => {
     if (!hasUnsavedChanges) return;
 
     const unsubscribe = navigation.addListener('beforeRemove', (e: BeforeRemoveEvent) => {
+      if (exitAllowed.current) return;
       e.preventDefault();
       Alert.alert('Descartar alterações?', message, [
         { text: 'Continuar editando', style: 'cancel' },
@@ -43,4 +52,6 @@ export function useConfirmDiscard({
 
     return unsubscribe;
   }, [hasUnsavedChanges, navigation, message]);
+
+  return { allowExit };
 }

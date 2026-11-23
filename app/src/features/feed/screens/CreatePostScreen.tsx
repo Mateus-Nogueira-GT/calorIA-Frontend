@@ -39,7 +39,7 @@ export function CreatePostScreen({ navigation }: Props): React.JSX.Element {
   const [selected, setSelected] = useState<PostAchievement | null>(null);
 
   // N4: sair com o post escrito descartava tudo sem avisar.
-  useConfirmDiscard({
+  const { allowExit } = useConfirmDiscard({
     hasUnsavedChanges: content.trim().length > 0 || selected !== null,
     navigation,
     message: 'Seu post ainda não foi publicado. Quer descartar?',
@@ -52,6 +52,7 @@ export function CreatePostScreen({ navigation }: Props): React.JSX.Element {
   const submit = async () => {
     try {
       await createPost(content.trim(), selected ?? undefined);
+      allowExit();
       navigation.goBack();
     } catch {
       /* Alert já disparado no store em falhas de rede futuras; createPost relança */

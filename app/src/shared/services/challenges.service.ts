@@ -17,6 +17,11 @@ export interface Challenge {
   inviteCode: string;
   /** Derivado da data-fim no backend (F3) — separa ativos de encerrados. */
   finished: boolean;
+  /**
+   * Último check-in meu neste desafio ('YYYY-MM-DD'). Opcional: o servidor
+   * antigo não manda, e aí o botão de check-in aparece como antes.
+   */
+  myLastCheckIn?: string | null;
 }
 
 export interface LeaderboardEntry {

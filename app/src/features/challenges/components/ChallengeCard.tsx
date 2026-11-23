@@ -15,6 +15,8 @@ interface Props {
   onCheckIn?: () => void;
   /** Trava o botão enquanto o check-in está em voo (evita duplo toque). */
   checkingIn?: boolean;
+  /** Check-in de hoje já feito: o botão vira o selo "✅ Check-in feito". */
+  checkedInToday?: boolean;
 }
 
 export function ChallengeCard({
@@ -24,6 +26,7 @@ export function ChallengeCard({
   joining,
   onCheckIn,
   checkingIn = false,
+  checkedInToday = false,
 }: Props): React.JSX.Element {
   return (
     <Card onPress={onPress} style={styles.card} testID={`challenge-${challenge.id}`}>
@@ -47,7 +50,16 @@ export function ChallengeCard({
           <View style={styles.joinedBadge}>
             <Text style={styles.joinedText}>✓ Participando</Text>
           </View>
-          {onCheckIn ? (
+          {onCheckIn && checkedInToday ? (
+            <View
+              style={styles.doneBadge}
+              accessible
+              accessibilityLabel='Check-in de hoje feito'
+              testID={`challenge-checkin-done-${challenge.id}`}
+            >
+              <Text style={styles.doneText}>✅ Check-in feito</Text>
+            </View>
+          ) : onCheckIn ? (
             <Button
               size='sm'
               onPress={onCheckIn}
@@ -77,6 +89,8 @@ const styles = StyleSheet.create({
   joinedBadge: { alignSelf: 'flex-start', backgroundColor: colors.brandSupportSoft, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: 6 },
   joinedText: { fontSize: typography.fontSize.sm, color: colors.brandAnchor, fontFamily: typography.fontFamily.semiBold },
   actionsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md },
+  doneBadge: { backgroundColor: colors.brandSupportSoft, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: 8 },
+  doneText: { fontSize: typography.fontSize.sm, color: colors.brandAnchor, fontFamily: typography.fontFamily.semiBold },
   finishedBadge: { backgroundColor: colors.brandDivider, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: 4 },
   finishedText: { fontSize: 12, color: colors.brandTextMuted, fontFamily: typography.fontFamily.semiBold },
 });

@@ -6,6 +6,7 @@ import type {
   CreateChallengeInput,
 } from '@shared/services/challenges.service';
 import { showAlert } from '@shared/utils/show-alert';
+import { todayString } from '@shared/utils/date';
 
 interface ChallengesState {
   challenges: Challenge[];
@@ -95,14 +96,24 @@ export const useChallengesStore = create<ChallengesState>((set, get) => ({
     // segundo zerava a sequência no servidor.
     if (get().checkingInId) return false;
     set({ checkingInId: challengeId });
+    // O botão vira "✅ Check-in feito" na hora: antes nada mudava na tela e
+    // parecia que o toque não tinha funcionado.
+    const markDoneToday = () =>
+      set((s) => ({
+        challenges: s.challenges.map((c) =>
+          c.id === challengeId ? { ...c, myLastCheckIn: todayString() } : c,
+        ),
+      }));
     try {
       await challengesService.checkIn(challengeId);
+      markDoneToday();
       void get().loadLeaderboard(challengeId).catch(() => {});
       return true;
     } catch (e) {
       const status = (e as { response?: { status?: number; data?: { error?: string } } })
         .response;
       if (status?.data?.error === 'ALREADY_CHECKED_IN') {
+        markDoneToday();
         showAlert('Tudo certo por hoje', 'Você já fez o check-in de hoje neste desafio.');
       } else if (status?.data?.error === 'CHALLENGE_ENDED') {
         showAlert('Desafio encerrado', 'Este desafio já chegou ao fim.');

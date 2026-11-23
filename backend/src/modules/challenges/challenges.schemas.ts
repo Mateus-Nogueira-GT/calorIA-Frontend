@@ -21,6 +21,8 @@ export const challengeSchema = z.object({
   metric: z.literal('streak'),
   joinedByMe: z.boolean(),
   inviteCode: z.string(),
+  /** Último check-in do usuário neste desafio ('YYYY-MM-DD'); o app compara com hoje. */
+  myLastCheckIn: z.string().nullable(),
 })
 
 export const leaderboardEntrySchema = z.object({
