@@ -21,6 +21,7 @@ export const SOCIAL_MIGRATIONS = [
   '007_social.sql',
   '010_notifications.sql',
   '014_spec_fixes.sql',
+  '029_feed_counters_atomic.sql',
 ]
 
 /** Cliente em UTC, como o Supabase (o initdb local herda o fuso da máquina). */

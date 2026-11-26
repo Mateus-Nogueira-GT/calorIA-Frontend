@@ -41,6 +41,10 @@ const initialState = {
   commentsErrorByPost: {} as Record<string, boolean>,
 };
 
+// S7: posts com curtida/descurtida em andamento. Dois toques rápidos mandavam
+// POST e DELETE em paralelo, e a resposta que chegasse por último decidia a tela.
+const likesInFlight = new Set<string>();
+
 export const useFeedStore = create<FeedState>((set, get) => ({
   ...initialState,
 
@@ -98,7 +102,8 @@ export const useFeedStore = create<FeedState>((set, get) => ({
 
   toggleLike: async (postId) => {
     const target = get().posts.find((p) => p.id === postId);
-    if (!target) return;
+    if (!target || likesInFlight.has(postId)) return;
+    likesInFlight.add(postId);
     const snapshot = { likedByMe: target.likedByMe, likeCount: target.likeCount };
     const optimistic = {
       likedByMe: !snapshot.likedByMe,
@@ -122,6 +127,8 @@ export const useFeedStore = create<FeedState>((set, get) => ({
       }));
       showAlert('Não foi possível curtir', 'Tente novamente.');
       throw e;
+    } finally {
+      likesInFlight.delete(postId);
     }
   },
 

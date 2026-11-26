@@ -19,7 +19,7 @@
        ranking e unit/integração dos demais.
 3. [x] R6: `finished`/join com a data de SP, com teste de relógio controlado.
 4. [x] R2: post de marco só quando a sequência sobe, mais try/catch, com teste em `diets`.
-5. [ ] R7: migration 029, `ON CONFLICT` e trava no app, com testes de Postgres, de backend e de app.
+5. [x] R7: migration 029, `ON CONFLICT` e trava no app, com testes de Postgres, de backend e de app.
 6. [ ] R4: totais do Diário, com teste do `FoodLogScreen`/`DayMacroSummary`.
 7. [ ] R5: merge do `load()` dos desafios, com teste no store.
 8. [ ] R8: guarda de sessão no feed (e, se couber, nos desafios), com teste no store.

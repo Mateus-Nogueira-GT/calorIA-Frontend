@@ -155,4 +155,28 @@ describe('useFeedStore', () => {
 
     expect(result.current.commentsErrorByPost['p1']).toBe(false);
   });
+
+  it('dois toques rápidos na curtida geram uma requisição só (S7)', async () => {
+    useFeedStore.setState({ posts: [post('p1')] });
+    let resolveLike!: (v: { likeCount: number; likedByMe: boolean }) => void;
+    feedService.like.mockReturnValue(
+      new Promise((r) => {
+        resolveLike = r;
+      }),
+    );
+
+    const first = useFeedStore.getState().toggleLike('p1');
+    const second = useFeedStore.getState().toggleLike('p1');
+    expect(feedService.like).toHaveBeenCalledTimes(1);
+    expect(feedService.unlike).not.toHaveBeenCalled();
+
+    resolveLike({ likeCount: 1, likedByMe: true });
+    await Promise.all([first, second]);
+    expect(useFeedStore.getState().posts[0]).toMatchObject({ likedByMe: true, likeCount: 1 });
+
+    // Terminada a requisição, o próximo toque volta a valer.
+    feedService.unlike.mockResolvedValue({ likeCount: 0, likedByMe: false });
+    await useFeedStore.getState().toggleLike('p1');
+    expect(feedService.unlike).toHaveBeenCalledTimes(1);
+  });
 });
