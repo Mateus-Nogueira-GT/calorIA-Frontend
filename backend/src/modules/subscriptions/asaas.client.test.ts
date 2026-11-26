@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { AppError } from '../../shared/errors.js'
-import { asaasBaseUrl, createAsaasClient } from './asaas.client.js'
+import { asaasBaseUrl, createAsaasClient, isDefinitiveProviderError } from './asaas.client.js'
 
 type Call = { url: string; init: RequestInit }
 
@@ -156,5 +156,133 @@ describe('cliente Asaas', () => {
     await expect(client.listSubscriptionPayments('sub_1')).rejects.toMatchObject({
       statusCode: 502,
     })
+  })
+  it('4xx é erro definitivo; 5xx, rede e timeout são ambíguos', async () => {
+    const client = (responses: { status: number; body: unknown }[]) =>
+      createAsaasClient({
+        apiKey: 'k',
+        env: 'sandbox',
+        fetchImpl: fakeFetch(responses).impl,
+        log: silentLog,
+      })
+    const input = { name: 'Ana', cpfCnpj: '1', externalReference: 'u1' }
+    const e400 = await client([{ status: 400, body: {} }])
+      .createCustomer(input)
+      .catch((e) => e)
+    expect(e400).toMatchObject({
+      statusCode: 502,
+      code: 'PAYMENT_PROVIDER_ERROR',
+      ambiguous: false,
+    })
+    expect(isDefinitiveProviderError(e400)).toBe(true)
+    const e503 = await client([{ status: 503, body: {} }])
+      .createCustomer(input)
+      .catch((e) => e)
+    expect(e503).toMatchObject({ statusCode: 502, ambiguous: true })
+    expect(isDefinitiveProviderError(e503)).toBe(false)
+
+    const network = createAsaasClient({
+      apiKey: 'k',
+      env: 'sandbox',
+      fetchImpl: (async () => {
+        throw new TypeError('fetch failed')
+      }) as unknown as typeof fetch,
+      log: silentLog,
+    })
+    const eNet = await network.createCustomer(input).catch((e) => e)
+    expect(eNet).toMatchObject({ statusCode: 502, ambiguous: true })
+
+    const timeout = createAsaasClient({
+      apiKey: 'k',
+      env: 'sandbox',
+      fetchImpl: ((_u: string, init?: RequestInit) =>
+        new Promise((_, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(new Error('aborted')))
+        })) as unknown as typeof fetch,
+      timeoutMs: 20,
+      log: silentLog,
+    })
+    expect(await timeout.createCustomer(input).catch((e) => e)).toMatchObject({ ambiguous: true })
+    // Erro qualquer (fora do cliente) nunca é tratado como definitivo.
+    expect(isDefinitiveProviderError(new Error('x'))).toBe(false)
+  })
+
+  it('corpo que falha ao ler depois de 2xx é ambíguo', async () => {
+    const impl = (async () => ({
+      ok: true,
+      status: 200,
+      text: async () => {
+        throw new Error('socket hang up')
+      },
+    })) as unknown as typeof fetch
+    const client = createAsaasClient({
+      apiKey: 'k',
+      env: 'sandbox',
+      fetchImpl: impl,
+      log: silentLog,
+    })
+    const err = await client
+      .createPayment({
+        customer: 'cus_1',
+        billingType: 'UNDEFINED',
+        value: 60,
+        dueDate: '2026-11-13',
+        description: 'x',
+        externalReference: 'p1',
+      })
+      .catch((e) => e)
+    expect(err).toMatchObject({ statusCode: 502, ambiguous: true })
+  })
+
+  it('busca por externalReference ignora deletados e confere a referência', async () => {
+    const ref = '55555555-5555-5555-5555-555555555555'
+    const f = fakeFetch([
+      {
+        status: 200,
+        body: {
+          data: [
+            { id: 'pay_old', deleted: true, externalReference: ref, status: 'PENDING' },
+            { id: 'pay_1', deleted: false, externalReference: ref, invoiceUrl: 'https://x/i/1' },
+          ],
+        },
+      },
+      { status: 200, body: { data: [{ id: 'sub_old', deleted: true, externalReference: ref }] } },
+      { status: 200, body: { id: 'sub_9', externalReference: ref, deleted: false } },
+    ])
+    const client = createAsaasClient({
+      apiKey: 'k',
+      env: 'sandbox',
+      fetchImpl: f.impl,
+      log: silentLog,
+    })
+    expect(await client.findPaymentByExternalReference(ref)).toMatchObject({
+      id: 'pay_1',
+      invoiceUrl: 'https://x/i/1',
+    })
+    expect(await client.findSubscriptionByExternalReference(ref)).toBeNull()
+    expect(await client.getSubscription('sub_9')).toMatchObject({
+      id: 'sub_9',
+      externalReference: ref,
+    })
+    expect(f.calls.map((c) => `${c.init.method} ${c.url}`)).toEqual([
+      `GET https://api-sandbox.asaas.com/v3/payments?externalReference=${ref}`,
+      `GET https://api-sandbox.asaas.com/v3/subscriptions?externalReference=${ref}`,
+      'GET https://api-sandbox.asaas.com/v3/subscriptions/sub_9',
+    ])
+  })
+
+  it('busca recusa referência que não é UUID, sem chamar', async () => {
+    const f = fakeFetch([])
+    const client = createAsaasClient({
+      apiKey: 'k',
+      env: 'sandbox',
+      fetchImpl: f.impl,
+      log: silentLog,
+    })
+    await expect(client.findPaymentByExternalReference('x&status=PAID')).rejects.toBeInstanceOf(
+      AppError,
+    )
+    await expect(client.getSubscription('../x')).rejects.toBeInstanceOf(AppError)
+    expect(f.calls).toHaveLength(0)
   })
 })

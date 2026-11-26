@@ -52,6 +52,15 @@ function fakeAsaas(over: Partial<AsaasClient> = {}) {
     deleteSubscription: async (id) => {
       calls.push(`delete:${id}`)
     },
+    findPaymentByExternalReference: async () => null,
+    findSubscriptionByExternalReference: async (ref) => {
+      calls.push(`find:${ref}`)
+      return null
+    },
+    getSubscription: async (id) => {
+      calls.push(`get:${id}`)
+      return { id }
+    },
     ...over,
   }
   return { client, calls }

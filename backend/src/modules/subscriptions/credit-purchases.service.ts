@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { env } from '../../shared/env.js'
 import { AppError } from '../../shared/errors.js'
-import type { AsaasClient } from './asaas.client.js'
+import { type AsaasClient, isDefinitiveProviderError } from './asaas.client.js'
 import { normalizeCpfCnpj } from './cpf-cnpj.js'
 import { saoPauloDate } from './subscriptions.service.js'
 
@@ -64,6 +64,58 @@ function pgCode(err: unknown): string | undefined {
   return (err as { code?: string } | null)?.code
 }
 
+const checkoutInProgress = () =>
+  new AppError(409, 'CHECKOUT_IN_PROGRESS', 'Sua compra já está sendo criada.')
+
+/**
+ * Compra presa sem id do Asaas (o createPayment caiu num erro ambíguo). Menos de
+ * 1 min: outro checkout pode estar em voo → 409. Mais velha: procura no Asaas
+ * pelo externalReference. Achou → liga e devolve a fatura. Não achou → fecha a
+ * linha (canceled, não apagada: um webhook atrasado ainda casa pela referência)
+ * e deixa o checkout seguir. A busca falhando → 409, nunca uma segunda cobrança.
+ */
+async function reconcileStuckPurchase(
+  f: FastifyInstance,
+  asaas: AsaasClient,
+  userId: string,
+  packageId: string,
+): Promise<{ purchase_id: string; invoice_url: string | null } | null> {
+  const [stuck] = await f.db<{ id: string; recent: boolean }[]>`
+    SELECT id, (created_at > now() - interval '1 minute') AS recent FROM credit_purchases
+    WHERE user_id = ${userId} AND package_id = ${packageId} AND status = 'pending'
+      AND asaas_payment_id IS NULL`
+  if (!stuck) return null
+  if (stuck.recent) throw checkoutInProgress()
+  let found: { id: string; invoiceUrl?: string } | null
+  try {
+    found = await asaas.findPaymentByExternalReference(stuck.id)
+  } catch (err) {
+    f.log.warn({ err, purchaseId: stuck.id }, 'credit_purchase_reconcile_failed')
+    throw checkoutInProgress()
+  }
+  if (found) {
+    try {
+      await f.db`
+        UPDATE credit_purchases SET asaas_payment_id = ${found.id},
+          invoice_url = ${found.invoiceUrl ?? null}, updated_at = now()
+        WHERE id = ${stuck.id} AND asaas_payment_id IS NULL`
+    } catch (err) {
+      if (pgCode(err) === '23505') throw checkoutInProgress()
+      throw err
+    }
+    f.log.info({ credit_purchase: { id: stuck.id } }, 'credit_purchase_reconciled')
+    return { purchase_id: stuck.id, invoice_url: found.invoiceUrl ?? null }
+  }
+  const closed = await f.db`
+    UPDATE credit_purchases SET status = 'canceled', updated_at = now()
+    WHERE id = ${stuck.id} AND asaas_payment_id IS NULL AND status = 'pending'
+    RETURNING id`
+  // Um webhook ligou a compra enquanto a busca rodava: a próxima tentativa devolve a fatura dela.
+  if (!closed.length) throw checkoutInProgress()
+  f.log.info({ credit_purchase: { id: stuck.id } }, 'credit_purchase_abandoned')
+  return null
+}
+
 export async function listPackages(f: FastifyInstance): Promise<PublicPackage[]> {
   return f.db<PublicPackage[]>`
     SELECT code, name, credits, price_cents FROM credit_packages
@@ -101,6 +153,9 @@ export async function checkoutPurchase(
   if (pending)
     return { purchase_id: pending.id, status: 'pending', invoice_url: pending.invoice_url }
 
+  const reconciled = await reconcileStuckPurchase(f, asaas, userId, pkg.id)
+  if (reconciled) return { ...reconciled, status: 'pending' }
+
   let [customer] = await f.db<{ asaas_customer_id: string }[]>`
     SELECT asaas_customer_id FROM payment_customers WHERE user_id = ${userId}`
   if (!customer) {
@@ -127,8 +182,7 @@ export async function checkoutPurchase(
       VALUES(${userId}, ${pkg.id}, ${pkg.credits}, ${pkg.price_cents})
       RETURNING id`
   } catch (err) {
-    if (pgCode(err) === '23505')
-      throw new AppError(409, 'CHECKOUT_IN_PROGRESS', 'Sua compra já está sendo criada.')
+    if (pgCode(err) === '23505') throw checkoutInProgress()
     throw err
   }
 
@@ -144,7 +198,12 @@ export async function checkoutPurchase(
       ...(env.ASAAS_SUCCESS_URL ? { callback: { successUrl: env.ASAAS_SUCCESS_URL } } : {}),
     })
   } catch (err) {
-    await f.db`DELETE FROM credit_purchases WHERE id = ${local.id} AND asaas_payment_id IS NULL`
+    // Recusa certa (4xx): nada foi criado, apaga. Ambíguo (timeout, rede, 5xx): a
+    // cobrança pode existir; a linha fica pending sem id para o próximo checkout
+    // reconciliar pelo externalReference, e o webhook continua casando por ele.
+    if (isDefinitiveProviderError(err))
+      await f.db`DELETE FROM credit_purchases WHERE id = ${local.id} AND asaas_payment_id IS NULL`
+    else f.log.warn({ err, purchaseId: local.id }, 'credit_purchase_create_ambiguous')
     throw err
   }
   await f.db`

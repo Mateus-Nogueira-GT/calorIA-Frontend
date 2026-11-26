@@ -6,7 +6,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { env } from '../../shared/env.js'
 import { runCreditOperation, wallet } from '../credits/credits.service.js'
 import { type AsaasEvent, handleAsaasEvent } from './asaas-webhook.service.js'
-import type { AsaasClient } from './asaas.client.js'
+import { type AsaasClient, asaasError } from './asaas.client.js'
 import { checkoutPurchase } from './credit-purchases.service.js'
 import { cancelMySubscription, checkout } from './subscriptions.service.js'
 
@@ -440,6 +440,154 @@ export async function resetSubscriptionSchema(db: postgres.Sql) {
     }),
     listSubscriptionPayments: async () => [],
     deleteSubscription: async () => {},
+    findPaymentByExternalReference: async () => null,
+    findSubscriptionByExternalReference: async () => null,
+    getSubscription: async (id) => ({ id }),
+  })
+
+  /**
+   * Asaas com estado, por externalReference. `mode`: 'ok'; 'created_then_timeout'
+   * (cria e a resposta se perde); 'timeout' (nada criado); 'lookup_fails'.
+   */
+  function statefulAsaas() {
+    const payments = new Map<
+      string,
+      { id: string; invoiceUrl: string; externalReference: string }
+    >()
+    const state = {
+      mode: 'ok' as 'ok' | 'created_then_timeout' | 'timeout' | 'lookup_fails',
+      creates: 0,
+    }
+    const client: AsaasClient = {
+      ...purchaseAsaas(),
+      createPayment: async (i) => {
+        state.creates++
+        if (state.mode === 'timeout') throw asaasError(true)
+        const p = {
+          id: `pay_${state.creates}`,
+          invoiceUrl: `https://asaas/i/${state.creates}`,
+          externalReference: i.externalReference,
+        }
+        payments.set(i.externalReference, p)
+        if (state.mode === 'created_then_timeout') throw asaasError(true)
+        return { ...p, status: 'PENDING' }
+      },
+      findPaymentByExternalReference: async (ref) => {
+        if (state.mode === 'lookup_fails') throw asaasError(true, 503)
+        const p = payments.get(ref)
+        return p ? { ...p, status: 'PENDING' } : null
+      },
+    }
+    return { client, state, payments }
+  }
+  const age = (id: string, interval: string) =>
+    db`UPDATE credit_purchases SET created_at = now() - ${interval}::interval WHERE id = ${id}`
+  const prepareBuyer = async () => {
+    await db`UPDATE credit_purchases SET status='paid' WHERE id=${purchaseId}`
+    await db`INSERT INTO payment_customers(user_id,asaas_customer_id) VALUES(${user},'cus_1')`
+  }
+  const stuckRow = async () =>
+    await db`SELECT id, status, asaas_payment_id, invoice_url FROM credit_purchases
+        WHERE user_id=${user} AND id <> ${purchaseId} ORDER BY created_at`
+
+  it('R4: timeout depois de criar → checkout novo reconcilia: nenhuma segunda cobrança, mesma fatura', async () => {
+    await prepareBuyer()
+    const a = statefulAsaas()
+    a.state.mode = 'created_then_timeout'
+    await expect(
+      checkoutPurchase(f, a.client, user, { package_code: 'p10' }),
+    ).rejects.toMatchObject({
+      statusCode: 502,
+      code: 'PAYMENT_PROVIDER_ERROR',
+    })
+    const [kept] = await stuckRow()
+    expect(kept).toMatchObject({ status: 'pending', asaas_payment_id: null })
+    a.state.mode = 'ok'
+    // Logo em seguida: outro checkout pode estar em voo.
+    await expect(
+      checkoutPurchase(f, a.client, user, { package_code: 'p10' }),
+    ).rejects.toMatchObject({
+      statusCode: 409,
+      code: 'CHECKOUT_IN_PROGRESS',
+    })
+    await age(kept.id, '2 minutes')
+    const r = await checkoutPurchase(f, a.client, user, { package_code: 'p10' })
+    expect(r).toEqual({ purchase_id: kept.id, status: 'pending', invoice_url: 'https://asaas/i/1' })
+    expect(a.state.creates).toBe(1)
+    expect(await stuckRow()).toEqual([
+      {
+        id: kept.id,
+        status: 'pending',
+        asaas_payment_id: 'pay_1',
+        invoice_url: 'https://asaas/i/1',
+      },
+    ])
+    // E o webhook do pagamento casa e credita.
+    expect(await handleAsaasEvent(f, ev('PAYMENT_RECEIVED', 'evt_r4', 'pay_1', kept.id))).toBe(
+      'purchase_paid',
+    )
+    expect(await balance()).toBe(75 + 50)
+  })
+
+  it('R4: timeout sem criar → checkout novo fecha a linha e segue com cobrança nova', async () => {
+    await prepareBuyer()
+    const a = statefulAsaas()
+    a.state.mode = 'timeout'
+    await expect(
+      checkoutPurchase(f, a.client, user, { package_code: 'p10' }),
+    ).rejects.toMatchObject({
+      statusCode: 502,
+    })
+    const [kept] = await stuckRow()
+    await age(kept.id, '2 minutes')
+    a.state.mode = 'ok'
+    const r = await checkoutPurchase(f, a.client, user, { package_code: 'p10' })
+    expect(r.purchase_id).not.toBe(kept.id)
+    expect(r.invoice_url).toBe('https://asaas/i/2')
+    const rows = await stuckRow()
+    expect(rows).toEqual([
+      { id: kept.id, status: 'canceled', asaas_payment_id: null, invoice_url: null },
+      {
+        id: r.purchase_id,
+        status: 'pending',
+        asaas_payment_id: 'pay_2',
+        invoice_url: 'https://asaas/i/2',
+      },
+    ])
+  })
+
+  it('R4: busca no Asaas falhando → 409 e a linha fica', async () => {
+    await prepareBuyer()
+    const a = statefulAsaas()
+    a.state.mode = 'timeout'
+    await expect(checkoutPurchase(f, a.client, user, { package_code: 'p10' })).rejects.toThrow()
+    const [kept] = await stuckRow()
+    await age(kept.id, '2 minutes')
+    a.state.mode = 'lookup_fails'
+    await expect(
+      checkoutPurchase(f, a.client, user, { package_code: 'p10' }),
+    ).rejects.toMatchObject({
+      statusCode: 409,
+      code: 'CHECKOUT_IN_PROGRESS',
+    })
+    expect(await stuckRow()).toEqual([
+      { id: kept.id, status: 'pending', asaas_payment_id: null, invoice_url: null },
+    ])
+    expect(a.state.creates).toBe(1)
+  })
+
+  it('R4: recusa definitiva (4xx) apaga a linha, como antes', async () => {
+    await prepareBuyer()
+    const client: AsaasClient = {
+      ...purchaseAsaas(),
+      createPayment: async () => {
+        throw asaasError(false, 400)
+      },
+    }
+    await expect(checkoutPurchase(f, client, user, { package_code: 'p10' })).rejects.toMatchObject({
+      statusCode: 502,
+    })
+    expect(await stuckRow()).toEqual([])
   })
 
   it('compra presa sem id do Asaas: o evento grava o id e fecha; o pacote volta a ser comprável', async () => {
@@ -532,6 +680,9 @@ export async function resetSubscriptionSchema(db: postgres.Sql) {
       deleteSubscription: async (id) => {
         deleted.push(id)
       },
+      findPaymentByExternalReference: async () => null,
+      findSubscriptionByExternalReference: async () => null,
+      getSubscription: async (id) => ({ id }),
     }
     return { client, created, deleted, release, inside }
   }
