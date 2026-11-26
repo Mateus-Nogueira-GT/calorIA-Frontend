@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { BODY_LIMITS } from './body-limits.js'
 
 /**
  * Schema da dieta gerada pela IA via Structured Output.
@@ -67,8 +68,9 @@ export const aiSingleDaySchema = z.object({
  * "arredondar" para 18 só para passar no schema.
  */
 export const COLLECTED_BOUNDS = {
-  weightKg: [30, 300],
-  heightCm: [120, 250],
+  // Peso e altura vêm de BODY_LIMITS: o que o perfil aceita, a geração aceita.
+  weightKg: [BODY_LIMITS.weightKg.min, BODY_LIMITS.weightKg.max],
+  heightCm: [BODY_LIMITS.heightCm.min, BODY_LIMITS.heightCm.max],
   age: [10, 100],
   mealsPerDay: [3, 6],
   listMaxItems: 10,

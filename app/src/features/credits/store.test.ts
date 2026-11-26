@@ -1,4 +1,5 @@
-import { useCreditsStore } from './store';
+import { AppState } from 'react-native';
+import { refreshWalletOnForeground, useCreditsStore } from './store';
 import { useAuthStore } from '@features/auth/store';
 import { creditsService, Wallet } from '@shared/services/credits.service';
 jest.mock('@shared/services/credits.service', () => ({
@@ -15,6 +16,10 @@ const wallet: Wallet = {
   policy: { photo_units: 15, message_units: 1, welcome_units: 75, version: 'test' },
 };
 const read = creditsService.wallet as jest.Mock;
+// Capturado antes do clearAllMocks: o store registra o listener ao ser importado.
+const appStateListeners = (AppState.addEventListener as jest.Mock).mock.calls.map(
+  ([, cb]) => cb as unknown,
+);
 beforeEach(() => {
   jest.clearAllMocks();
   useAuthStore.setState({
@@ -59,5 +64,33 @@ it('provider error is unavailable balance rather than a fabricated zero', async 
     wallet: null,
     loading: false,
     error: 'Não foi possível consultar seu saldo.',
+  });
+});
+
+describe('R5: volta ao app', () => {
+  it('o store escuta o AppState uma vez, para todas as telas', () => {
+    expect(appStateListeners.filter((cb) => cb === refreshWalletOnForeground)).toHaveLength(1);
+  });
+
+  it('background → active recarrega a carteira quando os créditos estão visíveis', async () => {
+    read.mockResolvedValue({ ...wallet, enforcement_enabled: true });
+    await useCreditsStore.getState().load();
+    expect(read).toHaveBeenCalledTimes(1);
+    refreshWalletOnForeground('background');
+    refreshWalletOnForeground('active');
+    await Promise.resolve();
+    expect(read).toHaveBeenCalledTimes(2);
+  });
+
+  it('créditos desligados ou sem sessão: voltar ao app não consulta', async () => {
+    read.mockResolvedValue(wallet);
+    await useCreditsStore.getState().load();
+    refreshWalletOnForeground('active');
+    expect(read).toHaveBeenCalledTimes(1);
+
+    useCreditsStore.setState({ featureVisible: true });
+    useAuthStore.setState({ isAuthenticated: false, user: null });
+    refreshWalletOnForeground('active');
+    expect(read).toHaveBeenCalledTimes(1);
   });
 });

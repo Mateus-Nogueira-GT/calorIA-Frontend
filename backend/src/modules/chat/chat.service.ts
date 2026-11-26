@@ -3,7 +3,11 @@ import type { FastifyInstance } from 'fastify'
 import type OpenAI from 'openai'
 import { buildModelsField, checkDailyQuota, logAiUsage } from '../../shared/ai-usage.js'
 import { assertAiTariffConfigured } from '../../shared/credit-ai-policy.js'
-import { type CollectedUserData, collectedUserDataSchema } from '../../shared/diet-ai-schema.js'
+import {
+  COLLECTED_BOUNDS,
+  type CollectedUserData,
+  collectedUserDataSchema,
+} from '../../shared/diet-ai-schema.js'
 import { env } from '../../shared/env.js'
 import { AppError } from '../../shared/errors.js'
 import { assessSafety, describeInvalidFields } from '../../shared/guardrails/index.js'
@@ -287,11 +291,16 @@ export const COLLECT_DIET_DATA_TOOL: OpenAI.Chat.ChatCompletionTool = {
         'health_conditions',
       ],
       properties: {
-        weight_kg: { type: 'number', minimum: 30, maximum: 300, description: 'Peso em kg' },
+        weight_kg: {
+          type: 'number',
+          minimum: COLLECTED_BOUNDS.weightKg[0],
+          maximum: COLLECTED_BOUNDS.weightKg[1],
+          description: 'Peso em kg',
+        },
         height_cm: {
           type: 'number',
-          minimum: 120,
-          maximum: 250,
+          minimum: COLLECTED_BOUNDS.heightCm[0],
+          maximum: COLLECTED_BOUNDS.heightCm[1],
           description: 'Altura em centímetros (175, nunca 1.75)',
         },
         age: { type: 'integer', minimum: 10, maximum: 100, description: 'Idade em anos' },

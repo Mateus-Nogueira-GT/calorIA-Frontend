@@ -95,7 +95,8 @@ export const authService = {
         // Só a idade é perguntada. Com 1º de janeiro, o aniversário deste ano
         // já passou em qualquer dia do ano corrente, então a idade que o
         // backend calcula a partir da data é igual à informada o ano todo.
-        birth_date: `${new Date().getFullYear() - data.age}-01-01`,
+        // O ano é o de UTC, o calendário em que o backend conta a idade.
+        birth_date: `${new Date().getUTCFullYear() - data.age}-01-01`,
         activity_level: data.activityLevel,
       })
       .then((r) => r.data),
