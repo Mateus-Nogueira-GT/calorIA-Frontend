@@ -1,14 +1,18 @@
 /**
- * Valida que o `iss` (issuer) de um JWT pertence ao projeto Supabase
- * configurado, ANTES de buscar a JWKS desse domínio. Evita que um token
- * forjado aponte o backend para uma JWKS de domínio controlado pelo atacante.
- *
- * Usa fronteira exata (`=== base` ou `base + '/'`) em vez de um `startsWith`
- * solto — caso contrário um issuer como `https://abcd.supabase.co.evil.com`
- * passaria por começar com a URL do projeto.
+ * Issuer dos access tokens do Supabase Auth: `${SUPABASE_URL}/auth/v1`.
+ * Tolera barra final na env var.
+ */
+export function supabaseIssuer(supabaseUrl: string): string {
+  return `${supabaseUrl.replace(/\/+$/, '')}/auth/v1`
+}
+
+/**
+ * Valida que o `iss` (issuer) de um JWT é EXATAMENTE o do Supabase Auth do
+ * projeto. A1 do pente fino: aceitar qualquer caminho sob a URL do projeto
+ * (`startsWith(base + '/')`) deixava o token apontar a JWKS para um arquivo
+ * público do Storage (`iss = <url do avatar>#`) e forjar qualquer `sub`.
  */
 export function isAllowedIssuer(iss: string | undefined, supabaseUrl: string): boolean {
   if (!iss) return false
-  const base = supabaseUrl.replace(/\/+$/, '')
-  return iss === base || iss.startsWith(`${base}/`)
+  return iss === supabaseIssuer(supabaseUrl)
 }

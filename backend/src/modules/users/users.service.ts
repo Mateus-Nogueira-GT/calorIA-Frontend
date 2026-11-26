@@ -101,6 +101,41 @@ export async function updateUserProfile(
 }
 
 /**
+ * Detecta o formato pela assinatura dos bytes. Cobre o que o app envia: o
+ * react-native-image-picker devolve JPEG ou PNG quando redimensiona, mas passa
+ * GIF, WebP e HEIC/HEIF originais (iOS não reprocessa GIF; Android devolve o
+ * arquivo original quando não precisa redimensionar), e no web vai o arquivo
+ * do usuário. Qualquer outra coisa (JSON, SVG, HTML) → null.
+ */
+export function detectImageType(buf: Buffer): { contentType: string; ext: string } | null {
+  if (buf.length >= 8 && buf.subarray(0, 8).equals(PNG_SIGNATURE)) {
+    return { contentType: 'image/png', ext: 'png' }
+  }
+  if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) {
+    return { contentType: 'image/jpeg', ext: 'jpg' }
+  }
+  const ascii = (start: number, end: number) => buf.subarray(start, end).toString('latin1')
+  if (buf.length >= 6 && (ascii(0, 6) === 'GIF87a' || ascii(0, 6) === 'GIF89a')) {
+    return { contentType: 'image/gif', ext: 'gif' }
+  }
+  if (buf.length >= 12 && ascii(0, 4) === 'RIFF' && ascii(8, 12) === 'WEBP') {
+    return { contentType: 'image/webp', ext: 'webp' }
+  }
+  if (buf.length >= 12 && ascii(4, 8) === 'ftyp') {
+    const brand = ascii(8, 12)
+    if (HEIC_BRANDS.has(brand)) return { contentType: 'image/heic', ext: 'heic' }
+    if (HEIF_BRANDS.has(brand)) return { contentType: 'image/heif', ext: 'heif' }
+    if (AVIF_BRANDS.has(brand)) return { contentType: 'image/avif', ext: 'avif' }
+  }
+  return null
+}
+
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+const HEIC_BRANDS = new Set(['heic', 'heix', 'hevc', 'hevx', 'heim', 'heis'])
+const HEIF_BRANDS = new Set(['mif1', 'msf1', 'heif'])
+const AVIF_BRANDS = new Set(['avif', 'avis'])
+
+/**
  * Sobe a foto de perfil (data URL base64) para o Storage e grava a URL pública.
  */
 export async function uploadUserAvatar(
@@ -113,9 +148,14 @@ export async function uploadUserAvatar(
     throw new AppError(422, 'INVALID_IMAGE', 'Imagem inválida. Envie um data URL base64.')
   }
 
-  const contentType = match[1]
   const buffer = Buffer.from(match[2], 'base64')
-  const ext = (contentType.split('/')[1] ?? 'jpg').replace('jpeg', 'jpg')
+  // A1 do pente fino: o tipo gravado vem dos bytes, não do declarado. Antes um
+  // JSON de JWKS subia como image/png e virava um arquivo público no Storage.
+  const detected = detectImageType(buffer)
+  if (!detected) {
+    throw new AppError(422, 'INVALID_IMAGE', 'Imagem inválida. Envie uma foto PNG, JPEG ou WebP.')
+  }
+  const { contentType, ext } = detected
   const path = `${userId}/${Date.now()}.${ext}`
 
   const { error } = await fastify.supabase.storage

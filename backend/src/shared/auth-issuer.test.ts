@@ -8,8 +8,17 @@ describe('isAllowedIssuer', () => {
     expect(isAllowedIssuer('https://abcd.supabase.co/auth/v1', SUPABASE_URL)).toBe(true)
   })
 
-  it('aceita iss igual à URL do projeto', () => {
-    expect(isAllowedIssuer('https://abcd.supabase.co', SUPABASE_URL)).toBe(true)
+  it('rejeita iss igual à URL do projeto, sem /auth/v1', () => {
+    expect(isAllowedIssuer('https://abcd.supabase.co', SUPABASE_URL)).toBe(false)
+  })
+
+  it('rejeita caminhos arbitrários do projeto (ex: arquivo público do Storage)', () => {
+    const avatar = 'https://abcd.supabase.co/storage/v1/object/public/avatars/u1/1.png'
+    expect(isAllowedIssuer(`${avatar}#`, SUPABASE_URL)).toBe(false)
+    expect(isAllowedIssuer(`${avatar}?x=`, SUPABASE_URL)).toBe(false)
+    expect(isAllowedIssuer('https://abcd.supabase.co/qualquer', SUPABASE_URL)).toBe(false)
+    expect(isAllowedIssuer('https://abcd.supabase.co/auth/v1/', SUPABASE_URL)).toBe(false)
+    expect(isAllowedIssuer('https://abcd.supabase.co/auth/v1#', SUPABASE_URL)).toBe(false)
   })
 
   it('normaliza barra final da SUPABASE_URL', () => {

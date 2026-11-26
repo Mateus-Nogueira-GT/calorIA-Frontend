@@ -34,9 +34,12 @@ import subscriptionsRoutes from './modules/subscriptions/subscriptions.routes.js
 import usersRoutes from './modules/users/users.routes.js'
 import weightRoutes from './modules/weight/weight.routes.js'
 
-import { isAllowedIssuer } from './shared/auth-issuer.js'
+import { isAllowedIssuer, supabaseIssuer } from './shared/auth-issuer.js'
 import { env } from './shared/env.js'
 import { AppError } from './shared/errors.js'
+
+const invalidToken = () =>
+  new AppError(401, 'UNAUTHORIZED', 'Token inválido ou ausente. Faça login novamente.')
 
 export async function buildApp() {
   const app = Fastify({
@@ -90,7 +93,10 @@ export async function buildApp() {
 
   // O Supabase assina os JWT com chave assimétrica (ES256). A chave pública
   // fica num endpoint JWKS do próprio projeto; buscamos por `kid` e cacheamos.
-  const getJwks = buildGetJwks({ max: 10, ttl: 60 * 60 * 1000 })
+  // A1 do pente fino: a JWKS vem SEMPRE do issuer fixo do Supabase Auth, nunca
+  // do `iss` do token (que o atacante controla), e o verify confere iss e aud.
+  const issuer = supabaseIssuer(env.SUPABASE_URL)
+  const getJwks = buildGetJwks({ max: 10, ttl: 60 * 60 * 1000, issuersWhitelist: [issuer] })
   await app.register(fastifyJwt, {
     decode: { complete: true },
     secret: async (_request: FastifyRequest, tokenOrHeader: TokenOrHeader): Promise<string> => {
@@ -98,15 +104,23 @@ export async function buildApp() {
         header: { kid: string; alg: string }
         payload: { iss: string }
       }
-      // Só buscamos JWKS se o issuer for do próprio projeto Supabase — evita
-      // fetch de chave a partir de um domínio forjado num token malicioso.
-      // Fronteira exata (não `startsWith` solto): rejeita `...supabase.co.evil.com`.
-      if (!isAllowedIssuer(payload.iss, env.SUPABASE_URL)) {
-        throw new Error('Issuer do token não corresponde ao Supabase configurado')
+      // Token recusado é 401 (AppError): um Error solto daqui não passa pelo
+      // wrapper do @fastify/jwt e virava 500/503 nas rotas sem try/catch.
+      if (!isAllowedIssuer(payload.iss, env.SUPABASE_URL)) throw invalidToken()
+      try {
+        return await getJwks.getPublicKey({ kid: header.kid, domain: issuer, alg: header.alg })
+      } catch (err) {
+        const code = (err as { code?: string }).code
+        if (code === 'JWK_NOT_FOUND' || code === 'DOMAIN_NOT_ALLOWED') throw invalidToken()
+        throw err
       }
-      return getJwks.getPublicKey({ kid: header.kid, domain: payload.iss, alg: header.alg })
     },
-    verify: { algorithms: ['ES256'] },
+    verify: {
+      algorithms: ['ES256'],
+      allowedIss: issuer,
+      allowedAud: 'authenticated',
+      requiredClaims: ['iss', 'aud'],
+    },
   })
 
   // ─── Plugins da aplicação ───────────────────────────────────────────────────
