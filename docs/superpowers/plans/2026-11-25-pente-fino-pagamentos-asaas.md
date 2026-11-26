@@ -34,9 +34,9 @@
 - [x] Ajustar o guard do `checkout`, consultando `subscription_payments` por CONFIRMED/RECEIVED.
 
 ### Task 4 — R1 (P1): checkout duplo
-- [ ] Teste de integração com fake do Asaas: A fica parado em `createSubscription`, B roda e A é liberado.
+- [x] Teste de integração com fake do Asaas: A fica parado em `createSubscription`, B roda e A é liberado.
       Espera exatamente uma chamada a `createSubscription` e uma assinatura aberta. B recebe 409.
-- [ ] `pending` sem id há menos de 10 min lança 409. O `UPDATE` exige `status='pending'` e, se não
+- [x] `pending` sem id há menos de 10 min lança 409. O `UPDATE` exige `status='pending'` e, se não
       atualizar nada, cancela a assinatura remota e lança 409.
 
 ### Task 5 — R2 (P2): índice da recarga

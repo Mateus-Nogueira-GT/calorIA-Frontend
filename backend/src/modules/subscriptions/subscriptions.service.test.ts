@@ -86,6 +86,7 @@ describe('checkout', () => {
             : [],
       ],
       ['INSERT INTO subscriptions', [{ id: LOCAL }]],
+      ['SET asaas_subscription_id', [{ id: LOCAL }]],
     ])
     const asaas = fakeAsaas()
     const r = await checkout(fastify, asaas.client, USER, BODY, new Date('2026-11-09T12:00:00Z'))
@@ -205,10 +206,37 @@ describe('checkout', () => {
       ],
       ['SELECT asaas_customer_id', [{ asaas_customer_id: 'cus_1' }]],
       ['INSERT INTO subscriptions', [{ id: LOCAL }]],
+      ['SET asaas_subscription_id', [{ id: LOCAL }]],
     ])
     await checkout(fastify, asaas.client, USER, BODY)
     expect(asaas.calls[0]).toBe('delete:sub_old')
     expect(asaas.calls.some((c) => c.startsWith('customer:'))).toBe(false)
+  })
+
+  it('pendente sem id do Asaas e recente → 409, sem cancelar nem criar nada', async () => {
+    const asaas = fakeAsaas()
+    const { fastify, calls } = fakeFastify([
+      ['FROM subscription_plans WHERE code', [PLAN]],
+      [
+        'FROM subscriptions',
+        [
+          {
+            id: 'outro_checkout',
+            plan_id: PLAN.id,
+            status: 'pending',
+            asaas_subscription_id: null,
+            entitled: false,
+            stale: false,
+          },
+        ],
+      ],
+    ])
+    await expect(checkout(fastify, asaas.client, USER, BODY)).rejects.toMatchObject({
+      statusCode: 409,
+      code: 'CHECKOUT_IN_PROGRESS',
+    })
+    expect(asaas.calls).toEqual([])
+    expect(calls.some((c) => c.sql.includes("SET status = 'canceled'"))).toBe(false)
   })
 
   it('checkout simultâneo → 409; falha no Asaas apaga a linha local', async () => {

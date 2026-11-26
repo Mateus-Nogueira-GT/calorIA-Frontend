@@ -5,7 +5,9 @@ import postgres from 'postgres'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { env } from '../../shared/env.js'
 import { runCreditOperation, wallet } from '../credits/credits.service.js'
+import type { AsaasClient } from './asaas.client.js'
 import { type AsaasEvent, handleAsaasEvent } from './asaas-webhook.service.js'
+import { cancelMySubscription, checkout } from './subscriptions.service.js'
 
 const url = process.env.TEST_DATABASE_URL
 if (url && !['localhost', '127.0.0.1', '[::1]'].includes(new URL(url).hostname))
@@ -436,5 +438,107 @@ export async function resetSubscriptionSchema(db: postgres.Sql) {
     ).rejects.toMatchObject({ code: '23505' })
     await db`DELETE FROM auth.users WHERE id=${user}`
     expect((await purchase()).user_id).toBeNull()
+  })
+})
+
+;(url ? describe : describe.skip)('assinaturas / checkout concorrente em PostgreSQL real', () => {
+  const db = postgres(url ?? 'postgres://localhost/unused', { max: 5, onnotice: () => {} })
+  const noop = () => {}
+  const f = {
+    db,
+    log: { info: noop, warn: noop, error: noop, debug: noop },
+  } as unknown as FastifyInstance
+  const user = randomUUID()
+  const BODY = { plan_code: 'pro', cpf_cnpj: '529.982.247-25', name: 'Ana Souza' }
+  beforeAll(() => resetSubscriptionSchema(db))
+  beforeEach(async () => {
+    await db`TRUNCATE credit_purchases,credit_packages,payment_webhook_events,subscription_payments,subscriptions,subscription_plans,payment_customers,credit_ledger,credit_wallets,profiles,auth.users CASCADE`
+    await db`INSERT INTO auth.users(id) VALUES(${user})`
+    await db`INSERT INTO payment_customers(user_id,asaas_customer_id) VALUES(${user},'cus_1')`
+    await db`INSERT INTO subscription_plans(code,name,price_cents,cycle,credits_per_cycle) VALUES('pro','Pro',2990,'MONTHLY',100)`
+  })
+  afterAll(async () => {
+    await db.end()
+  })
+
+  /** Fake do Asaas cujo createSubscription pode ficar parado até `release()`. */
+  function gatedAsaas() {
+    const created: string[] = []
+    const deleted: string[] = []
+    let release!: () => void
+    let entered!: () => void
+    const gate = new Promise<void>((r) => {
+      release = r
+    })
+    const inside = new Promise<void>((r) => {
+      entered = r
+    })
+    let parked = true
+    const client: AsaasClient = {
+      createCustomer: async () => ({ id: 'cus_1' }),
+      createSubscription: async () => {
+        const id = `sub_${created.length + 1}`
+        created.push(id)
+        if (parked) {
+          parked = false
+          entered()
+          await gate
+        }
+        return { id }
+      },
+      createPayment: async () => ({ id: 'pay_x', status: 'PENDING' }),
+      listSubscriptionPayments: async () => [],
+      deleteSubscription: async (id) => {
+        deleted.push(id)
+      },
+    }
+    return { client, created, deleted, release, inside }
+  }
+  const open = () =>
+    db`SELECT id, status, asaas_subscription_id FROM subscriptions
+      WHERE user_id=${user} AND status IN ('pending','active','past_due')`
+
+  it('dois toques: o segundo checkout recebe 409 e só uma assinatura é criada no Asaas', async () => {
+    const a = gatedAsaas()
+    const first = checkout(f, a.client, user, BODY)
+    await a.inside
+    await expect(checkout(f, a.client, user, BODY)).rejects.toMatchObject({
+      statusCode: 409,
+      code: 'CHECKOUT_IN_PROGRESS',
+    })
+    a.release()
+    const r = await first
+    expect(a.created).toEqual(['sub_1'])
+    expect(a.deleted).toEqual([])
+    const rows = await open()
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({ id: r.subscription_id, asaas_subscription_id: 'sub_1' })
+  })
+
+  it('linha cancelada durante a criação: a assinatura nova é cancelada no Asaas e o checkout dá 409', async () => {
+    const a = gatedAsaas()
+    const first = checkout(f, a.client, user, BODY)
+    await a.inside
+    await cancelMySubscription(f, a.client, user)
+    a.release()
+    await expect(first).rejects.toMatchObject({ statusCode: 409, code: 'CHECKOUT_IN_PROGRESS' })
+    expect(a.deleted).toEqual(['sub_1'])
+    expect(await open()).toHaveLength(0)
+    const [row] = await db`SELECT status, asaas_subscription_id FROM subscriptions`
+    expect(row).toMatchObject({ status: 'canceled', asaas_subscription_id: null })
+  })
+
+  it('pending sem id há mais de 10 minutos é abandonada: o checkout novo cancela e segue', async () => {
+    const [plan] = await db`SELECT id FROM subscription_plans WHERE code='pro'`
+    const [old] =
+      await db`INSERT INTO subscriptions(user_id,plan_id,status,price_cents,cycle,credits_per_cycle,unlimited,created_at)
+      VALUES(${user},${plan.id},'pending',2990,'MONTHLY',100,false,now() - interval '11 minutes') RETURNING id`
+    const a = gatedAsaas()
+    a.release()
+    const r = await checkout(f, a.client, user, BODY)
+    expect(r.subscription_id).not.toBe(old.id)
+    expect(a.created).toEqual(['sub_1'])
+    const [prev] = await db`SELECT status FROM subscriptions WHERE id=${old.id}`
+    expect(prev.status).toBe('canceled')
   })
 })
