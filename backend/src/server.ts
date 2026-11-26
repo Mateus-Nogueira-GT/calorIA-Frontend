@@ -82,7 +82,10 @@ export async function buildApp() {
     // Usuário autenticado é limitado por conta; anônimo pelo IP real
     // (request.user só existe se algum hook já verificou o JWT — fallback ip).
     keyGenerator: (request) => (request.user as { sub?: string } | undefined)?.sub ?? request.ip,
-    errorResponseBuilder: () => ({
+    // O plugin LANÇA o que este builder devolve: sem statusCode, o handler
+    // global tratava o excesso como erro desconhecido e respondia 500 (A2).
+    errorResponseBuilder: (_request, context) => ({
+      statusCode: context.statusCode,
       error: 'TOO_MANY_REQUESTS',
       message: 'Muitas requisições. Tente novamente em breve.',
     }),
