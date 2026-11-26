@@ -5,8 +5,8 @@ import postgres from 'postgres'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { env } from '../../shared/env.js'
 import { runCreditOperation, wallet } from '../credits/credits.service.js'
-import type { AsaasClient } from './asaas.client.js'
 import { type AsaasEvent, handleAsaasEvent } from './asaas-webhook.service.js'
+import type { AsaasClient } from './asaas.client.js'
 import { checkoutPurchase } from './credit-purchases.service.js'
 import { cancelMySubscription, checkout } from './subscriptions.service.js'
 
@@ -174,6 +174,8 @@ export async function resetSubscriptionSchema(db: postgres.Sql) {
       invoiceUrl: 'https://asaas/i/1',
     },
   })
+  const withStatus = (e: AsaasEvent, status: string): AsaasEvent =>
+    e.payment ? { ...e, payment: { ...e.payment, status } } : e
   const balance = async () =>
     (await db`SELECT balance_units FROM credit_wallets WHERE user_id=${user}`)[0]?.balance_units
   const sub = async () => (await db`SELECT * FROM subscriptions WHERE user_id=${user}`)[0]
@@ -234,12 +236,12 @@ export async function resetSubscriptionSchema(db: postgres.Sql) {
     await subscribe()
     await handleAsaasEvent(f, payment('PAYMENT_CONFIRMED'))
     expect(await balance()).toBe(75 + 500)
-    const refunded = (event: string) => {
-      const e = payment(event)
-      return { ...e, payment: { ...e.payment!, status: 'REFUNDED' } }
-    }
-    expect(await handleAsaasEvent(f, refunded('PAYMENT_UPDATED'))).toBe('payment_updated')
-    expect(await handleAsaasEvent(f, refunded('PAYMENT_REFUNDED'))).toBe('reversed')
+    expect(await handleAsaasEvent(f, withStatus(payment('PAYMENT_UPDATED'), 'REFUNDED'))).toBe(
+      'payment_updated',
+    )
+    expect(await handleAsaasEvent(f, withStatus(payment('PAYMENT_REFUNDED'), 'REFUNDED'))).toBe(
+      'reversed',
+    )
     expect(await balance()).toBe(75)
     expect(new Date((await sub()).paid_until).getTime()).toBeLessThanOrEqual(Date.now())
     const [p] = await db`SELECT status FROM subscription_payments WHERE asaas_payment_id='pay_1'`
@@ -248,13 +250,12 @@ export async function resetSubscriptionSchema(db: postgres.Sql) {
 
   it('evento genérico com status pago não marca pagamento novo como pago', async () => {
     await subscribe()
-    const e = payment('PAYMENT_UPDATED')
-    await handleAsaasEvent(f, { ...e, payment: { ...e.payment!, status: 'CONFIRMED' } })
+    await handleAsaasEvent(f, withStatus(payment('PAYMENT_UPDATED'), 'CONFIRMED'))
     const [p] = await db`SELECT status FROM subscription_payments WHERE asaas_payment_id='pay_1'`
     expect(p.status).toBe('PENDING')
     // Pagamento em atraso continua em atraso.
     await handleAsaasEvent(f, payment('PAYMENT_OVERDUE'))
-    await handleAsaasEvent(f, { ...e, id: 'evt_upd2', payment: { ...e.payment!, status: 'RECEIVED' } })
+    await handleAsaasEvent(f, withStatus(payment('PAYMENT_UPDATED'), 'RECEIVED'))
     const [q] = await db`SELECT status FROM subscription_payments WHERE asaas_payment_id='pay_1'`
     expect(q.status).toBe('OVERDUE')
     expect((await sub()).paid_until).toBeNull()
@@ -432,7 +433,11 @@ export async function resetSubscriptionSchema(db: postgres.Sql) {
   const purchaseAsaas = (): AsaasClient => ({
     createCustomer: async () => ({ id: 'cus_1' }),
     createSubscription: async () => ({ id: 'sub_x' }),
-    createPayment: async () => ({ id: 'pay_nova', status: 'PENDING', invoiceUrl: 'https://asaas/i/n' }),
+    createPayment: async () => ({
+      id: 'pay_nova',
+      status: 'PENDING',
+      invoiceUrl: 'https://asaas/i/n',
+    }),
     listSubscriptionPayments: async () => [],
     deleteSubscription: async () => {},
   })
@@ -447,7 +452,8 @@ export async function resetSubscriptionSchema(db: postgres.Sql) {
     expect(
       await handleAsaasEvent(f, ev('PAYMENT_OVERDUE', 'evt_stuck', 'pay_stuck', stuck.id)),
     ).toBe('purchase_closed')
-    const [row] = await db`SELECT status, asaas_payment_id FROM credit_purchases WHERE id=${stuck.id}`
+    const [row] =
+      await db`SELECT status, asaas_payment_id FROM credit_purchases WHERE id=${stuck.id}`
     expect(row).toEqual({ status: 'expired', asaas_payment_id: 'pay_stuck' })
     const r = await checkoutPurchase(f, purchaseAsaas(), user, { package_code: 'p10' })
     expect(r.purchase_id).not.toBe(stuck.id)
@@ -476,7 +482,6 @@ export async function resetSubscriptionSchema(db: postgres.Sql) {
     expect((await purchase()).user_id).toBeNull()
   })
 })
-
 ;(url ? describe : describe.skip)('assinaturas / checkout concorrente em PostgreSQL real', () => {
   const db = postgres(url ?? 'postgres://localhost/unused', { max: 5, onnotice: () => {} })
   const noop = () => {}

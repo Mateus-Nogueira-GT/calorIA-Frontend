@@ -17,7 +17,11 @@ describe('webhook do Asaas / cobrança avulsa', () => {
     const out = await handleAsaasEvent(fastify, {
       id: 'evt_1',
       event: 'PAYMENT_CONFIRMED',
-      payment: { id: 'pay_1', value: 60, externalReference: '44444444-4444-4444-4444-444444444444' },
+      payment: {
+        id: 'pay_1',
+        value: 60,
+        externalReference: '44444444-4444-4444-4444-444444444444',
+      },
     })
     expect(out).toBe('ignored')
     expect(calls.some((c) => c.sql.includes('credit_purchases'))).toBe(false)
