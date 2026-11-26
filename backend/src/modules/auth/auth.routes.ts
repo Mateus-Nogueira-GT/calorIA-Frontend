@@ -193,7 +193,8 @@ const authRoutes: FastifyPluginAsyncZod = async (fastify) => {
 
   /**
    * POST /auth/logout
-   * Stub seguro — o cliente limpa o token local. Sempre 200.
+   * O cliente limpa o token local; o bearer, se houver, tem a sessão revogada
+   * no Supabase (best-effort). Sempre 200.
    */
   fastify.post(
     '/logout',
@@ -204,8 +205,8 @@ const authRoutes: FastifyPluginAsyncZod = async (fastify) => {
         response: { 200: logoutResponseSchema },
       },
     },
-    async (_request, reply) => {
-      return reply.send(await logout())
+    async (request, reply) => {
+      return reply.send(await logout(fastify, request.headers.authorization))
     },
   )
 }
