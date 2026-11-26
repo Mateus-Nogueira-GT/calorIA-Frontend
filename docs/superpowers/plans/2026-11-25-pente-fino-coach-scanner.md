@@ -18,7 +18,7 @@
    Capturar o dono, passá-lo ao `addMeal` e proteger as gravações no store.
 3. [x] **R3 (C3).** Testes em `backend/src/modules/chat/action-proposals*.test.ts` para os três tipos de cartão.
    Tornar os campos cosméticos tolerantes.
-4. **R4 (C5).** Teste no `store.test.ts` do scanner com duas chamadas de `confirm()`. Fazer a promise
+4. [x] **R4 (C5).** Teste no `store.test.ts` do scanner com duas chamadas de `confirm()`. Fazer a promise
    única, desabilitar a lista enquanto salva e cobrir isso no teste da `ScanResultScreen`.
 5. **R5 (C6).** Teste: depois de `chooseAlternative`, o `confirm` sai sem dúvida no payload. Confirmar em
    `backend/src/modules/chat/chat-context.ts` qual forma o backend lê como "sem dúvida".

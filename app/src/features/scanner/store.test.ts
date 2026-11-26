@@ -346,6 +346,55 @@ describe('porções do scanner até a escrita no diário', () => {
   });
 });
 
+describe('confirm em andamento (C5)', () => {
+  beforeEach(() => {
+    useScannerStore.getState().reset();
+    jest.clearAllMocks();
+  });
+  const slowSave = () => {
+    const pending: Array<() => void> = [];
+    foodLogService.addMeal.mockImplementation(
+      () => new Promise((resolve) => pending.push(() => resolve({ id: 'm' }))),
+    );
+    return () => pending.splice(0).forEach((done) => done());
+  };
+
+  it('duas chamadas no mesmo tick salvam cada item uma vez e devolvem a mesma promise', async () => {
+    const finish = slowSave();
+    useScannerStore.setState({ items: [item('1'), { ...item('2'), name: 'Feijão' }] });
+    const first = useScannerStore.getState().confirm();
+    const second = useScannerStore.getState().confirm();
+    expect(second).toBe(first);
+    finish();
+    await Promise.all([first, second]);
+    expect(foodLogService.addMeal).toHaveBeenCalledTimes(2);
+    expect(useScannerStore.getState().items).toEqual([]);
+  });
+
+  it('terminado o salvamento, um novo confirm salva de novo', async () => {
+    foodLogService.addMeal.mockRejectedValueOnce(new Error('offline'));
+    useScannerStore.setState({ items: [item('1')] });
+    await expect(useScannerStore.getState().confirm()).rejects.toThrow('SCAN_CONFIRM_PARTIAL');
+    foodLogService.addMeal.mockResolvedValueOnce({ id: 'm' });
+    await useScannerStore.getState().confirm();
+    expect(foodLogService.addMeal).toHaveBeenCalledTimes(2);
+  });
+
+  it('nova análise durante o salvamento não reaproveita o confirm antigo', async () => {
+    const finish = slowSave();
+    useScannerStore.setState({ items: [item('1')] });
+    const old = useScannerStore.getState().confirm();
+    useScannerStore.getState().reset();
+    useScannerStore.setState({ items: [item('2')] });
+    const fresh = useScannerStore.getState().confirm();
+    expect(fresh).not.toBe(old);
+    finish();
+    await expect(old).rejects.toThrow('SCAN_CONFIRM_STALE');
+    await fresh;
+    expect(foodLogService.addMeal).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe('dúvida de alimento na revisão (05/11, S2/S3)', () => {
   const pork = {
     id: 'p1',

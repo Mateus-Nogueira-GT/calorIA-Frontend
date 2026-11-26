@@ -63,13 +63,20 @@ export function ScanResultScreen({ navigation }: Props): React.JSX.Element {
         {items.length === 0 ? (
           <Text style={styles.empty}>Não detectei alimentos. Adicione manualmente.</Text>
         ) : null}
-        <ScanResultList
-          items={items}
-          onChange={updateItem}
-          onRemove={removeItem}
-          onAddManual={addManualItem}
-          onChooseAlternative={chooseAlternative}
-        />
+        {/* C5: editar ou tocar num chip durante o salvamento se perdia. */}
+        <View
+          pointerEvents={saving ? 'none' : 'auto'}
+          style={saving && styles.saving}
+          accessibilityState={{ disabled: saving }}
+        >
+          <ScanResultList
+            items={items}
+            onChange={updateItem}
+            onRemove={removeItem}
+            onAddManual={addManualItem}
+            onChooseAlternative={chooseAlternative}
+          />
+        </View>
       </ScrollView>
       <View style={styles.footer}>
         {guest ? (
@@ -104,6 +111,7 @@ const styles = StyleSheet.create({
     color: colors.brandTextMuted,
     marginBottom: spacing.md,
   },
+  saving: { opacity: 0.6 },
   empty: {
     fontSize: typography.fontSize.base,
     color: colors.brandTextMuted,

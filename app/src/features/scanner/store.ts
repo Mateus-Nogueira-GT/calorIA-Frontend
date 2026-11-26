@@ -13,7 +13,11 @@ import {
 } from '@shared/utils/scan-portion';
 import { todayString } from '@shared/utils/date';
 import { showAlert } from '@shared/utils/show-alert';
-import { captureSessionOwner, isCurrentOwner } from '@shared/services/session-owner';
+import {
+  captureSessionOwner,
+  isCurrentOwner,
+  type SessionOwner,
+} from '@shared/services/session-owner';
 
 interface ScannerState {
   image: string | null;
@@ -69,6 +73,7 @@ function scanDoubt(item: ScanItem): { confidence: number; alternatives: string[]
 let manualSeq = 0;
 let analysisGeneration = 0;
 let analysisController: AbortController | null = null;
+let confirmInFlight: { promise: Promise<void>; owner: SessionOwner; attempt: number } | null = null;
 
 export const useScannerStore = create<ScannerState>((set, get) => ({
   ...initialState,
@@ -200,80 +205,97 @@ export const useScannerStore = create<ScannerState>((set, get) => ({
       ],
     })),
 
-  confirm: async () => {
+  confirm: () => {
+    // C5 (pente fino 25/11): um segundo toque durante o salvamento repetia os
+    // POSTs. Mesma conta e mesma análise reaproveitam o salvamento em curso.
     if (
-      get().invalidWeightIds.length > 0 ||
-      get().items.some((item) => item.weightGrams != null && !isValidScanWeight(item.weightGrams))
-    ) {
-      showAlert('Confira o peso', 'Informe um peso entre 0,1 g e 5.000 g em cada item editado.');
-      throw new Error('SCAN_CONFIRM_INVALID_WEIGHT');
-    }
-    const valid = get().items.filter((i) => i.name.trim().length > 0);
-    // O servidor recusa valores impossíveis; antes isso virava um "Tente
-    // novamente" que nunca funcionava. Diz qual item e o que corrigir.
-    const impossible = valid.find((i) => scanItemProblem(i));
-    if (impossible) {
-      showAlert('Confira os valores', `${impossible.name.trim()}: ${scanItemProblem(impossible)}`);
-      throw new Error('SCAN_CONFIRM_INVALID_VALUES');
-    }
-    // M7: sem itens válidos o fluxo caía direto no reset e o modal fechava como
-    // se tivesse salvo — o usuário acreditava ter registrado a refeição.
-    if (valid.length === 0) {
-      showAlert('Nada para adicionar', 'Dê um nome a pelo menos um item antes de confirmar.');
-      throw new Error('SCAN_CONFIRM_EMPTY');
-    }
+      confirmInFlight &&
+      confirmInFlight.attempt === analysisGeneration &&
+      isCurrentOwner(confirmInFlight.owner)
+    )
+      return confirmInFlight.promise;
     // D01 (debug 18/10): a resposta pode chegar depois de logout/login ou de
     // uma nova análise. Dono e tentativa são capturados antes de salvar.
     const owner = captureSessionOwner();
     const attempt = analysisGeneration;
-    // D2 da spec: allSettled + remoção incremental — item salvo SAI da lista na
-    // hora, então um retry após falha parcial reenvia só o que faltou (antes o
-    // Promise.all re-salvava os já persistidos, duplicando no diário).
-    const results = await Promise.allSettled(
-      valid.map((i) =>
-        foodLogService
-          .addMeal(
-            {
-              name: i.name.trim(),
-              calories: roundScanAmount(i.calories),
-              protein: roundScanAmount(i.protein),
-              carbs: roundScanAmount(i.carbs),
-              fat: roundScanAmount(i.fat),
-              fiber: i.fiber == null ? null : roundScanAmount(i.fiber),
-              ...(i.weightGrams != null ? { weightGrams: i.weightGrams } : {}),
-              ...(i.fromScan ? { scan: scanDoubt(i) } : {}),
-            },
-            owner,
-          )
-          .then((meal) => ({ scanItemId: i.id, meal })),
-      ),
-    );
-
-    // Outra conta: nada desta resposta pode tocar o diário, o scanner ou alertas.
-    if (!isCurrentOwner(owner)) throw new Error('SCAN_CONFIRM_STALE');
-    const savedIds = new Set<string>();
-    for (const r of results) {
-      if (r.status === 'fulfilled') {
-        savedIds.add(r.value.scanItemId);
-        // D3: reflete no diário/dashboard imediatamente (o cache do dia já
-        // carregado não refazia fetch e os itens escaneados "sumiam").
-        useFoodLogStore.getState().addMeal(todayString(), r.value.meal);
+    const promise = (async () => {
+      if (
+        get().invalidWeightIds.length > 0 ||
+        get().items.some((item) => item.weightGrams != null && !isValidScanWeight(item.weightGrams))
+      ) {
+        showAlert('Confira o peso', 'Informe um peso entre 0,1 g e 5.000 g em cada item editado.');
+        throw new Error('SCAN_CONFIRM_INVALID_WEIGHT');
       }
-    }
-    // Mesma conta, mas o scanner já é outra tentativa: as refeições são desta
-    // conta e ficam no diário; o scan novo não é apagado.
-    if (attempt !== analysisGeneration) throw new Error('SCAN_CONFIRM_STALE');
-    set((s) => ({ items: s.items.filter((i) => !savedIds.has(i.id)) }));
-
-    const failures = results.filter((r) => r.status === 'rejected').length;
-    if (failures > 0) {
-      showAlert(
-        'Não foi possível adicionar tudo',
-        `${failures} ${failures === 1 ? 'item não foi salvo' : 'itens não foram salvos'}. Tente novamente.`,
+      const valid = get().items.filter((i) => i.name.trim().length > 0);
+      // O servidor recusa valores impossíveis; antes isso virava um "Tente
+      // novamente" que nunca funcionava. Diz qual item e o que corrigir.
+      const impossible = valid.find((i) => scanItemProblem(i));
+      if (impossible) {
+        showAlert(
+          'Confira os valores',
+          `${impossible.name.trim()}: ${scanItemProblem(impossible)}`,
+        );
+        throw new Error('SCAN_CONFIRM_INVALID_VALUES');
+      }
+      // M7: sem itens válidos o fluxo caía direto no reset e o modal fechava como
+      // se tivesse salvo — o usuário acreditava ter registrado a refeição.
+      if (valid.length === 0) {
+        showAlert('Nada para adicionar', 'Dê um nome a pelo menos um item antes de confirmar.');
+        throw new Error('SCAN_CONFIRM_EMPTY');
+      }
+      // D2 da spec: allSettled + remoção incremental — item salvo SAI da lista na
+      // hora, então um retry após falha parcial reenvia só o que faltou (antes o
+      // Promise.all re-salvava os já persistidos, duplicando no diário).
+      const results = await Promise.allSettled(
+        valid.map((i) =>
+          foodLogService
+            .addMeal(
+              {
+                name: i.name.trim(),
+                calories: roundScanAmount(i.calories),
+                protein: roundScanAmount(i.protein),
+                carbs: roundScanAmount(i.carbs),
+                fat: roundScanAmount(i.fat),
+                fiber: i.fiber == null ? null : roundScanAmount(i.fiber),
+                ...(i.weightGrams != null ? { weightGrams: i.weightGrams } : {}),
+                ...(i.fromScan ? { scan: scanDoubt(i) } : {}),
+              },
+              owner,
+            )
+            .then((meal) => ({ scanItemId: i.id, meal })),
+        ),
       );
-      throw new Error('SCAN_CONFIRM_PARTIAL');
-    }
-    set({ ...initialState });
+
+      // Outra conta: nada desta resposta pode tocar o diário, o scanner ou alertas.
+      if (!isCurrentOwner(owner)) throw new Error('SCAN_CONFIRM_STALE');
+      const savedIds = new Set<string>();
+      for (const r of results) {
+        if (r.status === 'fulfilled') {
+          savedIds.add(r.value.scanItemId);
+          // D3: reflete no diário/dashboard imediatamente (o cache do dia já
+          // carregado não refazia fetch e os itens escaneados "sumiam").
+          useFoodLogStore.getState().addMeal(todayString(), r.value.meal);
+        }
+      }
+      // Mesma conta, mas o scanner já é outra tentativa: as refeições são desta
+      // conta e ficam no diário; o scan novo não é apagado.
+      if (attempt !== analysisGeneration) throw new Error('SCAN_CONFIRM_STALE');
+      set((s) => ({ items: s.items.filter((i) => !savedIds.has(i.id)) }));
+
+      const failures = results.filter((r) => r.status === 'rejected').length;
+      if (failures > 0) {
+        showAlert(
+          'Não foi possível adicionar tudo',
+          `${failures} ${failures === 1 ? 'item não foi salvo' : 'itens não foram salvos'}. Tente novamente.`,
+        );
+        throw new Error('SCAN_CONFIRM_PARTIAL');
+      }
+      set({ ...initialState });
+    })().finally(() => {
+      if (confirmInFlight?.promise === promise) confirmInFlight = null;
+    });
+    confirmInFlight = { promise, owner, attempt };
+    return promise;
   },
 
   cancelAnalyze: () => {

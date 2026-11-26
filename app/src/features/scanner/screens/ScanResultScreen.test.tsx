@@ -73,6 +73,42 @@ describe('ScanResultScreen', () => {
     expect(parentGoBack).not.toHaveBeenCalled();
   });
 
+  it('a lista fica desabilitada enquanto salva (C5): chip tocado não se perde', async () => {
+    let finish!: () => void;
+    const confirm = jest.fn(() => new Promise<void>((resolve) => (finish = resolve)));
+    useScannerStore.setState({
+      confirm,
+      items: [
+        {
+          id: '1',
+          name: 'Arroz',
+          calories: 200,
+          protein: 4,
+          carbs: 44,
+          fat: 1,
+          confidence: 0.4,
+          alternatives: [{ name: 'Feijão', calories: 150, protein: 9, carbs: 27, fat: 1 }],
+        },
+      ],
+    });
+    const { getByText, getByLabelText } = render(
+      <ScanResultScreen
+        navigation={navigation}
+        route={{ key: 'k', name: 'ScanResult' } as never}
+      />,
+    );
+    fireEvent.press(getByText('Confirmar e adicionar ao diário'));
+    await waitFor(() => expect(confirm).toHaveBeenCalled());
+    fireEvent.press(getByLabelText('Trocar para Feijão'));
+    fireEvent.press(getByText('＋ Adicionar item'));
+    expect(useScannerStore.getState().items).toMatchObject([{ id: '1', name: 'Arroz' }]);
+    finish();
+    await waitFor(() => {
+      fireEvent.press(getByText('＋ Adicionar item'));
+      expect(useScannerStore.getState().items).toHaveLength(2);
+    });
+  });
+
   describe('convidado (App Store 5.1.1(v))', () => {
     const parentNavigate = jest.fn();
     const guestNavigation = {
