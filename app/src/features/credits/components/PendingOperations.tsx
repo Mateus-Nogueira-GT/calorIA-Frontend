@@ -60,6 +60,7 @@ export function PendingOperations(): React.JSX.Element | null {
           useScannerStore.setState({ items: result.items, isAnalyzing: false, error: null });
           await finishRequest(request, userId);
           if (generation !== useAuthStore.getState().sessionGeneration) return;
+          setPending((old) => old.filter((r) => r.key !== request.key));
           navigation.navigate('Scanner', { screen: 'ScanResult' });
         } else if (request.type === 'chat' && result?.conversation_id) {
           useCoachStore.setState({ conversationId: result.conversation_id });

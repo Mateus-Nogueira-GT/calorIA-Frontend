@@ -85,17 +85,27 @@ export const visionAnalysisSchema = z.object({
 })
 
 /**
+ * C8 (pente fino 25/11): alternativa é sugestão. Uma inválida (nome vazio,
+ * valor que não é número) é descartada e as que sobram são cortadas em 2, em
+ * vez de derrubar a análise inteira. Ausente ou fora de lista = sem alternativas.
+ */
+const readAlternativesSchema = z.unknown().transform((list) =>
+  (Array.isArray(list) ? list : [])
+    .flatMap((alt) => {
+      const parsed = visionAlternativeSchema.safeParse(alt)
+      return parsed.success ? [parsed.data] : []
+    })
+    .slice(0, 2),
+)
+
+/**
  * Leitura da resposta: igual ao schema enviado ao modelo, mas tolera a falta de
  * `alternatives` (o Structured Outputs exige o campo; um fallback do OpenRouter
- * pode não mandar).
+ * pode não mandar) e alternativas fora do formato.
  */
 export const visionAnalysisReadSchema = z.object({
   is_food: z.boolean(),
-  items: z
-    .array(
-      visionItemSchema.extend({ alternatives: visionItemSchema.shape.alternatives.default([]) }),
-    )
-    .max(20),
+  items: z.array(visionItemSchema.extend({ alternatives: readAlternativesSchema })).max(20),
 })
 
 // ─── Types ────────────────────────────────────────────────────────────────────

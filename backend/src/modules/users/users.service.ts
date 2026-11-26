@@ -53,7 +53,9 @@ export async function getUserProfile(fastify: FastifyInstance, userId: string): 
       p.coach_gender,
       p.dietary_restrictions,
       p.allergies,
-      s.current_streak,
+      -- S1: sequência parada (último dia antes de ontem em Brasília) vale 0.
+      CASE WHEN s.last_active_date < (now() AT TIME ZONE 'America/Sao_Paulo')::date - 1
+        THEN 0 ELSE s.current_streak END AS current_streak,
       p.created_at::TEXT AS created_at,
       p.updated_at::TEXT AS updated_at
     FROM profiles p
@@ -260,6 +262,14 @@ export async function deleteUserAccount(fastify: FastifyInstance, userId: string
   }
 
   const { error } = await fastify.supabase.auth.admin.deleteUser(userId)
+
+  // A3 do pente fino: o retry do app chega depois de o 1º DELETE já ter
+  // apagado o usuário. "Não existe" é o estado pedido, então é sucesso.
+  const { status, code } = (error ?? {}) as { status?: number; code?: string }
+  if (error && (status === 404 || code === 'user_not_found')) {
+    fastify.log.info({ userId }, 'Conta já excluída (exclusão repetida)')
+    return
+  }
 
   if (error) {
     fastify.log.error({ err: error, userId }, 'Falha ao excluir conta')

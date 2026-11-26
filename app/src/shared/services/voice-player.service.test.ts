@@ -97,3 +97,38 @@ it('falha ao remover listener não impede liberar o player', async () => {
   expect(player.pause).toHaveBeenCalled();
   expect(player.remove).toHaveBeenCalled();
 });
+
+describe('corrida no setAudioModeAsync (R6, 25/11)', () => {
+  afterEach(() => {
+    (setAudioModeAsync as jest.Mock).mockReset();
+    (setAudioModeAsync as jest.Mock).mockResolvedValue(undefined);
+  });
+
+  it('stopSpeech durante o setAudioModeAsync impede criar e tocar o player', async () => {
+    let resolve!: () => void;
+    (setAudioModeAsync as jest.Mock).mockImplementationOnce(
+      () => new Promise<void>((r) => (resolve = r)),
+    );
+    const before = audio.__players.length;
+    const pending = playSpeech('file:///cache/a.mp3', jest.fn());
+    stopSpeech(); // ex.: usuário toca no microfone
+    resolve();
+    await pending;
+    expect(audio.__players.slice(before)).toHaveLength(0);
+  });
+
+  it('dois playSpeech concorrentes deixam só o último tocando', async () => {
+    const resolvers: (() => void)[] = [];
+    (setAudioModeAsync as jest.Mock).mockImplementation(
+      () => new Promise<void>((r) => resolvers.push(r)),
+    );
+    const before = audio.__players.length;
+    const a = playSpeech('file:///cache/a.mp3', jest.fn());
+    const b = playSpeech('file:///cache/b.mp3', jest.fn());
+    resolvers.forEach((r) => r());
+    await Promise.all([a, b]);
+    const created = audio.__players.slice(before);
+    expect(created.map((p: { source: string }) => p.source)).toEqual(['file:///cache/b.mp3']);
+    expect(created[0].play).toHaveBeenCalled();
+  });
+});

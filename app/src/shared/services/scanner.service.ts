@@ -25,6 +25,8 @@ export interface ScanItem {
   valuesFrom?: string;
   /** Veio da análise (não é item manual): a dúvida vai junto ao salvar. */
   fromScan?: boolean;
+  /** C6: o usuário escolheu uma alternativa ou editou um valor; a dúvida está resolvida. */
+  reviewed?: boolean;
 }
 
 export interface ScanAlternative {

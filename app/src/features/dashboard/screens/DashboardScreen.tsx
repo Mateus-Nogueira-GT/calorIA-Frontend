@@ -14,7 +14,7 @@ import { ErrorState, Text, screenShellStyle } from '@shared/components';
 import { colors, typography, spacing, radius } from '@theme';
 import { useAuthStore } from '@features/auth/store';
 import { useFoodLogStore } from '@features/food-log/store';
-import { foodLogService } from '@shared/services/food-log.service';
+import { fetchFoodLogDay } from '@features/food-log/hooks/useFoodLog';
 import { useDietStore } from '@features/diet/store';
 import { todayString } from '@shared/utils/date';
 import {
@@ -79,9 +79,7 @@ export function DashboardScreen(): React.JSX.Element {
   const [foodLogError, setFoodLogError] = useState(false);
 
   const foodLogMeals = useFoodLogStore((s) => s.mealsByDate[today] ?? []);
-  const setMeals = useFoodLogStore((s) => s.setMeals);
   const isFoodLogLoading = useFoodLogStore((s) => s.loadingByDate[today] ?? false);
-  const setFoodLogLoading = useFoodLogStore((s) => s.setLoading);
 
   const plan = useDietStore((s) => s.plan);
   const loadCurrentDiet = useDietStore((s) => s.loadCurrent);
@@ -96,14 +94,10 @@ export function DashboardScreen(): React.JSX.Element {
     (force = false) => {
       if (!force && useFoodLogStore.getState().syncedDates[today]) return Promise.resolve();
       setFoodLogError(false);
-      setFoodLogLoading(today, true);
-      return foodLogService
-        .getMeals(today)
-        .then((data) => setMeals(today, data))
-        .catch(() => setFoodLogError(true))
-        .finally(() => setFoodLogLoading(today, false));
+      // R5 (26/11): só grava se a sessão ainda for a mesma.
+      return fetchFoodLogDay(today, () => setFoodLogError(true));
     },
-    [today, setFoodLogLoading, setMeals],
+    [today],
   );
 
   const [refreshing, setRefreshing] = useState(false);

@@ -16,11 +16,13 @@ jest.mock('./credits.service', () => ({
   newOperationKey: () => `request-key-${String(++mockSequence).padStart(8, '0')}`,
 }));
 import {
+  acknowledgeRequest,
   beginRequest,
   finishRequest,
   pendingRequests,
   isDefinitiveRejection,
   FAILED_BEFORE_SETTLEMENT,
+  REUSE_WINDOW_MS,
 } from './operation-requests';
 import { kvStorage } from './storage';
 
@@ -41,6 +43,92 @@ describe('durable operation metadata', () => {
     expect(b).toEqual(a);
     await finishRequest(a, mockUser.user.id);
     expect((await beginRequest('chat', 'conversation:hello', context)).key).not.toBe(a.key);
+  });
+  it('R1: entrega reconhecida aposenta para reuso as pendências anteriores da conversa, mas não as lista fora', async () => {
+    const context = { date: '2026-11-25', tzOffsetMinutes: -180, scope: 'conv-1' };
+    const failed = await beginRequest('chat', 'conv-1:sim', context);
+    const other = await beginRequest('chat', 'conv-2:sim', { ...context, scope: 'conv-2' });
+    const delivered = await beginRequest('chat', 'conv-1:quero almoçar', context);
+    await acknowledgeRequest(delivered, mockUser.user.id);
+    const saved = await pendingRequests(mockUser.user.id);
+    expect(saved.map((r) => r.key)).toEqual([failed.key, other.key]);
+    expect(saved.find((r) => r.key === failed.key)?.superseded).toBe(true);
+    expect(saved.find((r) => r.key === other.key)?.superseded).toBeUndefined();
+    expect((await beginRequest('chat', 'conv-1:sim', context)).key).not.toBe(failed.key);
+    expect((await beginRequest('chat', 'conv-2:sim', context)).key).toBe(other.key);
+  });
+  it('R2 (26/11): o reconhecimento de outra conta não aposenta a pendência da primeira', async () => {
+    const context = { date: '2026-11-26', tzOffsetMinutes: -180, scope: null };
+    mockUser = { user: { id: 'owner-R2-A' }, sessionGeneration: 1 };
+    const first = await beginRequest('chat', JSON.stringify([null, 'oi']), context);
+    mockUser = { user: { id: 'owner-R2-B' }, sessionGeneration: 2 };
+    const other = await beginRequest('chat', JSON.stringify([null, 'olá']), context);
+    await acknowledgeRequest(other, 'owner-R2-B');
+    mockUser = { user: { id: 'owner-R2-A' }, sessionGeneration: 3 };
+    const retry = await beginRequest('chat', JSON.stringify([null, 'oi']), context);
+    expect(retry.key).toBe(first.key);
+    expect((await pendingRequests('owner-R2-A')).map((r) => r.key)).toEqual([first.key]);
+  });
+  it('R3 (26/11): pendência gravada sem inputMode equivale a texto', async () => {
+    const payload = JSON.stringify(['conv-legacy', 'sim']);
+    const probe = await beginRequest('chat', payload);
+    await finishRequest(probe, mockUser.user.id);
+    const now = new Date().toISOString();
+    mockData.set(
+      `caloria:pending-operations:${mockUser.user.id}`,
+      JSON.stringify([
+        { key: 'request-key-legacy-001', type: 'chat', signature: probe.signature, created_at: now },
+      ]),
+    );
+    const context = { date: '2026-11-26', tzOffsetMinutes: -180, scope: 'conv-legacy' };
+    expect((await beginRequest('chat', payload, context)).key).toBe('request-key-legacy-001');
+    const spoken = await beginRequest('chat', payload, { ...context, inputMode: 'voice' });
+    expect(spoken.key).not.toBe('request-key-legacy-001');
+    expect(spoken.inputMode).toBe('voice');
+  });
+  const storedSignature = async (payload: string) => {
+    const probe = await beginRequest('chat', payload);
+    await finishRequest(probe, mockUser.user.id);
+    return probe.signature;
+  };
+  const store = (items: unknown[]) =>
+    mockData.set(`caloria:pending-operations:${mockUser.user.id}`, JSON.stringify(items));
+  it('R1: a marca de aposentada vem do armazenamento (outro runtime) e vale também para o retry', async () => {
+    const signature = await storedSignature('conv-1:sim');
+    store([
+      {
+        key: 'request-key-stale-0001',
+        type: 'chat',
+        signature,
+        created_at: new Date().toISOString(),
+        superseded: true,
+      },
+    ]);
+    expect(await pendingRequests(mockUser.user.id)).toHaveLength(1);
+    const next = await beginRequest('chat', 'conv-1:sim', undefined, { retry: true });
+    expect(next.key).not.toBe('request-key-stale-0001');
+  });
+  it('R1: pendência fora da janela só serve ao retry explícito', async () => {
+    const signature = await storedSignature('conv-1:sim');
+    const old = new Date(Date.now() - REUSE_WINDOW_MS - 1000).toISOString();
+    store([{ key: 'request-key-old-00001', type: 'chat', signature, created_at: old }]);
+    expect((await beginRequest('chat', 'conv-1:sim', undefined, { retry: true })).key).toBe(
+      'request-key-old-00001',
+    );
+    store([{ key: 'request-key-old-00002', type: 'chat', signature, created_at: old }]);
+    expect((await beginRequest('chat', 'conv-1:sim')).key).not.toBe('request-key-old-00002');
+    expect((await pendingRequests(mockUser.user.id)).map((r) => r.key)).toContain(
+      'request-key-old-00002',
+    );
+  });
+  it('a janela vale só para o chat: foto ambígua antiga ainda reaproveita a chave', async () => {
+    const probe = await beginRequest('photo', 'same-photo');
+    await finishRequest(probe, mockUser.user.id);
+    const old = new Date(Date.now() - REUSE_WINDOW_MS - 1000).toISOString();
+    store([
+      { key: 'request-key-photo-0001', type: 'photo', signature: probe.signature, created_at: old },
+    ]);
+    expect((await beginRequest('photo', 'same-photo')).key).toBe('request-key-photo-0001');
   });
   it('serializes concurrent metadata mutations and retains different unresolved payloads', async () => {
     await Promise.all([
@@ -116,6 +204,8 @@ describe('durable operation metadata', () => {
     [502, 'TRANSCRIBE_FAILED', true],
     [500, 'HISTORY_WRITE_FAILED', true],
     [409, 'OPERATION_FAILED', true],
+    [409, 'IDEMPOTENCY_CONFLICT', true],
+    [409, 'CONVERSATION_BUSY', false],
     [429, 'TOO_MANY_REQUESTS', false],
     [422, 'NOT_FOOD', true],
   ] as Array<[number, string | undefined, boolean]>)(

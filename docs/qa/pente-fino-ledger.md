@@ -1,0 +1,113 @@
+# Pente fino — ledger do loop de auditoria
+
+Iniciado em 25/11/2026. Cada iteração do loop registra aqui a área revisada,
+os achados (só conta como bug o que tem teste reproduzindo), o status e a branch.
+
+Regras: nada de push, PR, OTA, migration remota ou flag de produção sem o usuário. Commits locais em
+branches `fix/*`. Achado sem repro entra como "suspeito, não corrigido".
+
+## Base
+
+Local `main` estava em `f5ca5bf` (PR #70), 142 commits atrás de `origin/main`. O lote do debug de 18/10
+(D01–D08) já foi corrigido e mergeado upstream. A auditoria roda sobre `origin/main` `4b6d53d` (PR #104),
+no worktree `../calorIA-pente-fino`, para não tocar o checkout do usuário.
+
+## Áreas a auditar (próximas iterações)
+
+Backend: auth, users, scanner, food-log, diets, chat, challenges, feed, friends, weight,
+notifications, admin, credits, credit-invites.
+App: auth, scanner, dashboard/food-log, coach, social (feed/friends/challenges), credits/invites,
+navigation, shared/services.
+
+| Área | Iteração | Achados | Status |
+|---|---|---|---|
+| Baseline (typecheck, testes, lint) | 1 | Backend 598 ✓. App 849/849 ✓ com máquina livre; `ProfileSetupScreen`/`AddMealModal`/`ChatInput` estouram timeout só sob carga (flaky, não é bug de produto). Lint: 46 erros ESLint e alguns do Biome, todos de estilo (raw text dentro de `Button`, estilos não usados, `!`). | sem ação |
+| Backend subscriptions/credit-purchases/credits (pagamentos Asaas) | 2 | **P1** (alta) dois toques no checkout criavam duas assinaturas no Asaas: corrigido em `e8a5131` (409 `CHECKOUT_IN_PROGRESS` para pending sem id há menos de 10 min; `UPDATE` do id exige pending e cancela a assinatura remota órfã). **P2** (média) compra sem id do Asaas bloqueava o pacote para sempre: corrigido em `47c5921` (migration `028_credit_purchases_inflight_index.sql`, índice só para pending; webhook grava `asaas_payment_id` em todo evento casado por `externalReference`). **P3** OVERDUE atrasado depois do CONFIRMED derrubava assinatura paga para `past_due` e **P4** assinatura nunca paga virava `past_due` e travava o checkout com `ALREADY_SUBSCRIBED`: corrigidos em `524ceb6`. **P5** `PAYMENT_UPDATED` com status REFUNDED/CONFIRMED adiantava o status e anulava o estorno: corrigido em `af91fe1`. **P6** com a recarga desligada, cobrança avulsa consultava `credit_purchases` (027 ausente derrubaria a fila do Asaas): corrigido em `044373d`. **P7** timeout no `createPayment` depois de o Asaas criar a cobrança deixa o pagamento órfão (webhook pago ignorado): suspeito/decisão de produto, não corrigido (pede estado "desconhecido" e reconciliação por `externalReference`). **P8** combinação de flags que mostra saldo zero no app: suspeito/decisão de produto, não corrigido. Spec/plano: `docs/superpowers/specs/2026-11-25-pente-fino-pagamentos-asaas.md`. | P1–P6 corrigidos em `fix/pente-fino-1` (só local; 028 não aplicada no Supabase remoto); P7/P8 abertos |
+| Coach (cartões de ação) e scanner (dúvida de alimento), app + backend | 2 | **C1** (alta) porção acima de 5 kg corrigida no scanner mantinha as kcal originais (~10×). **C2** cartão "Adicionar ao Diário" gravava na conta seguinte. **C3** campo cosmético longo derrubava o cartão. **C5** `confirm()` do scanner sem trava (POST em dobro). **C6** dúvida resolvida pelo usuário ia ao coach como dúvida. **C7** "Marcar como feita" depois da meia-noite marcava o dia errado (o horário gravado continua sendo o do toque). **C8** 3 alternativas ou nome vazio derrubavam a análise (o parser estrito do SDK rodava antes do schema de leitura). **C4** repetir o cartão depois de uma resposta perdida duplica a refeição: suspeito, não corrigido (pede idempotência no `POST /food-log`). Spec: `2026-11-25-pente-fino-coach-scanner.md`. | C1–C3, C5–C8 corrigidos em `fix/pente-fino-2` (12 commits; app 871 ✓, backend 605 ✓); C4 aberto |
+| Social (feed, amigos, desafios), dietas, peso, diário | 3 | **S1** sequência que parou nunca zera (ranking, amigos, perfil). **S2** post de "7 dias" duplicado por refeição, e 500 depois de salvar. **S3** check-in aceita data anterior. **S4** Diário com dois totais diferentes. **S5** card "Participar" do convite some no `load()`. **S6** desafio "Encerrado" às 21h BRT do último dia. **S7** `likes_count` atrasa sob concorrência. **S8** curtida dupla dá 500. **S10** feed aparece na conta seguinte. **S9** gráfico semanal sem refeições do plano: decisão de produto. Corrida em `createDietJob` e pedido de amizade simultâneo (500): suspeitos. Sem IDOR. Spec: `2026-11-25-pente-fino-social-desafios.md`. | S1–S8 e S10 corrigidos em `fix/pente-fino-3` (`c3f4b30`, `46d6445`, `642a711`, `b24294f`, `b1cae10`, `645e53e`, `f8e53ad`, `331006b`, `a9f615e`; backend 606 ✓ + 16 de integração com `SOCIAL_TEST_DATABASE_URL`; app 858 ✓). Migration 029 não aplicada no remoto. S9, `createDietJob` e amizade simultânea seguem abertos. |
+| Auth, users, admin, notifications, shared (segurança) | 3 | **A1 (CRÍTICO)** JWT forjável: o issuer aceitava qualquer caminho sob `SUPABASE_URL` e a JWKS era buscada no `iss` do token, de modo que um avatar com JSON de JWKS permitia assinar token de qualquer usuário, inclusive admin; hotfix em `48810e1`, `93995f3` e `fceee8d` (issuer exato `/auth/v1`, JWKS fixa com `issuersWhitelist`, `allowedIss`/`allowedAud`, bytes do avatar validados, token rejeitado passa a dar 401). **A2** rate limit devolvia 500 em vez de 429: `3a685a5`. **A3** exclusão de conta não idempotente: `7b0ce1a`. **A8** 401 em `/auth/*` derrubava a sessão no web: `8f1fcc3`. **A9** login social sem e-mail dava 500: `bcedf11`. **A6** logout não revogava a sessão: `d856370`. **Abertos, decisão do usuário:** A4 (alta) cadastro com `email_confirm: true` permite pré-sequestro da conta; A5 reset de senha aceita qualquer access token; A7 rate limit só por IP e em memória; enumeração de contas via `GOOGLE_LOGIN_ACCOUNT`. Spec: `2026-11-25-pente-fino-seguranca-auth.md`. | A1–A3, A6, A8, A9 corrigidos em `fix/pente-fino-4-seguranca` (backend 633 ✓, app 853 ✓). **Deploy urgente do hotfix A1**; antes, conferir `iss`/`aud` de um token real de produção. |
+| App: créditos/compra/convites, navegação e deep links, onboarding, métricas do admin, notificações | 4 | **E1** banner "créditos adicionados" com o pacote errado (não pago). **E2** cadeias de polling sobrepostas na compra. **E3** toque duplo faz dois checkouts. **E4** deep link da Comunidade sem o Feed embaixo (Feed fica inalcançável). **E5** notificações de A aparecem na conta B. **E6** "Recuperar" da foto continua na tela (risco de salvar a refeição em dobro). **E7** altura de 100 a 119 cm é aceita no perfil e recusada na geração da dieta. **E8** idade vira `birth_date` no ano local e o servidor valida em UTC. **E9** saldo não atualiza ao voltar ao app. **E10** link da fatura não se recupera no polling. Admin: sem bug (só aproximações; `getAdminMetrics` é código morto). Spec: `2026-11-25-pente-fino-compra-navegacao-onboarding.md`. | E1–E10 corrigidos em `fix/pente-fino-5` (`fccc6b7`, `79a0c20`, `f8fbbe1`, `478a872`, `5c1ba44`, `d0d18eb`, `2d40303`, `35e3ae9`, `7730804`; app 866 ✓, backend 603 ✓). Abertos: link perdido quando deslogado; convite com o app aberto troca o `NavigationContainer`. |
+| Chat (núcleo, voz, geração de dieta) e motor de créditos | 5 | **F1** chave de mensagem que falhou é reaproveitada para sempre por um envio igual (replay antigo ou data velha). **F2** retry de voz sem `input_mode` gera 409 permanente. **F3** conta ilimitada sem replay nem lease (histórico duplicado). **F4** geração de dieta grava histórico e job fora da liquidação. **F5** argumento malformado vira "créditos indisponíveis". **F6** fala toca depois de parada ou se sobrepõe. **F7** banner de dieta falha enquanto o servidor ainda gera. **F8** chat em andamento apaga o marcador de dieta concluída. No motor de créditos não houve cobrança dupla, saldo negativo nem vazamento entre usuários. Spec: `2026-11-25-pente-fino-chat-creditos.md`. | F1, F2 e F4–F8 corrigidos em `fix/pente-fino-6` (`279e56f`, `c67995b`, `4a15d79`, `07cec91`, `29311d8`, `c201bf6`, `0dc6a90`; backend 606 ✓, 81 testes de integração ✓; app 866 ✓). F3 pulado: contradiz a decisão C2 de 23/10 e o `CHECK(cost_units > 0)`, e precisa de decisão de produto. **Achado extra:** os writers de `chat_history` gravavam o histórico como jsonb *string* (`${str}::jsonb`), não como array. Os novos writes estão corrigidos, mas as linhas antigas não foram reparadas. Para conferir em produção: `SELECT jsonb_typeof(messages), count(*) FROM chat_history GROUP BY 1`. |
+
+## Encerramento do loop (26/11/2026)
+
+Todas as áreas do backend e do app passaram pela auditoria (iterações 1–5). Não sobrou área sem revisão.
+
+| Branch | Conteúdo | Base |
+|---|---|---|
+| `fix/pente-fino-1` | Pagamentos Asaas (P1–P6), migration 028 e este ledger | `origin/main` `4b6d53d` |
+| `fix/pente-fino-2` | Coach (cartões de ação) e scanner (C1–C3, C5–C8) | idem |
+| `fix/pente-fino-3` | Social, desafios e diário (S1–S8, S10), migration 029 | idem |
+| `fix/pente-fino-4-seguranca` | **Hotfix A1** (JWT forjável) e A2, A3, A6, A8, A9 | idem |
+| `fix/pente-fino-5` | Compra, deep links, notificações e onboarding (E1–E10) | idem |
+| `fix/pente-fino-6` | Chat, voz, dieta e créditos (F1, F2, F4–F8) | idem |
+
+As branches são independentes e podem gerar conflitos de merge entre si, principalmente as 2, 5 e 6, que mexem no coach, no `operation-requests` e no `chat.service`.
+
+Pendências de decisão do usuário: A4, A5, A7, P7, P8, S9, C4, F3, `createDietJob` e a corrida do pedido de amizade.
+
+Nada foi publicado: sem push, PR, OTA, migration remota ou flag.
+
+## Lote 7 — pendências (26/11/2026, a pedido do usuário: tudo menos F3)
+
+Branch: `fix/pente-fino-integrado`. Ela junta `fix/pente-fino-1` a `-6` e mais `fix/pente-fino-7-auth`, `-7-pagamentos` e `-7-dados`.
+
+Validação final na integrada:
+
+| Suíte | Resultado |
+|---|---|
+| Backend, unitários | 737 ✓ |
+| Integração Postgres (10 suítes) | 128 ✓ |
+| App | 937/937 ✓ |
+| `app/android` / `app/ios` | nada alterado |
+
+| Item | Resultado | Ativação |
+|---|---|---|
+| A4 confirmação de e-mail no cadastro | Mitigação pronta, dark (não fecha: se o dono clicar no link, a senha de quem cadastrou antes passa a valer; a ligação com o Google não foi testada) | `AUTH_REQUIRE_EMAIL_CONFIRMATION=false` por padrão. **Continua explorável até ligar.** Antes, publicar o OTA e conferir o Supabase ("Confirm email" ligado, SMTP, resend `signup`, URL na allow-list). |
+| A5 reset só com sessão de recuperação | Feito, em modo log | `AUTH_RESET_REQUIRE_RECOVERY=log`. **Continua explorável até `enforce`.** Antes, fazer um reset real e conferir o `amr` no log `reset_password_recovery_check`. O signOut das outras sessões depois do reset já vale. |
+| A7 rate limit por conta | Feito | Ativo. Fica aberto o store em memória por instância (infra). |
+| P7 timeout no Asaas | Feito em parte (webhook órfão só consulta o Asaas quando existe linha candidata e ignora assinatura `deleted`) | Reconciliação por `externalReference`; substitui a regra do lote 1. Fica aberto: assinatura cancelada só localmente que exista no Asaas continua cobrando. |
+| P8 saldo com a recarga ligada | Feito | Com a recarga ligada, a carteira real aparece (e cria o bônus de 75). Precisa de OTA. |
+| C4 `POST /food-log` idempotente | Feito (cartão do coach) | Migration 030. Scanner e registro manual ainda sem chave. |
+| Corrida no `createDietJob` | Feito | Migration 031 fecha os jobs ativos duplicados antes do índice e roda em conexão reservada. |
+| S9 gráfico semanal | Feito | Soma as refeições do plano pelo dia local de `completed_at`. |
+| Pedido de amizade simultâneo | Feito | 409 `REQUEST_PENDING` / `REQUEST_INCOMING`; o app ainda não oferece "aceitar". |
+| F3 | Não feito, por decisão do usuário | — |
+
+Migrations novas no total, nenhuma aplicada no remoto: 028, 029, 030 e 031.
+
+**Revisão pós-merge (26/11):**
+- O hook do A7 rodava antes do rate limit e cada `kid` desconhecido disparava uma busca de JWKS, sem limite. Agora o hook só busca um `kid` desconhecido a cada 10 s.
+- O webhook órfão do P7 consultava o Asaas em todo evento de assinatura desconhecida, inclusive de outros sistemas na mesma conta. Uma falha ambígua virava 500 e pausava a fila. Agora só consulta quando existe linha local candidata.
+
+Ambos com teste. Roteiro de deploy: [pente-fino-deploy.md](./pente-fino-deploy.md).
+
+## Lote 8: revisão da branch integrada (26/11/2026)
+
+A revisão externa da integrada apontou 7 itens. Os 7 foram reproduzidos: cada teste novo falha no código anterior ao lote (`e876747`), e o orquestrador conferiu isso. Spec: `2026-11-26-pente-fino-revisao-integrada.md`.
+
+| Item | Problema | Correção | Commit |
+|---|---|---|---|
+| R1 (alta, regressão) | Recarga paga ficava sem crédito quando a flag era desligada e religada (o evento era registrado e a reentrega caía como duplicata) | O evento de compra é processado se a tabela existir; a flag controla só o checkout | `5f7749e` |
+| R2 (alta, regressão) | Uma conta aposentava a pendência de chat de outra (risco de cobrança dupla) | Estado em memória isolado por dono | `52edf37` |
+| R3 (média, regressão) | Envio novo herdava o modo (voz/texto) de uma pendência | O modo entra na busca da pendência | `434e8b7` |
+| R4 (média) | Cartão do coach gravava `completed_at` no dia do toque | `completed_at` no dia proposto, com limites de data | `f51ba96` |
+| R5 (alta) | Dados da conta anterior reapareciam depois do logout | Guarda de sessão em peso, dieta, feed, amigos, desafios, diário e Dashboard | `9ab78e3` |
+| R6 (média) | Refeições simultâneas contavam o mesmo dia duas vezes na sequência | Migration 032 com `FOR UPDATE` em `update_user_streak` (única diferença em relação à 014) | `1978782` |
+| R7 (média) | Histórico antigo corrompido dava 500 | Normalização em todos os leitores e reparo na próxima gravação | `298f5b0` |
+
+Validação final da integrada (merge `8a6001c`):
+
+| Suíte | Resultado |
+|---|---|
+| Backend unitários | 748 ✓ |
+| Integração Postgres (11 suítes) | 143 ✓ |
+| App | 967/967 ✓ (`--maxWorkers=2`; sob carga, telas estouram timeout) |
+
+## Achado na verificação do deploy (26/11/2026)
+
+**Bug que já existia em produção (crítico para a App Store):** a exclusão de conta falha para quem tem refeição, curtida ou comentário.
+- **Como apareceu:** reproduzido na produção atual (`DELETE /users/me` → 502, "Database error deleting user").
+- **Causa:** o Supabase Auth apaga `auth.users` com o papel `supabase_auth_admin`. Na cascata, os triggers `recalculate_meal_totals`, `recalculate_post_likes` e `recalculate_post_comments` (SECURITY INVOKER) fazem UPDATE em `meals`/`feed_posts` sem permissão.
+- **Correção:** migration `033_trigger_functions_security_definer.sql`.
+- **Teste:** `account-deletion.integration.test.ts` (`DELETION_TEST_DATABASE_URL`, banco `deletion_test`). Os 3 casos falham sem a 033 e passam com ela.

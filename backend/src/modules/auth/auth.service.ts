@@ -2,7 +2,13 @@ import type { Session, User } from '@supabase/supabase-js'
 import type { FastifyInstance } from 'fastify'
 import { env } from '../../shared/env.js'
 import { AppError } from '../../shared/errors.js'
-import type { AuthResponse, LoginBody, RefreshBody, RegisterBody } from './auth.schemas.js'
+import type {
+  AuthResponse,
+  ConfirmationRequired,
+  LoginBody,
+  RefreshBody,
+  RegisterBody,
+} from './auth.schemas.js'
 
 /** Mapeia uma sessão do Supabase para o shape de resposta de auth da API. */
 function sessionToAuthResponse(session: Session, user: User): AuthResponse {
@@ -21,17 +27,20 @@ function sessionToAuthResponse(session: Session, user: User): AuthResponse {
 
 /**
  * Cadastra um novo usuário via Supabase Auth.
- * Após criar o usuário, já retorna a sessão autenticada.
+ * Flag desligada (padrão): conta já confirmada e sessão na resposta.
+ * A4, AUTH_REQUIRE_EMAIL_CONFIRMATION=true: conta sem confirmação, e-mail de
+ * confirmação disparado e resposta sem sessão. O login com e-mail não
+ * confirmado já devolve 403 EMAIL_NOT_CONFIRMED.
  */
 export async function registerUser(
   fastify: FastifyInstance,
   data: RegisterBody,
-): Promise<AuthResponse> {
-  // Cria o usuário via admin (confirma o email automaticamente)
+): Promise<AuthResponse | ConfirmationRequired> {
+  const requireConfirmation = env.AUTH_REQUIRE_EMAIL_CONFIRMATION
   const { data: createdUser, error: createError } = await fastify.supabase.auth.admin.createUser({
     email: data.email,
     password: data.password,
-    email_confirm: true,
+    email_confirm: !requireConfirmation,
     user_metadata: { name: data.name },
   })
 
@@ -59,8 +68,50 @@ export async function registerUser(
   // Deriva um username (a busca/pedido de amizade dependem dele; sem isso fica NULL).
   await ensureUsername(fastify, createdUser.user.id, data.email)
 
+  if (requireConfirmation) {
+    // O admin.createUser não manda e-mail. Falha aqui não desfaz o cadastro:
+    // um 500 deixaria a pessoa presa no 409 ao tentar de novo; o app oferece
+    // "Reenviar" (POST /auth/resend-confirmation).
+    await sendSignupConfirmation(fastify, data.email)
+    return { status: 'confirmation_required', email: data.email }
+  }
+
   // Faz login para retornar os tokens
   return loginUser(fastify, { email: data.email, password: data.password })
+}
+
+/** Dispara o e-mail de confirmação do Supabase. Best-effort; o log não leva o e-mail. */
+async function sendSignupConfirmation(fastify: FastifyInstance, email: string): Promise<void> {
+  const emailRedirectTo = env.AUTH_EMAIL_CONFIRMATION_REDIRECT_URL
+  try {
+    const { error } = await fastify.supabaseAuth.auth.resend({
+      type: 'signup',
+      email,
+      ...(emailRedirectTo ? { options: { emailRedirectTo } } : {}),
+    })
+    if (error) {
+      const { status, code } = error as { status?: number; code?: string }
+      fastify.log.warn({ confirmation_email_failed: { status, code } }, 'confirmation_email_failed')
+    }
+  } catch (err) {
+    fastify.log.warn(
+      { confirmation_email_failed: { error: (err as Error)?.name ?? 'unknown' } },
+      'confirmation_email_failed',
+    )
+  }
+}
+
+/**
+ * Reenvia o e-mail de confirmação do cadastro. Resposta sempre neutra (não
+ * revela se o e-mail existe ou já foi confirmado). Com a flag desligada não
+ * chama o Supabase: toda conta nova já nasce confirmada.
+ */
+export async function resendConfirmation(
+  fastify: FastifyInstance,
+  email: string,
+): Promise<{ success: boolean }> {
+  if (env.AUTH_REQUIRE_EMAIL_CONFIRMATION) await sendSignupConfirmation(fastify, email)
+  return { success: true }
 }
 
 /**
@@ -216,7 +267,7 @@ export async function refreshSession(
     expires_in: session.session.expires_in ?? 3600,
     user: {
       id: session.user!.id,
-      email: session.user!.email!,
+      email: session.user!.email ?? '',
       name: (session.user!.user_metadata?.name as string) ?? null,
     },
   }
@@ -286,9 +337,27 @@ export async function appleLogin(
 }
 
 /**
- * Logout — stub seguro. O cliente já limpa o token local; sempre retorna 200.
+ * Logout. O cliente limpa o token local; aqui revogamos a sessão no Supabase
+ * (A6 do pente fino), para o refresh token deixar de renovar. Best-effort:
+ * falha só gera log e a resposta é sempre 200.
+ *
+ * Escopo 'local': o default do signOut é 'global', que derrubaria os outros
+ * aparelhos do usuário. O access token segue válido até o `exp` (verificação
+ * local por JWKS); o que morre é o refresh.
  */
-export async function logout(): Promise<{ success: boolean }> {
+export async function logout(
+  fastify: FastifyInstance,
+  authorization: string | undefined,
+): Promise<{ success: boolean }> {
+  const jwt = /^Bearer (.+)$/i.exec(authorization ?? '')?.[1]?.trim()
+  if (jwt) {
+    try {
+      const { error } = await fastify.supabase.auth.admin.signOut(jwt, 'local')
+      if (error) fastify.log.warn({ err: error }, 'Falha ao revogar a sessão no logout')
+    } catch (err) {
+      fastify.log.warn({ err }, 'Falha ao revogar a sessão no logout')
+    }
+  }
   return { success: true }
 }
 
@@ -312,9 +381,56 @@ export async function forgotPassword(
   return { success: true }
 }
 
+/** Métodos do `amr` que provam posse do e-mail (link de recuperação). */
+const RECOVERY_METHODS = new Set(['recovery', 'otp'])
+const RECOVERY_MAX_AGE_S = 60 * 60
+
+/**
+ * Lê o `amr` do access token. Só roda DEPOIS do `getUser`, que já validou o
+ * token no Supabase: aqui é só decodificação, sem confiar na assinatura.
+ * O Supabase pode mandar objetos ({ method, timestamp }) ou strings (RFC 8176,
+ * via hook de token). String não tem timestamp, então não prova recência.
+ */
+export function recoveryCheck(accessToken: string, nowS = Math.floor(Date.now() / 1000)) {
+  let amr: unknown
+  try {
+    const part = accessToken.split('.')[1] ?? ''
+    amr = (JSON.parse(Buffer.from(part, 'base64url').toString('utf8')) as { amr?: unknown }).amr
+  } catch {
+    amr = undefined
+  }
+  const entries = Array.isArray(amr) ? amr : []
+  const format =
+    amr === undefined
+      ? 'absent'
+      : !Array.isArray(amr)
+        ? 'invalid'
+        : entries.every((e) => typeof e === 'string')
+          ? 'strings'
+          : entries.every((e) => e && typeof e === 'object')
+            ? 'objects'
+            : 'mixed'
+  const methods = entries
+    .map((e) => (typeof e === 'string' ? e : (e as { method?: unknown })?.method))
+    .filter((m): m is string => typeof m === 'string')
+    .map((m) => m.slice(0, 40))
+  const ages = entries
+    .filter((e) => e && typeof e === 'object')
+    .map((e) => e as { method?: unknown; timestamp?: unknown })
+    .filter((e) => typeof e.method === 'string' && RECOVERY_METHODS.has(e.method))
+    .map((e) => (typeof e.timestamp === 'number' ? nowS - e.timestamp : null))
+    .filter((age): age is number => age !== null)
+  const recoveryAge = ages.length ? Math.min(...ages) : null
+  const ok = recoveryAge !== null && recoveryAge >= -60 && recoveryAge <= RECOVERY_MAX_AGE_S
+  return { format, methods, recoveryAge, ok }
+}
+
 /**
  * Define a nova senha a partir do access_token de recovery (link do email).
  * Valida o token consultando o próprio Supabase; token inválido/expirado → 401.
+ * A5: com AUTH_RESET_REQUIRE_RECOVERY=enforce, só aceita a sessão de
+ * recuperação recente; em `log` (padrão) só registra. Depois da troca, encerra
+ * as outras sessões do usuário (best-effort).
  */
 export async function resetPassword(
   fastify: FastifyInstance,
@@ -326,12 +442,41 @@ export async function resetPassword(
     throw new AppError(401, 'INVALID_RESET_TOKEN', 'Link de recuperação inválido ou expirado')
   }
 
+  const mode = env.AUTH_RESET_REQUIRE_RECOVERY
+  const check = recoveryCheck(accessToken)
+  // Sem token, e-mail nem id: só o formato, para decidir quando ligar o enforce.
+  fastify.log.info(
+    {
+      reset_recovery: {
+        mode,
+        amr_format: check.format,
+        methods: check.methods,
+        recovery_age_s: check.recoveryAge,
+        would_reject: !check.ok,
+      },
+    },
+    'reset_password_recovery_check',
+  )
+  if (mode === 'enforce' && !check.ok) {
+    throw new AppError(401, 'INVALID_RESET_TOKEN', 'Link de recuperação inválido ou expirado')
+  }
+
   const { error: updateError } = await fastify.supabase.auth.admin.updateUserById(data.user.id, {
     password: newPassword,
   })
   if (updateError) {
     fastify.log.error({ err: updateError }, 'Falha ao redefinir senha')
     throw new AppError(500, 'RESET_FAILED', 'Não foi possível redefinir a senha. Tente novamente.')
+  }
+
+  // Quem tinha a senha antiga (ou um token roubado) perde as outras sessões.
+  // A desta requisição (a de recuperação) fica; o access token já emitido
+  // segue válido até o `exp`, o que morre é o refresh.
+  try {
+    const { error: signOutError } = await fastify.supabase.auth.admin.signOut(accessToken, 'others')
+    if (signOutError) fastify.log.warn({ err: signOutError }, 'reset_password_signout_failed')
+  } catch (err) {
+    fastify.log.warn({ err }, 'reset_password_signout_failed')
   }
 
   return { success: true }

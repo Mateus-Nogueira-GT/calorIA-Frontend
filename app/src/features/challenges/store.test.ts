@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import { act, renderHook } from '@testing-library/react-native';
 import { useChallengesStore } from './store';
+import { useAuthStore } from '@features/auth/store';
 import { todayString } from '@shared/utils/date';
 import type { Challenge, LeaderboardEntry } from '@shared/services/challenges.service';
 
@@ -31,6 +32,9 @@ jest.mock('@shared/services/challenges.service', () => ({
 }));
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { challengesService } = require('@shared/services/challenges.service');
+jest.mock('@shared/utils/show-alert', () => ({ showAlert: jest.fn() }));
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { showAlert } = require('@shared/utils/show-alert');
 
 describe('useChallengesStore', () => {
   beforeEach(() => {
@@ -170,5 +174,142 @@ describe('useChallengesStore', () => {
     });
 
     expect(useChallengesStore.getState().challenges[0]!.myLastCheckIn).toBe(todayString());
+  });
+
+  it('load mantém o desafio de convite ainda não aceito (S5)', async () => {
+    const invited = challenge('c9', { joinedByMe: false });
+    challengesService.resolveInvite.mockResolvedValue(invited);
+    // GET /challenges só lista desafios dos quais sou membro.
+    challengesService.getChallenges.mockResolvedValue([challenge('c1', { joinedByMe: true })]);
+
+    await useChallengesStore.getState().resolveInvite('ABC123');
+    await useChallengesStore.getState().load();
+
+    const list = useChallengesStore.getState().challenges;
+    expect(list.map((c) => c.id)).toEqual(['c9', 'c1']);
+    expect(list[0].joinedByMe).toBe(false);
+  });
+
+  it('convite resolvido durante o load também sobrevive', async () => {
+    let resolveList!: (v: Challenge[]) => void;
+    challengesService.getChallenges.mockReturnValue(
+      new Promise<Challenge[]>((r) => {
+        resolveList = r;
+      }),
+    );
+    challengesService.resolveInvite.mockResolvedValue(challenge('c9'));
+
+    const loading = useChallengesStore.getState().load();
+    await useChallengesStore.getState().resolveInvite('ABC123');
+    resolveList([]);
+    await loading;
+
+    expect(useChallengesStore.getState().challenges.map((c) => c.id)).toEqual(['c9']);
+  });
+
+  it('load descarta desafio já aceito que o servidor não devolve mais', async () => {
+    useChallengesStore.setState({ challenges: [challenge('c1', { joinedByMe: true })] });
+    challengesService.getChallenges.mockResolvedValue([]);
+
+    await useChallengesStore.getState().load();
+
+    expect(useChallengesStore.getState().challenges).toEqual([]);
+  });
+
+  it('load descarta a resposta que chega depois de trocar de conta (S10)', async () => {
+    useAuthStore.getState().clearToken();
+    useAuthStore.getState().setToken('token-a', { id: 'uA', name: 'A', email: 'a@exemplo.com' });
+    let resolveList!: (v: Challenge[]) => void;
+    challengesService.getChallenges.mockReturnValue(
+      new Promise<Challenge[]>((r) => {
+        resolveList = r;
+      }),
+    );
+
+    const loading = useChallengesStore.getState().load();
+    useAuthStore.getState().clearToken();
+    useAuthStore.getState().setToken('token-b', { id: 'uB', name: 'B', email: 'b@exemplo.com' });
+    resolveList([challenge('cA', { joinedByMe: true })]);
+    await loading;
+
+    expect(useChallengesStore.getState().challenges).toEqual([]);
+    expect(useChallengesStore.getState().isLoading).toBe(false);
+  });
+});
+
+describe('useChallengesStore — troca de conta com a requisição pendente (R5, 26/11)', () => {
+  const signIn = (id: string) => {
+    useAuthStore.getState().clearToken();
+    useAuthStore.getState().setToken(`token-${id}`, { id, name: id, email: `${id}@exemplo.com` });
+  };
+  const deferred = <T,>() => {
+    let resolve!: (v: T) => void;
+    let reject!: (e: unknown) => void;
+    const promise = new Promise<T>((a, b) => {
+      resolve = a;
+      reject = b;
+    });
+    return { promise, resolve, reject };
+  };
+  beforeEach(() => {
+    signIn('uA');
+    jest.clearAllMocks();
+  });
+
+  it('desafio criado pela conta anterior não entra na lista da próxima', async () => {
+    const created = deferred<Challenge>();
+    challengesService.create.mockReturnValue(created.promise);
+    const creating = useChallengesStore.getState().create({ title: 'x' } as never);
+    signIn('uB');
+    created.resolve(challenge('cA', { joinedByMe: true }));
+    await creating.catch(() => undefined);
+    expect(useChallengesStore.getState()).toMatchObject({ challenges: [], isCreating: false });
+  });
+
+  it('entrada da conta anterior não altera o mesmo desafio na próxima nem avisa', async () => {
+    useChallengesStore.setState({ challenges: [challenge('c1')] });
+    const joined = deferred<Challenge>();
+    challengesService.join.mockReturnValue(joined.promise);
+    const joining = useChallengesStore.getState().join('c1');
+    signIn('uB');
+    useChallengesStore.setState({ challenges: [challenge('c1', { participantCount: 9 })] });
+    joined.reject(new Error('cancelada'));
+    await joining.catch(() => undefined);
+    expect(useChallengesStore.getState().challenges[0]).toMatchObject({
+      joinedByMe: false,
+      participantCount: 9,
+    });
+    expect(showAlert).not.toHaveBeenCalled();
+  });
+
+  it('check-in da conta anterior não marca o desafio da próxima', async () => {
+    useChallengesStore.setState({ challenges: [challenge('c1', { joinedByMe: true })] });
+    const done = deferred<void>();
+    challengesService.checkIn.mockReturnValue(done.promise);
+    const checking = useChallengesStore.getState().checkIn('c1');
+    signIn('uB');
+    useChallengesStore.setState({ challenges: [challenge('c1', { joinedByMe: true })] });
+    done.resolve();
+    await checking;
+    expect(useChallengesStore.getState().challenges[0].myLastCheckIn).toBeUndefined();
+    expect(challengesService.getLeaderboard).not.toHaveBeenCalled();
+  });
+
+  it('ranking e convite resolvidos pela conta anterior não entram na próxima', async () => {
+    const board = deferred<LeaderboardEntry[]>();
+    challengesService.getLeaderboard.mockReturnValue(board.promise);
+    const invite = deferred<Challenge>();
+    challengesService.resolveInvite.mockReturnValue(invite.promise);
+    const loading = useChallengesStore.getState().loadLeaderboard('c1');
+    const resolving = useChallengesStore.getState().resolveInvite('CODE');
+    signIn('uB');
+    board.resolve([{ rank: 1, user: { id: 'uA', name: 'A' }, streak: 3, isMe: true } as never]);
+    invite.resolve(challenge('cA'));
+    await Promise.all([loading, resolving.catch(() => undefined)]);
+    expect(useChallengesStore.getState()).toMatchObject({
+      challenges: [],
+      leaderboardByChallenge: {},
+      loadingLeaderboardId: null,
+    });
   });
 });

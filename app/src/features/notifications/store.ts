@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { notificationsService } from '@shared/services/notifications.service';
 import type { AppNotification } from '@shared/services/notifications.service';
+import { captureSessionOwner, isCurrentOwner } from '@shared/services/session-owner';
 
 interface NotificationsState {
   items: AppNotification[];
@@ -19,15 +20,27 @@ const initialState = {
   isLoading: false,
 };
 
+// O clear() (logout) invalida o que está em andamento, mesmo antes de a sessão mudar.
+let clearVersion = 0;
+function captureOwner(): () => boolean {
+  const owner = captureSessionOwner();
+  const version = clearVersion;
+  return () => version === clearVersion && isCurrentOwner(owner);
+}
+
 export const useNotificationsStore = create<NotificationsState>((set, get) => ({
   ...initialState,
 
+  // Resposta que chega depois de trocar a sessão é da conta anterior: descarta.
   load: async () => {
+    const isCurrent = captureOwner();
     set({ isLoading: true });
     try {
       const res = await notificationsService.getNotifications();
+      if (!isCurrent()) return;
       set({ items: res.items, unreadCount: res.unreadCount, isLoading: false });
     } catch (e) {
+      if (!isCurrent()) return;
       set({ isLoading: false });
       throw e;
     }
@@ -36,12 +49,13 @@ export const useNotificationsStore = create<NotificationsState>((set, get) => ({
   markAllRead: async () => {
     const snapshot = { items: get().items, unreadCount: get().unreadCount };
     if (snapshot.unreadCount === 0) return;
+    const isCurrent = captureOwner();
     set((s) => ({ items: s.items.map((n) => ({ ...n, read: true })), unreadCount: 0 }));
     try {
       const res = await notificationsService.markRead();
-      set({ unreadCount: res.unreadCount });
+      if (isCurrent()) set({ unreadCount: res.unreadCount });
     } catch {
-      set(snapshot);
+      if (isCurrent()) set(snapshot);
     }
   },
 
@@ -49,17 +63,21 @@ export const useNotificationsStore = create<NotificationsState>((set, get) => ({
     const target = get().items.find((n) => n.id === id);
     if (!target || target.read) return;
     const snapshot = { items: get().items, unreadCount: get().unreadCount };
+    const isCurrent = captureOwner();
     set((s) => ({
       items: s.items.map((n) => (n.id === id ? { ...n, read: true } : n)),
       unreadCount: Math.max(0, s.unreadCount - 1),
     }));
     try {
       const res = await notificationsService.markRead([id]);
-      set({ unreadCount: res.unreadCount });
+      if (isCurrent()) set({ unreadCount: res.unreadCount });
     } catch {
-      set(snapshot);
+      if (isCurrent()) set(snapshot);
     }
   },
 
-  clear: () => set({ ...initialState }),
+  clear: () => {
+    clearVersion++;
+    set({ ...initialState });
+  },
 }));

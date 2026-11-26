@@ -15,6 +15,7 @@ import { AppError } from '../../shared/errors.js'
 import { mealTypesFor, reconcileDay } from '../../shared/guardrails/day.js'
 import { type DayGuardrailResult, applyDayGuardrails } from '../../shared/guardrails/index.js'
 import { DIET_COMPLETED_MARKER } from '../chat/history-markers.js'
+import type { CreditTransaction } from '../credits/credits.service.js'
 import { createSystemPost } from '../feed/feed.service.js'
 import { hasFiberColumns } from './fiber-columns.js'
 
@@ -134,6 +135,19 @@ export function parseInput(raw: unknown): CollectedUserData | null {
 
 // ─── Criação do job ───────────────────────────────────────────────────────────
 
+/** Índice único parcial da migration 031: um job pending/running por usuário. */
+const ONE_ACTIVE_JOB_INDEX = 'diet_jobs_one_active_per_user'
+
+/**
+ * R7 (26/11): o insert (ou a reabertura) perdeu a corrida para outro job ativo
+ * do mesmo usuário. Só o índice da 031 conta; outro 23505 continua sendo erro.
+ */
+export function isActiveJobConflict(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false
+  const e = err as { code?: unknown; constraint_name?: unknown }
+  return e.code === '23505' && e.constraint_name === ONE_ACTIVE_JOB_INDEX
+}
+
 /**
  * Job de geração em andamento (pending/running) mais recente do usuário, ou
  * null. Usado por createDietJob (não abrir duas gerações) e pelo chat (C1:
@@ -188,33 +202,58 @@ export async function createDietJob(
     return { jobId: emAndamento.id, dietId: emAndamento.diet_id }
   }
 
+  const ids = { jobId: randomUUID(), dietId: randomUUID() }
+  try {
+    await fastify.db.begin((sql) => insertDietJob(sql, userId, conversationId, userData, ids))
+  } catch (err) {
+    // R7: duas chamadas simultâneas passam juntas pela checagem acima; o índice
+    // da 031 barra a segunda (a transação desfaz a draft dela) e ela devolve o
+    // job de quem ganhou.
+    if (!isActiveJobConflict(err)) throw err
+    const vencedor = await getPendingJob(fastify, userId)
+    if (!vencedor) throw err
+    fastify.log.info(
+      { userId, jobId: vencedor.id },
+      'Geração de dieta criada em paralelo — reaproveitando o job',
+    )
+    return { jobId: vencedor.id, dietId: vencedor.diet_id }
+  }
+  return ids
+}
+
+/**
+ * Grava o cabeçalho da dieta (draft) e o job com ids já escolhidos. O chat
+ * cobrado chama direto, dentro da transação de liquidação (R4, 25/11): se a
+ * liquidação falhar, nada fica gravado.
+ */
+export async function insertDietJob(
+  sql: CreditTransaction,
+  userId: string,
+  conversationId: string,
+  userData: CollectedUserData,
+  ids: { jobId: string; dietId: string },
+): Promise<void> {
   const t = computeTargets(userData)
-  const dietId = randomUUID()
-  const jobId = randomUUID()
+  const { dietId, jobId } = ids
   const inputJson = JSON.stringify(userData)
-
-  await fastify.db.begin(async (sql) => {
-    await sql`
-      INSERT INTO diets (
-        id, user_id, conversation_id, name, description,
-        user_weight_kg, user_height_cm, user_age, user_gender, user_goal, user_activity_level,
-        tdee_calories, target_calories, target_protein_g, target_carbs_g, target_fat_g,
-        status, ai_model
-      ) VALUES (
-        ${dietId}, ${userId}, ${conversationId}, 'Plano personalizado', 'Gerado pelo Coach IA',
-        ${userData.weight_kg}, ${userData.height_cm}, ${userData.age},
-        ${userData.gender}, ${userData.goal}, ${userData.activity_level},
-        ${t.tdee}, ${t.targetCalories}, ${t.protein}, ${t.carbs}, ${t.fat},
-        'draft', ${env.OPENAI_DIET_MODEL}
-      )
-    `
-    await sql`
-      INSERT INTO diet_jobs (id, user_id, conversation_id, diet_id, status, input, total_days, days_completed)
-      VALUES (${jobId}, ${userId}, ${conversationId}, ${dietId}, 'pending', ${inputJson}::jsonb, ${TOTAL_DAYS}, 0)
-    `
-  })
-
-  return { jobId, dietId }
+  await sql`
+    INSERT INTO diets (
+      id, user_id, conversation_id, name, description,
+      user_weight_kg, user_height_cm, user_age, user_gender, user_goal, user_activity_level,
+      tdee_calories, target_calories, target_protein_g, target_carbs_g, target_fat_g,
+      status, ai_model
+    ) VALUES (
+      ${dietId}, ${userId}, ${conversationId}, 'Plano personalizado', 'Gerado pelo Coach IA',
+      ${userData.weight_kg}, ${userData.height_cm}, ${userData.age},
+      ${userData.gender}, ${userData.goal}, ${userData.activity_level},
+      ${t.tdee}, ${t.targetCalories}, ${t.protein}, ${t.carbs}, ${t.fat},
+      'draft', ${env.OPENAI_DIET_MODEL}
+    )
+  `
+  await sql`
+    INSERT INTO diet_jobs (id, user_id, conversation_id, diet_id, status, input, total_days, days_completed)
+    VALUES (${jobId}, ${userId}, ${conversationId}, ${dietId}, 'pending', ${inputJson}::jsonb, ${TOTAL_DAYS}, 0)
+  `
 }
 
 // ─── Geração de 1 dia (1 chamada GPT-5, cabe no limite serverless) ───────────
@@ -418,19 +457,26 @@ export async function retryJob(
   // Guard `AND status = 'failed'`: dois retries simultâneos (boot + aba Dieta)
   // ou um step entre a leitura e o UPDATE não podem reabrir de novo nem
   // devolver "running" sem ter reaberto nada.
-  const reopened = await fastify.db.begin(async (sql) => {
-    const rows = await sql`
-      UPDATE diet_jobs SET status = 'running', error = NULL, updated_at = NOW()
-      WHERE id = ${jobId} AND status = 'failed'
-      RETURNING id
-    `
-    if (rows.length === 0) return false
-    await sql`
-      UPDATE diets SET status = 'draft', updated_at = NOW()
-      WHERE id = ${job.diet_id} AND status = 'failed'
-    `
-    return true
-  })
+  // R7: com outro job ativo do usuário, o índice da 031 recusa a reabertura;
+  // devolve o estado real (failed) em vez de 500.
+  const reopened = await fastify.db
+    .begin(async (sql) => {
+      const rows = await sql`
+        UPDATE diet_jobs SET status = 'running', error = NULL, updated_at = NOW()
+        WHERE id = ${jobId} AND status = 'failed'
+        RETURNING id
+      `
+      if (rows.length === 0) return false
+      await sql`
+        UPDATE diets SET status = 'draft', updated_at = NOW()
+        WHERE id = ${job.diet_id} AND status = 'failed'
+      `
+      return true
+    })
+    .catch((err: unknown) => {
+      if (isActiveJobConflict(err)) return false
+      throw err
+    })
 
   // Perdeu a corrida: devolve o estado real em vez de afirmar "running".
   if (!reopened) return toStatus(await loadJob(fastify, userId, jobId))
@@ -829,6 +875,33 @@ function isTimeoutError(err: unknown): boolean {
 }
 
 /**
+ * Marca a conversa como concluída e anexa o marcador de dieta pronta.
+ * Concatena via JSONB (não lê+regrava o array): o job roda concorrente com o
+ * chat do usuário, e um read-modify-write aqui derrubaria mensagens enviadas
+ * enquanto o último dia gerava. O valor antigo pode ser uma string jsonb
+ * (`${texto}::jsonb` do postgres.js): é desembrulhado, e o marcador vai como
+ * `::text::jsonb` para entrar como elemento do array (R8, 25/11).
+ */
+export async function appendDietCompletedMarker(
+  sql: CreditTransaction,
+  conversationId: string,
+  dietId: string,
+): Promise<void> {
+  const marker = JSON.stringify([{ role: 'assistant', content: DIET_COMPLETED_MARKER }])
+  await sql`
+    UPDATE chat_history
+    SET status = 'completed', diet_id = ${dietId},
+        messages = CASE jsonb_typeof(messages)
+                     WHEN 'array' THEN messages
+                     WHEN 'string' THEN (messages #>> '{}')::jsonb
+                     ELSE '[]'::jsonb
+                   END || ${marker}::text::jsonb,
+        updated_at = NOW()
+    WHERE id = ${conversationId}
+  `
+}
+
+/**
  * Conclui o job: transação curta que completa o job, arquiva a dieta ativa
  * anterior e promove a draft — depois o marcador no chat e o post no feed.
  *
@@ -859,17 +932,7 @@ async function finalizeJob(fastify: FastifyInstance, userId: string, job: JobRow
   if (!finished) return
   if (job.conversation_id) {
     try {
-      // Concatena via JSONB (não lê+regrava o array): o job roda concorrente
-      // com o chat do usuário, e um read-modify-write aqui derrubaria
-      // mensagens enviadas enquanto o último dia gerava.
-      const marker = JSON.stringify([{ role: 'assistant', content: DIET_COMPLETED_MARKER }])
-      await fastify.db`
-        UPDATE chat_history
-        SET status = 'completed', diet_id = ${job.diet_id},
-            messages = messages || ${marker}::jsonb,
-            updated_at = NOW()
-        WHERE id = ${job.conversation_id}
-      `
+      await appendDietCompletedMarker(fastify.db, job.conversation_id, job.diet_id)
     } catch (err) {
       fastify.log.warn(err, 'Falha ao marcar chat_history como completed')
     }

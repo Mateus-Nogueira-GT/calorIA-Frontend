@@ -3,6 +3,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { render, act, fireEvent, waitFor } from '@testing-library/react-native';
 import { FoodLogScreen } from './FoodLogScreen';
 import { useFoodLogStore } from '../store';
+import { todayString } from '@shared/utils/date';
 
 jest.mock('@shared/services/food-log.service', () => ({
   foodLogService: {
@@ -41,18 +42,20 @@ jest.mock('@shared/services/food-log.service', () => ({
   },
 }));
 
+let mockPlan: unknown = null;
 jest.mock('@features/diet/store', () => ({
-  useDietStore: (selector: (s: { plan: null }) => unknown) => selector({ plan: null }),
+  useDietStore: (selector: (s: { plan: unknown }) => unknown) => selector({ plan: mockPlan }),
 }));
 
-beforeEach(() =>
+beforeEach(() => {
+  mockPlan = null;
   useFoodLogStore.setState({
     mealsByDate: {},
     syncedDates: {},
     loadingByDate: {},
     selectedDate: '2026-06-09',
-  }),
-);
+  });
+});
 
 describe('FoodLogScreen', () => {
   it('renderiza o titulo e o CTA principal', async () => {
@@ -96,4 +99,35 @@ it('FoodLog: protege topo e laterais sem inset inferior duplicado', async () => 
   const { UNSAFE_getByType } = render(<FoodLogScreen />);
   expect(UNSAFE_getByType(SafeAreaView).props.edges).toEqual(['top', 'left', 'right']);
   await waitFor(() => expect(UNSAFE_getByType(SafeAreaView)).toBeTruthy());
+});
+
+it('Resumo nutricional soma as refeições do plano concluídas, como a barra (S4)', async () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { foodLogService } = require('@shared/services/food-log.service');
+  foodLogService.getMeals.mockResolvedValueOnce([
+    { id: 'f1', name: 'Fruta', calories: 100, protein: 1, carbs: 25, fat: 0, loggedAt: new Date().toISOString() },
+  ]);
+  mockPlan = {
+    id: 'd1',
+    date: todayString(),
+    meals: [
+      {
+        id: 'pm1', type: 'lunch', title: 'Almoço', suggestedTime: '12:00', items: [],
+        calories: 500, protein: 40, carbs: 50, fat: 10, completedAt: new Date().toISOString(), completedToday: true,
+      },
+      {
+        id: 'pm2', type: 'dinner', title: 'Jantar', suggestedTime: '20:00', items: [],
+        calories: 700, protein: 40, carbs: 50, fat: 10, completedAt: null, completedToday: false,
+      },
+    ],
+    totalCalories: 2000, totalProtein: 120, totalCarbs: 200, totalFat: 60,
+    generatedAt: new Date().toISOString(),
+  };
+  useFoodLogStore.setState({ selectedDate: todayString() });
+
+  const { findByText, getByText } = render(<FoodLogScreen />);
+
+  expect(await findByText('Fruta')).toBeTruthy();
+  expect(getByText('600 / 2000 kcal')).toBeTruthy(); // barra
+  expect(getByText('600')).toBeTruthy(); // "Calorias" do resumo
 });

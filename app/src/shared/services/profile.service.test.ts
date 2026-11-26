@@ -31,3 +31,20 @@ describe('profileService.uploadAvatar', () => {
     expect(config?.timeout).toBe(75000);
   });
 });
+
+describe('profileService.deleteAccount', () => {
+  /**
+   * A3 do pente fino: a exclusão apaga Storage, Asaas e auth.users no mesmo
+   * request. Nos 10s do API_TIMEOUT o app via erro, o usuário tentava de novo
+   * e a conta já não existia.
+   */
+  it('usa timeout de pelo menos 60s', async () => {
+    api.delete.mockResolvedValue({ data: undefined });
+
+    await profileService.deleteAccount();
+
+    const [url, config] = api.delete.mock.calls[0];
+    expect(url).toBe('/users/me');
+    expect(config?.timeout).toBeGreaterThanOrEqual(60000);
+  });
+});

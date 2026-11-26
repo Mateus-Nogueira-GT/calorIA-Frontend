@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import { act, renderHook } from '@testing-library/react-native';
 import { useNotificationsStore } from './store';
+import { useAuthStore } from '@features/auth/store';
 import type { AppNotification } from '@shared/services/notifications.service';
 
 const notif = (id: string, read = false): AppNotification => ({
@@ -66,5 +67,87 @@ describe('useNotificationsStore', () => {
     useNotificationsStore.getState().clear();
     expect(useNotificationsStore.getState().items).toEqual([]);
     expect(useNotificationsStore.getState().unreadCount).toBe(0);
+  });
+
+  describe('R7: troca de sessão', () => {
+    const logout = () => {
+      useNotificationsStore.getState().clear();
+      useAuthStore.setState((st) => ({
+        sessionGeneration: st.sessionGeneration + 1,
+        user: { id: 'b', name: 'Bia', email: 'bia@example.test' },
+      }));
+    };
+    beforeEach(() => {
+      useAuthStore.setState({
+        sessionGeneration: 1,
+        isAuthenticated: true,
+        user: { id: 'a', name: 'Ana', email: 'ana@example.test' },
+      });
+    });
+
+    it('load pendente na troca de sessão não repovoa a conta seguinte', async () => {
+      let resolve!: (v: unknown) => void;
+      notificationsService.getNotifications.mockImplementationOnce(
+        () => new Promise((r) => (resolve = r)),
+      );
+      const p = useNotificationsStore.getState().load();
+      logout();
+      resolve({ items: [notif('n1')], unreadCount: 7 });
+      await p;
+      expect(useNotificationsStore.getState().items).toEqual([]);
+      expect(useNotificationsStore.getState().unreadCount).toBe(0);
+    });
+
+    it('markAllRead que falha depois da troca de sessão não restaura o snapshot', async () => {
+      useNotificationsStore.setState({ items: [notif('n1')], unreadCount: 3 });
+      let reject!: (e: unknown) => void;
+      notificationsService.markRead.mockImplementationOnce(
+        () => new Promise((_r, j) => (reject = j)),
+      );
+      const p = useNotificationsStore.getState().markAllRead();
+      logout();
+      reject(new Error('401'));
+      await p;
+      expect(useNotificationsStore.getState().items).toEqual([]);
+      expect(useNotificationsStore.getState().unreadCount).toBe(0);
+    });
+
+    it('load pendente durante o clear() não repovoa a lista', async () => {
+      let resolve!: (v: unknown) => void;
+      notificationsService.getNotifications.mockImplementationOnce(
+        () => new Promise((r) => (resolve = r)),
+      );
+      const p = useNotificationsStore.getState().load();
+      useNotificationsStore.getState().clear();
+      resolve({ items: [notif('n1')], unreadCount: 7 });
+      await p;
+      expect(useNotificationsStore.getState().items).toEqual([]);
+      expect(useNotificationsStore.getState().unreadCount).toBe(0);
+    });
+
+    it('markAllRead que falha depois do clear() não restaura o snapshot', async () => {
+      useNotificationsStore.setState({ items: [notif('n1')], unreadCount: 3 });
+      let reject!: (e: unknown) => void;
+      notificationsService.markRead.mockImplementationOnce(
+        () => new Promise((_r, j) => (reject = j)),
+      );
+      const p = useNotificationsStore.getState().markAllRead();
+      useNotificationsStore.getState().clear();
+      reject(new Error('401'));
+      await p;
+      expect(useNotificationsStore.getState().items).toEqual([]);
+      expect(useNotificationsStore.getState().unreadCount).toBe(0);
+    });
+
+    it('markRead que responde depois da troca de sessão não mexe no contador', async () => {
+      useNotificationsStore.setState({ items: [notif('n1')], unreadCount: 3 });
+      let resolve!: (v: unknown) => void;
+      notificationsService.markRead.mockImplementationOnce(() => new Promise((r) => (resolve = r)));
+      const p = useNotificationsStore.getState().markRead('n1');
+      logout();
+      resolve({ unreadCount: 2 });
+      await p;
+      expect(useNotificationsStore.getState().unreadCount).toBe(0);
+    });
   });
 });

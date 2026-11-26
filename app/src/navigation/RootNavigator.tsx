@@ -34,7 +34,7 @@ const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 // O link do email de recuperação abre /reset-password no stack de auth.
 // Nota: o linking do AuthNavigator é resolvido via getStateFromPath default
 // (rota registrada no próprio AuthStack quando deslogado).
-const linking: LinkingOptions<RootStackParamList> = {
+export const linking: LinkingOptions<RootStackParamList> = {
   /**
    * Só o esquema próprio. O link https://app.caloriaoficial.com.br/convite#token
    * é reivindicado pelo app (entitlement associated-domains no iOS; intent-filter
@@ -51,6 +51,8 @@ const linking: LinkingOptions<RootStackParamList> = {
       App: {
         screens: {
           Community: {
+            // Link frio para post/desafio: o Feed fica embaixo, e o "voltar" cai nele.
+            initialRouteName: 'Feed',
             screens: {
               PostComments: 'post/:postId',
               ChallengeLeaderboard: 'challenge/:code',

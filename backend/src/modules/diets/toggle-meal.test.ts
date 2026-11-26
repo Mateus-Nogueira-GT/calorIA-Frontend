@@ -17,6 +17,8 @@ function fakeFastify(queue: unknown[][]): { fastify: FastifyInstance; calls: Cal
     calls.push({ sql: strings.join(' ? '), params })
     return Promise.resolve(queue.shift() ?? [])
   }
+  // biome-ignore lint/suspicious/noExplicitAny: mock mínimo do driver
+  ;(db as any).begin = (fn: (sql: unknown) => Promise<unknown>) => fn(db)
   return { fastify: { db } as unknown as FastifyInstance, calls }
 }
 
@@ -169,5 +171,57 @@ describe('toggle com estado pedido (05/11, cartão "Marcar como feita")', () => 
     const { fastify, calls } = fakeFastify([[{ is_completed: false }]])
     await toggleMealCompleted(fastify, USER, MEAL, '2026-11-05', -180)
     expect(calls[0].params).toContain(null)
+  })
+})
+
+describe('dia da conclusão e limites de data (R4, lote 8)', () => {
+  // 22h BRT de 25/11: em UTC já é 26/11.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-11-26T01:00:00Z'))
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  const updateParams = (calls: Call[]) =>
+    calls.find((c) => c.sql.includes('UPDATE diet_meals'))?.params ?? []
+
+  it('hoje no fuso do cliente (22h BRT) grava o instante do toque', async () => {
+    const { fastify, calls } = fakeFastify([[{ is_completed: true, was_completed: true }]])
+    await toggleMealCompleted(fastify, USER, MEAL, '2026-11-25', -180, true)
+    // Sem instante do dia passado: o SQL cai no NOW().
+    expect(updateParams(calls).some((p) => typeof p === 'string' && p.includes('T'))).toBe(false)
+  })
+
+  it('ontem no fuso do cliente grava 12:00 local daquele dia', async () => {
+    const { fastify, calls } = fakeFastify([[{ is_completed: true, was_completed: true }]])
+    await toggleMealCompleted(fastify, USER, MEAL, '2026-11-24', -180, true)
+    expect(updateParams(calls)).toContain('2026-11-24T15:00:00.000Z')
+  })
+
+  it.each(['2026-11-26', '2026-11-23'])(
+    'data futura ou anterior a ontem no fuso do cliente é recusada (%s)',
+    async (date) => {
+      const { fastify, calls } = fakeFastify([[{ is_completed: true }]])
+      await expect(
+        toggleMealCompleted(fastify, USER, MEAL, date, -180, true),
+      ).rejects.toMatchObject({ statusCode: 400, code: 'INVALID_DATE' })
+      expect(calls).toHaveLength(0)
+    },
+  )
+
+  it('sem fuso (app publicado): São Paulo para o passado, UTC + 1 dia de folga para o futuro', async () => {
+    const ok = fakeFastify([[{ is_completed: true, was_completed: true }]])
+    await toggleMealCompleted(ok.fastify, USER, MEAL, '2026-11-24', undefined, true)
+    expect(updateParams(ok.calls)).toContain('2026-11-24T15:00:00.000Z')
+    const ahead = fakeFastify([[{ is_completed: true, was_completed: true }]])
+    await expect(
+      toggleMealCompleted(ahead.fastify, USER, MEAL, '2026-11-26'),
+    ).resolves.toBeDefined()
+    for (const date of ['2026-11-23', '2026-11-28'])
+      await expect(
+        toggleMealCompleted(fakeFastify([]).fastify, USER, MEAL, date),
+      ).rejects.toMatchObject({ code: 'INVALID_DATE' })
   })
 })

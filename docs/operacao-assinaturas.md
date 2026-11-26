@@ -5,8 +5,8 @@
 > desligada. A parte do Asaas (chave, webhook, sandbox/produção) é a mesma para as duas.
 
 ## Recarga de créditos — ordem para ligar
-1. **Migrações:** rodar `026_subscriptions.sql` e depois `027_credit_purchases.sql` no SQL
-   Editor.
+1. **Migrações:** rodar `026_subscriptions.sql`, `027_credit_purchases.sql` e
+   `028_credit_purchases_inflight_index.sql`, nessa ordem, no SQL Editor.
 2. **Vercel:**
    - `ASAAS_ENV`, `ASAAS_API_KEY` e `ASAAS_WEBHOOK_TOKEN`;
    - `CREDIT_PURCHASES_ENABLED=true`;

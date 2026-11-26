@@ -40,6 +40,7 @@ jest.mock('@shared/services/diet.service', () => ({
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { dietService } = require('@shared/services/diet.service');
+jest.mock('@shared/utils/show-alert', () => ({ showAlert: jest.fn() }));
 
 describe('useDietStore', () => {
   beforeEach(() => {
@@ -208,5 +209,70 @@ describe('useDietStore', () => {
     });
     expect(result.current.plan?.meals[0].completedToday).toBe(true);
     expect(result.current.completedCount).toBe(2);
+  });
+});
+
+describe('troca de conta com a dieta pendente (R5, 26/11)', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { useAuthStore } = require('@features/auth/store');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { showAlert } = require('@shared/utils/show-alert');
+  const signIn = (id: string) => {
+    useAuthStore.getState().clearToken();
+    useAuthStore.getState().setToken(`token-${id}`, { id, name: id, email: `${id}@exemplo.com` });
+  };
+  const deferred = <T,>() => {
+    let resolve!: (v: T) => void;
+    let reject!: (e: unknown) => void;
+    const promise = new Promise<T>((a, b) => {
+      resolve = a;
+      reject = b;
+    });
+    return { promise, resolve, reject };
+  };
+  beforeEach(() => {
+    signIn('uA');
+    jest.clearAllMocks();
+  });
+
+  it('loadCurrent descarta o plano que chega depois de trocar de conta', async () => {
+    const pending = deferred<DietPlan | null>();
+    dietService.getToday.mockReturnValue(pending.promise);
+    const loading = useDietStore.getState().loadCurrent();
+    signIn('uB');
+    pending.resolve(plan);
+    await loading;
+    expect(useDietStore.getState()).toMatchObject({ plan: undefined, isLoading: false });
+  });
+
+  it('loadCurrent descarta o status do dia que chega depois de trocar de conta', async () => {
+    dietService.getToday.mockResolvedValue(null);
+    const status = deferred<unknown>();
+    dietService.getTodayStatus.mockReturnValue(status.promise);
+    const loading = useDietStore.getState().loadCurrent();
+    for (let i = 0; i < 10 && dietService.getTodayStatus.mock.calls.length === 0; i++)
+      await Promise.resolve();
+    signIn('uB');
+    status.resolve({ state: 'missing_day' });
+    await loading;
+    expect(useDietStore.getState()).toMatchObject({ plan: undefined, todayStatus: null });
+  });
+
+  it('logout não deixa o status do dia nem o erro da conta anterior', () => {
+    useDietStore.setState({ plan: null, todayStatus: { state: 'missing_day' } as never, error: true });
+    signIn('uB');
+    expect(useDietStore.getState()).toMatchObject({ todayStatus: null, error: false });
+  });
+
+  it('toggle da conta anterior não avisa nem lança na próxima', async () => {
+    useDietStore.setState({ plan });
+    const pending = deferred<{ is_completed: boolean }>();
+    dietService.toggleMeal.mockReturnValue(pending.promise);
+    const toggling = useDietStore.getState().toggleMealComplete('m1');
+    signIn('uB');
+    pending.reject(new Error('cancelada'));
+    await expect(toggling).resolves.toBeUndefined();
+    expect(useDietStore.getState()).toMatchObject({ plan: undefined, togglingMealId: null });
+    expect(showAlert).not.toHaveBeenCalled();
   });
 });

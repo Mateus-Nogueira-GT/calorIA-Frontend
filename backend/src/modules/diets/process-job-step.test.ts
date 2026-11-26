@@ -194,7 +194,8 @@ describe('processJobStep — guardrails do dia (O4)', () => {
 
     expect(r.status).toBe('completed')
     const upd = calls.find(
-      (c) => c.sql.includes('UPDATE chat_history') && c.sql.includes('messages ||'),
+      // R8 (25/11): o marcador entra como elemento do array (::text::jsonb).
+      (c) => c.sql.includes('UPDATE chat_history') && c.sql.includes('::text::jsonb'),
     )
     expect(upd).toBeDefined()
     expect(

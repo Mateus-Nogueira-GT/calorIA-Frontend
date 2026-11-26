@@ -375,6 +375,40 @@ export async function getTodayStatus(
 
 // ─── Ações do usuário na dieta ────────────────────────────────────────────────
 
+const DAY_MS = 86_400_000
+/** America/Sao_Paulo sem horário de verão desde 2019. */
+const SAO_PAULO_OFFSET_MINUTES = -180
+const shiftDay = (date: string, days: number) =>
+  new Date(Date.parse(`${date}T00:00:00Z`) + days * DAY_MS).toISOString().slice(0, 10)
+
+/**
+ * R4 (lote 8): instante gravado em completed_at para a data local `date`, ou
+ * null para hoje (o SQL usa NOW()). O plano mostra a refeição como feita pelo
+ * dia local de completed_at (completedOnDate, gráfico semanal), então o
+ * cartão de ontem tocado hoje precisa cair em ontem: 12:00 locais, que fica no
+ * mesmo dia para qualquer fuso do Brasil.
+ *
+ * Limites: o cartão carrega a data em que foi proposto e vale até o dia
+ * seguinte, então aceita hoje e ontem. Futuro e anteontem são recusados (o
+ * plano é cíclico por dia da semana: um cartão velho reescreveria a conclusão
+ * desta semana da mesma refeição). Com o fuso do cliente, "hoje" é o dele. Sem
+ * fuso (app publicado, que só manda a data de hoje), usa São Paulo para o
+ * passado e mantém a folga de 1 dia em UTC para o futuro, como a janela antiga.
+ */
+export function completionInstant(
+  date: string,
+  tzOffsetMinutes?: number,
+  now: Date = new Date(),
+): string | null {
+  const offset = tzOffsetMinutes ?? SAO_PAULO_OFFSET_MINUTES
+  const today = utcTodayString(new Date(now.getTime() + offset * 60_000))
+  const latest = tzOffsetMinutes != null ? today : shiftDay(utcTodayString(now), 1)
+  if (date > latest || date < shiftDay(today, -1))
+    throw new AppError(400, 'INVALID_DATE', 'Data fora da janela permitida')
+  if (date >= today) return null
+  return new Date(Date.parse(`${date}T12:00:00Z`) - offset * 60_000).toISOString()
+}
+
 /** Marca ou desmarca uma refeição como concluída. */
 export async function toggleMealCompleted(
   fastify: FastifyInstance,
@@ -395,6 +429,9 @@ export async function toggleMealCompleted(
 
   const date = localDate ?? utcTodayString()
   const tz = tzOffsetMinutes ?? 0
+  // R4 (lote 8): dia passado (cartão do coach tocado no dia seguinte) grava um
+  // instante DENTRO daquele dia local; hoje continua sendo o NOW().
+  const pastAt = localDate ? completionInstant(localDate, tzOffsetMinutes) : null
   // O app PUBLICADO não envia tzOffsetMinutes (só `date`). Sem o fuso, comparar
   // completed_at em UTC com a data LOCAL do cliente diverge entre 21h e 24h no
   // horário de Brasília — a refeição marcada às 21h30 grava completed_at no dia
@@ -438,7 +475,7 @@ export async function toggleMealCompleted(
         completed_at = CASE
           WHEN NOT COALESCE(${desired}::boolean, NOT target.completed_on_date) THEN NULL
           WHEN target.completed_on_date THEN dm.completed_at
-          ELSE NOW()
+          ELSE COALESCE(${pastAt}::timestamptz, NOW())
         END
     FROM target
     WHERE dm.id = target.id
@@ -452,21 +489,35 @@ export async function toggleMealCompleted(
   // Só ao passar de pendente para feita (marcar de novo não credita streak duas vezes).
   if (newState && !meal.was_completed) {
     // Mesma data usada para decidir o estado acima (local do cliente, ou UTC).
-    await fastify.db`
-      SELECT update_user_streak(${userId}, ${date}::date)
-    `
-
-    const [streak] = await fastify.db<{ current_streak: number }[]>`
-      SELECT current_streak FROM streaks WHERE user_id = ${userId}
-    `
-    if (streak && streak.current_streak > 0 && streak.current_streak % 7 === 0) {
-      await createSystemPost(
-        fastify,
-        userId,
-        'streak_milestone',
-        `${streak.current_streak} dias seguidos seguindo a dieta! 🔥`,
-        { streak: streak.current_streak },
-      )
+    // S2: o marco só sai quando a sequência subiu NESTA chamada (a 2ª refeição
+    // do 7º dia repetia o post). R6 (lote 8): o antes e o depois são lidos com
+    // a linha travada, na mesma transação da função; duas refeições
+    // concluídas ao mesmo tempo liam o mesmo "antes" e as duas publicavam.
+    // Vale também sem a 032 (a trava serializa a função antiga).
+    const milestone = await fastify.db.begin(async (sql) => {
+      const [previous] = await sql<{ previous_streak: number }[]>`
+        SELECT current_streak AS previous_streak FROM streaks WHERE user_id = ${userId} FOR UPDATE
+      `
+      await sql`SELECT update_user_streak(${userId}, ${date}::date)`
+      const [streak] = await sql<{ current_streak: number }[]>`
+        SELECT current_streak FROM streaks WHERE user_id = ${userId}
+      `
+      const advanced = streak && streak.current_streak > (previous?.previous_streak ?? 0)
+      return advanced && streak.current_streak % 7 === 0 ? streak.current_streak : null
+    })
+    if (milestone) {
+      // Best-effort, como no check-in do desafio: a refeição já está marcada.
+      try {
+        await createSystemPost(
+          fastify,
+          userId,
+          'streak_milestone',
+          `${milestone} dias seguidos seguindo a dieta! 🔥`,
+          { streak: milestone },
+        )
+      } catch (err) {
+        fastify.log.warn({ err }, 'Falha ao publicar marco de streak da dieta')
+      }
     }
   }
 

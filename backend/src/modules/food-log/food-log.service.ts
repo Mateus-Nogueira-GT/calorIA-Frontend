@@ -10,6 +10,7 @@ import {
   type UpdateMealBody,
 } from './food-log.schemas.js'
 import { hasMealFiberColumns } from './meal-fiber-columns.js'
+import { hasMealIdempotencyColumn } from './meal-idempotency-column.js'
 import { hasMealScanColumns } from './meal-scan-columns.js'
 
 /**
@@ -126,25 +127,94 @@ async function insertMealItem(
   `
 }
 
+/** Mesmo formato das chaves do chat e do scanner (validateIdempotencyKey). */
+const IDEMPOTENCY_KEY_RE = /^[A-Za-z0-9_-]{16,128}$/
+
+/**
+ * C4 (26/11): refeição já gravada com esta chave, no mesmo formato da resposta
+ * do POST que a criou (o replay devolve o mesmo corpo).
+ */
+async function findMealByKey(
+  fastify: FastifyInstance,
+  userId: string,
+  key: string,
+): Promise<Meal | null> {
+  const [row] = await fastify.db<
+    {
+      id: string
+      name: string | null
+      meal_type: string
+      total_calories: string
+      total_protein: string
+      total_carbs: string
+      total_fat: string
+      total_fiber: string | null
+      logged_at: string
+    }[]
+  >`
+    SELECT id, name, meal_type, total_calories, total_protein, total_carbs, total_fat,
+           to_jsonb(m)->>'total_fiber' AS total_fiber, logged_at::TEXT AS logged_at
+    FROM meals m
+    WHERE user_id = ${userId} AND idempotency_key = ${key}
+  `
+  if (!row) return null
+  return {
+    id: row.id,
+    name: row.name ?? '',
+    calories: Number(row.total_calories),
+    protein: Number(row.total_protein),
+    carbs: Number(row.total_carbs),
+    fat: Number(row.total_fat),
+    fiber: row.total_fiber == null ? null : Number(row.total_fiber),
+    loggedAt: row.logged_at,
+    mealType: toApiMealType(row.meal_type),
+  }
+}
+
+/**
+ * Registra a refeição. C4 (26/11): com `idempotencyKey` (cabeçalho opcional
+ * Idempotency-Key) e a migration 030, a mesma chave do mesmo usuário devolve a
+ * refeição já criada: o "Tente de novo" depois de um timeout não duplica. Sem
+ * chave, ou antes da 030, grava como sempre.
+ */
 export async function addMeal(
   fastify: FastifyInstance,
   userId: string,
   data: AddMealBody,
+  idempotencyKey?: string,
 ): Promise<Meal> {
+  if (idempotencyKey !== undefined && !IDEMPOTENCY_KEY_RE.test(idempotencyKey)) {
+    throw new AppError(400, 'INVALID_IDEMPOTENCY_KEY', 'Atualize o aplicativo e tente novamente.')
+  }
   if (data.date && !isWithinDateWindow(data.date)) {
     throw new AppError(400, 'INVALID_DATE', 'Data fora da janela permitida')
   }
+  const key =
+    idempotencyKey !== undefined && (await hasMealIdempotencyColumn(fastify))
+      ? idempotencyKey
+      : null
   const withFiber = await hasMealFiberColumns(fastify)
   const withScan = data.scan ? await hasMealScanColumns(fastify) : false
 
-  return fastify.db.begin(async (sql) => {
+  const created = await fastify.db.begin(async (sql) => {
     // Data local do cliente quando presente; CURRENT_DATE (UTC) como fallback
-    const [meal] = await sql<{ id: string; logged_at: string }[]>`
-      INSERT INTO meals (user_id, meal_type, meal_date, name)
-      VALUES (${userId}, ${toDbMealType(data.mealType)},
-              COALESCE(${data.date ?? null}::date, CURRENT_DATE), ${data.name})
-      RETURNING id, logged_at::TEXT AS logged_at
-    `
+    // ON CONFLICT com o predicado do índice parcial: a 2ª requisição com a
+    // mesma chave espera a 1ª terminar e não insere nada (nem o item).
+    const [meal] = key
+      ? await sql<{ id: string; logged_at: string }[]>`
+          INSERT INTO meals (user_id, meal_type, meal_date, name, idempotency_key)
+          VALUES (${userId}, ${toDbMealType(data.mealType)},
+                  COALESCE(${data.date ?? null}::date, CURRENT_DATE), ${data.name}, ${key})
+          ON CONFLICT (user_id, idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING
+          RETURNING id, logged_at::TEXT AS logged_at
+        `
+      : await sql<{ id: string; logged_at: string }[]>`
+          INSERT INTO meals (user_id, meal_type, meal_date, name)
+          VALUES (${userId}, ${toDbMealType(data.mealType)},
+                  COALESCE(${data.date ?? null}::date, CURRENT_DATE), ${data.name})
+          RETURNING id, logged_at::TEXT AS logged_at
+        `
+    if (!meal) return null
 
     await insertMealItem(sql, meal.id, data, withFiber)
     if (withScan && data.scan) {
@@ -168,6 +238,12 @@ export async function addMeal(
       mealType: data.mealType,
     }
   })
+  if (created) return created
+
+  // Chave repetida: a refeição já existe (fora da transação, que só leu o conflito).
+  const existing = key ? await findMealByKey(fastify, userId, key) : null
+  if (!existing) throw new AppError(500, 'MEAL_WRITE_FAILED', 'Não consegui salvar a refeição.')
+  return existing
 }
 
 export async function updateMeal(
@@ -220,34 +296,65 @@ const SUMMARY_MAX_DAYS = 92
  * G4: totais por dia num intervalo (1 query com GROUP BY) — o gráfico semanal
  * do perfil fazia 7 requests, um por dia. Dias sem registro não voltam
  * (o cliente preenche com zero).
+ *
+ * S9 (26/11): soma também as refeições do PLANO concluídas, com a mesma regra
+ * do Dashboard (getDayTotals no app): a refeição conta no dia LOCAL de
+ * `completed_at` (completedOnDate / toggleMeal). Sem `tzOffsetMinutes`
+ * (cliente antigo) o dia é o UTC. Fibra: soma do que tem dado (sem dado = 0,
+ * como no app); `to_jsonb` funciona com ou sem as migrations 020/022.
+ * `includePlanMeals: false` mantém só o diário livre (o contexto do coach,
+ * que diz ao modelo que os dias anteriores são "só diário").
  */
 export async function getSummary(
   fastify: FastifyInstance,
   userId: string,
   from: string,
   to: string,
+  options: { tzOffsetMinutes?: number; includePlanMeals?: boolean } = {},
 ): Promise<DaySummary[]> {
+  const tzOffsetMinutes = options.tzOffsetMinutes ?? 0
+  const includePlanMeals = options.includePlanMeals ?? true
   if (from > to) throw new AppError(400, 'INVALID_RANGE', 'Data inicial maior que a final')
   const spanDays = (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000
   if (spanDays > SUMMARY_MAX_DAYS)
     throw new AppError(400, 'RANGE_TOO_LARGE', `Intervalo máximo de ${SUMMARY_MAX_DAYS} dias`)
 
   const rows = await fastify.db<
-    { date: string; calories: number; protein: number; carbs: number; fat: number }[]
+    { date: string; calories: number; protein: number; carbs: number; fat: number; fiber: number }[]
   >`
+    WITH eaten AS (
+      SELECT meal_date, total_calories AS calories, total_protein AS protein,
+             total_carbs AS carbs, total_fat AS fat,
+             (to_jsonb(m)->>'total_fiber')::NUMERIC AS fiber
+      FROM meals m
+      WHERE user_id = ${userId} AND meal_date BETWEEN ${from} AND ${to}
+        -- Registros impossíveis (anteriores aos tetos) não entram na soma.
+        AND total_calories <= ${MEAL_LIMITS.calories}
+        AND total_protein <= ${MEAL_LIMITS.protein}
+        AND total_carbs <= ${MEAL_LIMITS.carbs}
+        AND total_fat <= ${MEAL_LIMITS.fat}
+      UNION ALL
+      SELECT plan.date, dm.total_calories, dm.total_protein, dm.total_carbs, dm.total_fat,
+             (to_jsonb(dm)->>'total_fiber')::NUMERIC
+      FROM diet_meals dm
+      JOIN diet_days dd ON dd.id = dm.diet_day_id
+      JOIN diets d ON d.id = dd.diet_id
+      CROSS JOIN LATERAL (
+        SELECT (dm.completed_at AT TIME ZONE 'UTC'
+                + make_interval(mins => ${tzOffsetMinutes}))::DATE AS date
+      ) plan
+      WHERE ${includePlanMeals}::BOOLEAN
+        AND d.user_id = ${userId} AND dm.completed_at IS NOT NULL
+        AND plan.date BETWEEN ${from}::DATE AND ${to}::DATE
+    )
     SELECT
       meal_date::TEXT AS date,
-      COALESCE(SUM(total_calories), 0)::INT AS calories,
-      COALESCE(SUM(total_protein), 0)::INT AS protein,
-      COALESCE(SUM(total_carbs), 0)::INT AS carbs,
-      COALESCE(SUM(total_fat), 0)::INT AS fat
-    FROM meals
-    WHERE user_id = ${userId} AND meal_date BETWEEN ${from} AND ${to}
-      -- Registros impossíveis (anteriores aos tetos) não entram na soma.
-      AND total_calories <= ${MEAL_LIMITS.calories}
-      AND total_protein <= ${MEAL_LIMITS.protein}
-      AND total_carbs <= ${MEAL_LIMITS.carbs}
-      AND total_fat <= ${MEAL_LIMITS.fat}
+      COALESCE(SUM(calories), 0)::INT AS calories,
+      COALESCE(SUM(protein), 0)::INT AS protein,
+      COALESCE(SUM(carbs), 0)::INT AS carbs,
+      COALESCE(SUM(fat), 0)::INT AS fat,
+      ROUND(COALESCE(SUM(fiber), 0), 1)::FLOAT8 AS fiber
+    FROM eaten
     GROUP BY meal_date
     ORDER BY meal_date
   `

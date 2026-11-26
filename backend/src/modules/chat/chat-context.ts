@@ -290,7 +290,9 @@ export async function fetchUserContext(
   let streak: number | null = null
   try {
     const [row] = await fastify.db<{ current_streak: number }[]>`
-      SELECT current_streak FROM streaks WHERE user_id = ${userId}
+      SELECT CASE WHEN last_active_date < (now() AT TIME ZONE 'America/Sao_Paulo')::date - 1
+        THEN 0 ELSE current_streak END AS current_streak
+      FROM streaks WHERE user_id = ${userId}
     `
     streak = row?.current_streak ?? null
   } catch {
@@ -314,7 +316,10 @@ export async function fetchUserContext(
   // 05/11 (M6): "como foi minha semana?" ficava sem nenhum dado.
   let recentDays: DaySummary[] | null = null
   try {
-    recentDays = await getSummary(fastify, userId, shiftDate(date, -6), shiftDate(date, -1))
+    // Só o diário livre: a linha do contexto avisa o modelo que é "só diário".
+    recentDays = await getSummary(fastify, userId, shiftDate(date, -6), shiftDate(date, -1), {
+      includePlanMeals: false,
+    })
   } catch {
     recentDays = null
   }

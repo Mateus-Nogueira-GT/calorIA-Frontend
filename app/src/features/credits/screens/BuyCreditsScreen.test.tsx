@@ -1,5 +1,5 @@
 import React from 'react';
-import { Linking } from 'react-native';
+import { AppState, Linking } from 'react-native';
 import { act, fireEvent, render } from '@testing-library/react-native';
 import { BuyCreditsScreen, POLL_INTERVAL_MS } from './BuyCreditsScreen';
 import { purchasesService } from '@shared/services/purchases.service';
@@ -121,4 +121,119 @@ it('recarga desligada no servidor: avisa que ainda não está disponível', asyn
   svc.hasCustomer.mockResolvedValue(false);
   const screen = render(<BuyCreditsScreen />);
   expect(await screen.findByText('A compra de créditos ainda não está disponível.')).toBeTruthy();
+});
+
+describe('pente fino: compra', () => {
+  const A = { code: 'a', name: 'A', credits: 10, price_cents: 6000 };
+  const B = { code: 'b', name: 'B', credits: 50, price_cents: 20000 };
+  const pending = {
+    id: 'p1',
+    status: 'pending' as const,
+    credits: 10,
+    price_cents: 6000,
+    invoice_url: 'x',
+  };
+  let appStateCb: ((s: string) => void) | null = null;
+
+  beforeEach(() => {
+    appStateCb = null;
+    svc.packages.mockResolvedValue([A, B]);
+    svc.hasCustomer.mockResolvedValue(true);
+    jest.spyOn(AppState, 'addEventListener').mockImplementation((_e, cb) => {
+      appStateCb = cb as (s: string) => void;
+      return { remove: jest.fn() } as never;
+    });
+  });
+
+  it('R1: pagar A e tocar em B com checkout falhando não anuncia os créditos de B', async () => {
+    svc.get.mockResolvedValue({ ...pending, status: 'paid', invoice_url: null });
+    const s = render(<BuyCreditsScreen />);
+    await s.findByText('R$ 6,00 por crédito');
+    await act(async () => {
+      fireEvent.press(s.getByLabelText('10 créditos por R$ 60,00'));
+    });
+    await act(async () => {
+      jest.advanceTimersByTime(POLL_INTERVAL_MS);
+    });
+    expect(s.getByText('10 créditos foram adicionados ao seu saldo.')).toBeTruthy();
+
+    svc.checkout.mockRejectedValueOnce({
+      response: { status: 503, data: { error: 'PAYMENT_PROVIDER_ERROR' } },
+    });
+    await act(async () => {
+      fireEvent.press(s.getByLabelText('50 créditos por R$ 200,00'));
+    });
+    expect(s.queryByText('50 créditos foram adicionados ao seu saldo.')).toBeNull();
+    expect(s.queryByText('10 créditos foram adicionados ao seu saldo.')).toBeNull();
+  });
+
+  it('R2: com get() pendente, AppState active e "Já paguei" não abrem outra cadeia', async () => {
+    const s = render(<BuyCreditsScreen />);
+    await s.findByText('R$ 6,00 por crédito');
+    await act(async () => {
+      fireEvent.press(s.getByLabelText('10 créditos por R$ 60,00'));
+    });
+    let resolveFirst!: (v: typeof pending) => void;
+    svc.get.mockImplementationOnce(() => new Promise((r) => (resolveFirst = r)));
+    svc.get.mockResolvedValue(pending);
+    await act(async () => {
+      jest.advanceTimersByTime(POLL_INTERVAL_MS);
+    });
+    expect(svc.get).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      appStateCb!('active');
+    });
+    await act(async () => {
+      fireEvent.press(s.getByText('Já paguei'));
+    });
+    expect(svc.get).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      resolveFirst(pending);
+    });
+
+    const before = svc.get.mock.calls.length;
+    await act(async () => {
+      jest.advanceTimersByTime(POLL_INTERVAL_MS);
+    });
+    expect(svc.get.mock.calls.length - before).toBe(1);
+
+    s.unmount();
+    const afterUnmount = svc.get.mock.calls.length;
+    await act(async () => {
+      jest.advanceTimersByTime(POLL_INTERVAL_MS * 3);
+    });
+    expect(svc.get.mock.calls.length).toBe(afterUnmount);
+  });
+
+  it('R3: dois toques antes do re-render fazem um checkout só', async () => {
+    let release!: (v: unknown) => void;
+    svc.checkout.mockImplementation(() => new Promise((r) => (release = r)) as never);
+    const s = render(<BuyCreditsScreen />);
+    await s.findByText('R$ 6,00 por crédito');
+    const btn = s.getByLabelText('10 créditos por R$ 60,00');
+    act(() => {
+      fireEvent.press(btn);
+      fireEvent.press(btn);
+    });
+    expect(svc.checkout).toHaveBeenCalledTimes(1);
+    await act(async () => release({ purchase_id: 'p1', status: 'pending', invoice_url: 'x' }));
+  });
+
+  it('R4: o link da fatura que chega no polling passa a abrir no botão', async () => {
+    svc.checkout.mockResolvedValue({ purchase_id: 'p1', status: 'pending', invoice_url: null });
+    svc.get.mockResolvedValue({ ...pending, invoice_url: 'https://asaas/i/tarde' });
+    const s = render(<BuyCreditsScreen />);
+    await s.findByText('R$ 6,00 por crédito');
+    await act(async () => {
+      fireEvent.press(s.getByLabelText('10 créditos por R$ 60,00'));
+    });
+    expect(Linking.openURL).not.toHaveBeenCalled();
+    await act(async () => {
+      jest.advanceTimersByTime(POLL_INTERVAL_MS);
+    });
+    await act(async () => {
+      fireEvent.press(s.getByText('Abrir pagamento'));
+    });
+    expect(Linking.openURL).toHaveBeenCalledWith('https://asaas/i/tarde');
+  });
 });

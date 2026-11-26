@@ -60,6 +60,27 @@ export async function searchUsers(
 
 // ─── Pedidos de amizade ───────────────────────────────────────────────────────
 
+type ExistingFriendship = { id: string; status: string; requester_id: string }
+
+/**
+ * R9 (26/11): o mesmo estado dá o mesmo erro, com ou sem corrida. Pedido
+ * pendente que veio do OUTRO lado é REQUEST_INCOMING (o app pode oferecer
+ * "aceitar"); o meu próprio continua REQUEST_PENDING.
+ */
+function existingFriendshipError(existing: ExistingFriendship, userId: string): AppError {
+  if (existing.status === 'accepted')
+    return new AppError(409, 'ALREADY_FRIENDS', 'Vocês já são amigos')
+  if (existing.status === 'pending')
+    return existing.requester_id === userId
+      ? new AppError(409, 'REQUEST_PENDING', 'Já existe um pedido pendente')
+      : new AppError(
+          409,
+          'REQUEST_INCOMING',
+          'Essa pessoa já te enviou um pedido de amizade. Aceite na aba Pedidos.',
+        )
+  return new AppError(409, 'BLOCKED', 'Não é possível enviar pedido para este usuário')
+}
+
 export async function sendFriendRequest(
   fastify: FastifyInstance,
   userId: string,
@@ -72,24 +93,32 @@ export async function sendFriendRequest(
   if (target.id === userId)
     throw new AppError(400, 'INVALID_TARGET', 'Você não pode adicionar a si mesmo')
 
-  const [existing] = await fastify.db<{ id: string; status: string }[]>`
-    SELECT id, status FROM friendships
-    WHERE (requester_id = ${userId} AND addressee_id = ${target.id})
-       OR (requester_id = ${target.id} AND addressee_id = ${userId})
-  `
-  if (existing) {
-    if (existing.status === 'accepted')
-      throw new AppError(409, 'ALREADY_FRIENDS', 'Vocês já são amigos')
-    if (existing.status === 'pending')
-      throw new AppError(409, 'REQUEST_PENDING', 'Já existe um pedido pendente')
-    throw new AppError(409, 'BLOCKED', 'Não é possível enviar pedido para este usuário')
+  const findExisting = async () => {
+    const [row] = await fastify.db<ExistingFriendship[]>`
+      SELECT id, status, requester_id FROM friendships
+      WHERE (requester_id = ${userId} AND addressee_id = ${target.id})
+         OR (requester_id = ${target.id} AND addressee_id = ${userId})
+    `
+    return row
   }
+  const existing = await findExisting()
+  if (existing) throw existingFriendshipError(existing, userId)
 
-  const [created] = await fastify.db<{ id: string }[]>`
-    INSERT INTO friendships (requester_id, addressee_id, status)
-    VALUES (${userId}, ${target.id}, 'pending')
-    RETURNING id
-  `
+  let created: { id: string }
+  try {
+    ;[created] = await fastify.db<{ id: string }[]>`
+      INSERT INTO friendships (requester_id, addressee_id, status)
+      VALUES (${userId}, ${target.id}, 'pending')
+      RETURNING id
+    `
+  } catch (err) {
+    // R9: os dois lados pediram ao mesmo tempo (ou toque duplo). O UNIQUE
+    // (pair_key) barra o segundo insert; sem isto virava 500.
+    if ((err as { code?: unknown } | null)?.code !== '23505') throw err
+    const winner = await findExisting()
+    if (winner) throw existingFriendshipError(winner, userId)
+    throw new AppError(409, 'REQUEST_PENDING', 'Já existe um pedido pendente')
+  }
 
   // E4 da spec: sem isso o destinatário só descobria o pedido abrindo a tela
   // de pedidos por conta própria. Best-effort — nunca derruba o pedido.
@@ -163,7 +192,9 @@ export async function listFriends(fastify: FastifyInstance, userId: string): Pro
     SELECT
       f.id AS friendship_id,
       p.id, p.username, p.full_name, p.avatar_url,
-      s.current_streak
+      -- S1: sequência parada (último dia antes de ontem em Brasília) vale 0.
+      CASE WHEN s.last_active_date < (now() AT TIME ZONE 'America/Sao_Paulo')::date - 1
+        THEN 0 ELSE s.current_streak END AS current_streak
     FROM friendships f
     JOIN profiles p ON p.id = CASE WHEN f.requester_id = ${userId} THEN f.addressee_id ELSE f.requester_id END
     LEFT JOIN streaks s ON s.user_id = p.id

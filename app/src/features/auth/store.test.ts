@@ -226,3 +226,25 @@ describe('geração da sessão para operações de voz', () => {
     expect(useAuthStore.getState().sessionGeneration).toBeGreaterThan(generation);
   });
 });
+
+// A4: o "Criar conta para salvar" do scanner de convidado passa pelo cadastro,
+// pela confirmação de e-mail e pelo login. O scan só vive na memória do
+// scanner: o onboarding (pendingAuth → setToken) não pode limpá-lo.
+describe('scan do convidado durante o onboarding', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { useScannerStore } = require('@features/scanner/store');
+  afterEach(() => {
+    useScannerStore.setState({ items: [] });
+    useAuthStore.setState({ token: null, user: null, isAuthenticated: false, pendingAuth: null });
+  });
+
+  it('setPendingAuth e depois setToken mantêm os itens do scanner', () => {
+    const items = [{ id: 'i1', name: 'Arroz', weightGrams: 100, confidence: 0.9 }];
+    useScannerStore.setState({ items });
+    const user = { id: 'u-novo', name: 'Ana', email: 'ana@x.com' };
+    useAuthStore.getState().setPendingAuth('tok', user, 'ref');
+    expect(useScannerStore.getState().items).toEqual(items);
+    useAuthStore.getState().setToken('tok', user, 'ref');
+    expect(useScannerStore.getState().items).toEqual(items);
+  });
+});

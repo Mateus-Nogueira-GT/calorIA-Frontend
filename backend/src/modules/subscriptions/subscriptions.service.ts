@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import { env } from '../../shared/env.js'
 import { AppError } from '../../shared/errors.js'
-import type { AsaasClient } from './asaas.client.js'
+import { type AsaasClient, isDefinitiveProviderError } from './asaas.client.js'
 import { normalizeCpfCnpj } from './cpf-cnpj.js'
 import type { CheckoutBody, Cycle, MySubscription } from './subscriptions.schemas.js'
 
@@ -21,7 +21,12 @@ interface OpenSubscription {
   status: 'pending' | 'active' | 'past_due'
   asaas_subscription_id: string | null
   entitled: boolean
+  /** pending sem id do Asaas há mais de 10 min: o checkout caiu no meio (se o Asaas não a tiver). */
+  stale: boolean
 }
+
+const checkoutInProgress = () =>
+  new AppError(409, 'CHECKOUT_IN_PROGRESS', 'Já existe uma assinatura sendo criada.')
 
 /** Data de hoje em São Paulo (YYYY-MM-DD), para o vencimento da primeira cobrança. */
 export function saoPauloDate(now: Date): string {
@@ -38,10 +43,18 @@ async function openSubscription(
 ): Promise<OpenSubscription | undefined> {
   const [row] = await f.db<OpenSubscription[]>`
     SELECT id, plan_id, status, asaas_subscription_id,
-      (paid_until IS NOT NULL AND paid_until > now()) AS entitled
+      (paid_until IS NOT NULL AND paid_until > now()) AS entitled,
+      (asaas_subscription_id IS NULL AND created_at < now() - interval '10 minutes') AS stale
     FROM subscriptions
     WHERE user_id = ${userId} AND status IN ('pending','active','past_due')`
   return row
+}
+
+async function everPaid(f: FastifyInstance, subscriptionId: string): Promise<boolean> {
+  const rows = await f.db`
+    SELECT 1 FROM subscription_payments
+    WHERE subscription_id = ${subscriptionId} AND status IN ('CONFIRMED','RECEIVED') LIMIT 1`
+  return rows.length > 0
 }
 
 /**
@@ -73,6 +86,42 @@ async function syncPendingInvoices(
   }
 }
 
+/**
+ * Linha pending sem id do Asaas (o createSubscription caiu num erro ambíguo, ou
+ * outro checkout está em voo): procura no Asaas por externalReference = id local
+ * antes de decidir. Achou → grava o id (o chamador segue como se o checkout
+ * tivesse terminado). Não achou e recente (< 10 min) → 409. Não achou e antiga →
+ * devolve sem id, para o chamador cancelar localmente. A busca falhando → 409:
+ * nunca arriscar uma segunda assinatura.
+ */
+async function reconcileOpenWithoutId(
+  f: FastifyInstance,
+  asaas: AsaasClient,
+  open: OpenSubscription,
+): Promise<void> {
+  let found: { id: string } | null
+  try {
+    found = await asaas.findSubscriptionByExternalReference(open.id)
+  } catch (err) {
+    f.log.warn({ err, subscriptionId: open.id }, 'subscription_reconcile_failed')
+    throw checkoutInProgress()
+  }
+  if (!found) {
+    if (!open.stale) throw checkoutInProgress()
+    return
+  }
+  try {
+    await f.db`
+      UPDATE subscriptions SET asaas_subscription_id = ${found.id}, updated_at = now()
+      WHERE id = ${open.id} AND asaas_subscription_id IS NULL`
+  } catch (err) {
+    if (pgCode(err) === '23505') throw checkoutInProgress()
+    throw err
+  }
+  f.log.info({ subscription_reconciled: { id: open.id } }, 'subscription_reconciled')
+  open.asaas_subscription_id = found.id
+}
+
 /** Cancela no Asaas (cobranças futuras param) e localmente; o benefício pago continua. */
 async function cancelSubscriptionRow(
   f: FastifyInstance,
@@ -102,8 +151,14 @@ export async function checkout(
 
   const open = await openSubscription(f, userId)
   if (open) {
-    if (open.status !== 'pending' || open.entitled)
+    // past_due sem direito e sem nenhum pagamento confirmado é fatura abandonada
+    // (linhas gravadas antes da correção do OVERDUE): segue como pending.
+    const unpaid =
+      open.status === 'pending' ||
+      (open.status === 'past_due' && !open.entitled && !(await everPaid(f, open.id)))
+    if (!unpaid || open.entitled)
       throw new AppError(409, 'ALREADY_SUBSCRIBED', 'Você já tem uma assinatura ativa.')
+    if (!open.asaas_subscription_id) await reconcileOpenWithoutId(f, asaas, open)
     if (open.plan_id === plan.id && open.asaas_subscription_id) {
       // Mesmo plano em aberto: devolve a mesma fatura, sem cobrança nova.
       const invoice = await syncPendingInvoices(f, asaas, open.id, open.asaas_subscription_id)
@@ -136,8 +191,7 @@ export async function checkout(
         ${plan.credits_per_cycle}, ${plan.unlimited})
       RETURNING id`
   } catch (err) {
-    if (pgCode(err) === '23505')
-      throw new AppError(409, 'CHECKOUT_IN_PROGRESS', 'Já existe uma assinatura sendo criada.')
+    if (pgCode(err) === '23505') throw checkoutInProgress()
     throw err
   }
 
@@ -154,12 +208,30 @@ export async function checkout(
       ...(env.ASAAS_SUCCESS_URL ? { callback: { successUrl: env.ASAAS_SUCCESS_URL } } : {}),
     })
   } catch (err) {
-    await f.db`DELETE FROM subscriptions WHERE id = ${local.id} AND asaas_subscription_id IS NULL`
+    // Recusa certa (4xx): nada foi criado, apaga. Ambíguo (timeout, rede, 5xx):
+    // a assinatura pode existir; a linha fica para o próximo checkout reconciliar
+    // pelo externalReference (e o webhook de assinatura órfã a acha também).
+    if (isDefinitiveProviderError(err))
+      await f.db`DELETE FROM subscriptions WHERE id = ${local.id} AND asaas_subscription_id IS NULL`
+    else f.log.warn({ err, subscriptionId: local.id }, 'subscription_create_ambiguous')
     throw err
   }
-  await f.db`
+  const saved = await f.db`
     UPDATE subscriptions SET asaas_subscription_id = ${remote.id}, updated_at = now()
-    WHERE id = ${local.id}`
+    WHERE id = ${local.id} AND status = 'pending'
+    RETURNING id`
+  if (!saved.length) {
+    // A linha foi cancelada enquanto o Asaas criava: não deixa cobrança órfã.
+    try {
+      await asaas.deleteSubscription(remote.id)
+    } catch (err) {
+      f.log.error(
+        { err, subscriptionId: local.id, asaasSubscriptionId: remote.id },
+        'subscription_orphan_cancel_failed',
+      )
+    }
+    throw checkoutInProgress()
+  }
   f.log.info({ subscription_checkout: { id: local.id, plan: plan.code } }, 'subscription_checkout')
   const invoice = await syncPendingInvoices(f, asaas, local.id, remote.id)
   return { subscription_id: local.id, status: 'pending', invoice_url: invoice }

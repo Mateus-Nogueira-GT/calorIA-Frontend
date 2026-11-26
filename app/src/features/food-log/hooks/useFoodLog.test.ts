@@ -124,3 +124,81 @@ describe('useFoodLog', () => {
     );
   });
 });
+describe('useFoodLog — troca de conta com a requisição pendente (R5, 26/11)', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { useAuthStore } = require('@features/auth/store');
+  const signIn = (id: string) => {
+    useAuthStore.getState().clearToken();
+    useAuthStore.getState().setToken(`token-${id}`, { id, name: id, email: `${id}@exemplo.com` });
+  };
+  const deferred = <T,>() => {
+    let resolve!: (v: T) => void;
+    let reject!: (e: unknown) => void;
+    const promise = new Promise<T>((a, b) => {
+      resolve = a;
+      reject = b;
+    });
+    return { promise, resolve, reject };
+  };
+  const today = () => useFoodLogStore.getState().selectedDate;
+  beforeEach(() => {
+    signIn('uA');
+    jest.clearAllMocks();
+  });
+
+  it('refeições do dia carregadas para a conta anterior não entram no diário da próxima', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { foodLogService } = require('@shared/services/food-log.service');
+    const pending = deferred<unknown[]>();
+    foodLogService.getMeals.mockReturnValue(pending.promise);
+    renderHook(() => useFoodLog());
+    await act(async () => {});
+    act(() => signIn('uB'));
+    await act(async () => {
+      pending.resolve([mockMeal]);
+    });
+    const state = useFoodLogStore.getState();
+    expect(state.mealsByDate).toEqual({});
+    expect(state.syncedDates).toEqual({});
+    expect(state.loadingByDate).toEqual({});
+  });
+
+  it('refeição adicionada pela conta anterior não entra no diário da próxima', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { foodLogService } = require('@shared/services/food-log.service');
+    useFoodLogStore.setState({ syncedDates: { [today()]: true }, mealsByDate: { [today()]: [] } });
+    const { result } = renderHook(() => useFoodLog());
+    const pending = deferred<unknown>();
+    foodLogService.addMeal.mockReturnValue(pending.promise);
+    let adding!: Promise<void>;
+    act(() => {
+      adding = result.current.handleAddMeal({ name: 'x' } as never);
+    });
+    act(() => signIn('uB'));
+    await act(async () => {
+      pending.resolve(mockNewMeal);
+      await adding;
+    });
+    expect(useFoodLogStore.getState().mealsByDate).toEqual({});
+  });
+
+  it('falha ao excluir pela conta anterior não avisa a próxima', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { foodLogService } = require('@shared/services/food-log.service');
+    useFoodLogStore.setState({ syncedDates: { [today()]: true }, mealsByDate: { [today()]: [mockMeal] } });
+    const { result } = renderHook(() => useFoodLog());
+    const pending = deferred<unknown>();
+    foodLogService.deleteMeal.mockReturnValue(pending.promise);
+    let deleting!: Promise<void>;
+    act(() => {
+      deleting = result.current.handleDeleteMeal('m1');
+    });
+    act(() => signIn('uB'));
+    await act(async () => {
+      pending.reject(new Error('cancelada'));
+      await deleting;
+    });
+    expect(showAlert).not.toHaveBeenCalled();
+    expect(useFoodLogStore.getState().mealsByDate).toEqual({});
+  });
+});

@@ -49,6 +49,23 @@ interface BackendAuthResponse {
   };
 }
 
+/**
+ * A4: com AUTH_REQUIRE_EMAIL_CONFIRMATION ligada no backend, o cadastro não
+ * devolve sessão. A conta só entra depois de confirmar o e-mail.
+ */
+export interface ConfirmationRequired {
+  status: 'confirmation_required';
+  email: string;
+}
+
+export type RegisterResult = AuthResponse | ConfirmationRequired;
+
+export function isConfirmationRequired(
+  result: RegisterResult | null | undefined,
+): result is ConfirmationRequired {
+  return (result as ConfirmationRequired | null | undefined)?.status === 'confirmation_required';
+}
+
 function toAuthResponse(data: BackendAuthResponse): AuthResponse {
   return {
     token: data.access_token,
@@ -65,8 +82,20 @@ export const authService = {
   login: (data: LoginPayload) =>
     api.post<BackendAuthResponse>('/auth/login', data).then((r) => toAuthResponse(r.data)),
 
-  register: (data: RegisterPayload) =>
-    api.post<BackendAuthResponse>('/auth/register', data).then((r) => toAuthResponse(r.data)),
+  register: (data: RegisterPayload): Promise<RegisterResult> =>
+    api
+      .post<BackendAuthResponse | ConfirmationRequired>('/auth/register', data)
+      .then((r) =>
+        isConfirmationRequired(r.data as RegisterResult)
+          ? { status: 'confirmation_required' as const, email: (r.data as ConfirmationRequired).email }
+          : toAuthResponse(r.data as BackendAuthResponse),
+      ),
+
+  /** Reenvia o e-mail de confirmação do cadastro. O backend sempre responde sucesso. */
+  resendConfirmation: (email: string) =>
+    api
+      .post<{ success: boolean }>('/auth/resend-confirmation', { email })
+      .then((r) => r.data),
 
   refresh: (refreshToken: string) =>
     api
@@ -95,7 +124,8 @@ export const authService = {
         // Só a idade é perguntada. Com 1º de janeiro, o aniversário deste ano
         // já passou em qualquer dia do ano corrente, então a idade que o
         // backend calcula a partir da data é igual à informada o ano todo.
-        birth_date: `${new Date().getFullYear() - data.age}-01-01`,
+        // O ano é o de UTC, o calendário em que o backend conta a idade.
+        birth_date: `${new Date().getUTCFullYear() - data.age}-01-01`,
         activity_level: data.activityLevel,
       })
       .then((r) => r.data),

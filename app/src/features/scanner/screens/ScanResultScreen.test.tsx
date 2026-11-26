@@ -3,6 +3,7 @@ import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import { ScanResultScreen } from './ScanResultScreen';
 import { useScannerStore } from '../store';
 import { ScannerGuestContext } from '../mode';
+import { Keyboard } from 'react-native';
 
 jest.mock('@shared/services/scanner.service', () => ({
   scannerService: { analyzePhoto: jest.fn() },
@@ -71,6 +72,47 @@ describe('ScanResultScreen', () => {
     fireEvent.press(getByText('Confirmar e adicionar ao diário'));
     await waitFor(() => expect(confirm).toHaveBeenCalled());
     expect(parentGoBack).not.toHaveBeenCalled();
+  });
+
+  it('a lista fica desabilitada enquanto salva (C5): chip tocado não se perde', async () => {
+    let finish!: () => void;
+    const confirm = jest.fn(() => new Promise<void>((resolve) => (finish = resolve)));
+    useScannerStore.setState({
+      confirm,
+      items: [
+        {
+          id: '1',
+          name: 'Arroz',
+          calories: 200,
+          protein: 4,
+          carbs: 44,
+          fat: 1,
+          confidence: 0.4,
+          alternatives: [
+            { name: 'Feijão', calories: 150, protein: 9, carbs: 27, fat: 1, fiber: 8 },
+          ],
+        },
+      ],
+    });
+    const { getByText, getByLabelText } = render(
+      <ScanResultScreen
+        navigation={navigation}
+        route={{ key: 'k', name: 'ScanResult' } as never}
+      />,
+    );
+    const dismiss = jest.spyOn(Keyboard, 'dismiss');
+    fireEvent.press(getByText('Confirmar e adicionar ao diário'));
+    await waitFor(() => expect(confirm).toHaveBeenCalled());
+    // Campo em foco também não recebe digitação durante o salvamento.
+    expect(dismiss).toHaveBeenCalled();
+    fireEvent.press(getByLabelText('Trocar para Feijão'));
+    fireEvent.press(getByText('＋ Adicionar item'));
+    expect(useScannerStore.getState().items).toMatchObject([{ id: '1', name: 'Arroz' }]);
+    finish();
+    await waitFor(() => {
+      fireEvent.press(getByText('＋ Adicionar item'));
+      expect(useScannerStore.getState().items).toHaveLength(2);
+    });
   });
 
   describe('convidado (App Store 5.1.1(v))', () => {

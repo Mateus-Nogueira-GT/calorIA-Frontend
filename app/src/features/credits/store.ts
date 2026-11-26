@@ -1,3 +1,4 @@
+import { AppState, type AppStateStatus } from 'react-native';
 import { create } from 'zustand';
 import { creditsService, Wallet, subscribeCreditChange } from '@shared/services/credits.service';
 import { useAuthStore } from '@features/auth/store';
@@ -7,7 +8,7 @@ interface CreditsState {
   loading: boolean;
   error: string | null;
   /**
-   * Créditos ou convites já vieram ativos nesta sessão. Sobrevive a uma falha
+   * Créditos, convites ou recarga já vieram ativos nesta sessão. Sobrevive a uma falha
    * de consulta (o saldo vira null, sem inventar zero), para o app saber se o
    * aviso "Saldo indisponível" faz sentido para esta conta.
    */
@@ -40,7 +41,11 @@ export const useCreditsStore = create<CreditsState>((set) => ({
         set({
           wallet,
           loading: false,
-          featureVisible: wallet.enforcement_enabled || wallet.invites_enabled,
+          // A recarga ligada também mostra o saldo (P8): quem vende créditos mostra o que foi comprado.
+          featureVisible:
+            wallet.enforcement_enabled ||
+            wallet.invites_enabled ||
+            wallet.purchases_enabled === true,
         });
     } catch {
       if (isCurrent())
@@ -55,3 +60,14 @@ useAuthStore.subscribe((state, previous) => {
 subscribeCreditChange(() => {
   void useCreditsStore.getState().load();
 });
+
+/**
+ * Voltou ao app (por exemplo, depois de pagar no navegador): o saldo pode ter
+ * mudado. Um listener só, no store, para as várias telas com o saldo. O load()
+ * já confere a sessão.
+ */
+export function refreshWalletOnForeground(state: AppStateStatus): void {
+  if (state === 'active' && useCreditsStore.getState().featureVisible)
+    void useCreditsStore.getState().load();
+}
+AppState.addEventListener('change', refreshWalletOnForeground);

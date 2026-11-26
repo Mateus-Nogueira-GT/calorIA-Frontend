@@ -6,6 +6,9 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { env } from '../../shared/env.js'
 import { runCreditOperation, wallet } from '../credits/credits.service.js'
 import { type AsaasEvent, handleAsaasEvent } from './asaas-webhook.service.js'
+import { type AsaasClient, asaasError } from './asaas.client.js'
+import { checkoutPurchase } from './credit-purchases.service.js'
+import { cancelMySubscription, checkout } from './subscriptions.service.js'
 
 const url = process.env.TEST_DATABASE_URL
 if (url && !['localhost', '127.0.0.1', '[::1]'].includes(new URL(url).hostname))
@@ -17,6 +20,7 @@ export const SUBSCRIPTION_MIGRATIONS = [
   '20261023120000_credit_grants_unlimited.sql',
   '026_subscriptions.sql',
   '027_credit_purchases.sql',
+  '028_credit_purchases_inflight_index.sql',
 ]
 
 /** Recria os schemas do banco descartável e aplica as migrações de crédito e assinatura. */
@@ -170,6 +174,8 @@ export async function resetSubscriptionSchema(db: postgres.Sql) {
       invoiceUrl: 'https://asaas/i/1',
     },
   })
+  const withStatus = (e: AsaasEvent, status: string): AsaasEvent =>
+    e.payment ? { ...e, payment: { ...e.payment, status } } : e
   const balance = async () =>
     (await db`SELECT balance_units FROM credit_wallets WHERE user_id=${user}`)[0]?.balance_units
   const sub = async () => (await db`SELECT * FROM subscriptions WHERE user_id=${user}`)[0]
@@ -224,6 +230,53 @@ export async function resetSubscriptionSchema(db: postgres.Sql) {
     // Confirmação atrasada depois do estorno não libera nada.
     await handleAsaasEvent(f, payment('PAYMENT_RECEIVED'))
     expect(await balance()).toBe(300)
+  })
+
+  it('evento genérico com status de estorno não impede o estorno de valer', async () => {
+    await subscribe()
+    await handleAsaasEvent(f, payment('PAYMENT_CONFIRMED'))
+    expect(await balance()).toBe(75 + 500)
+    expect(await handleAsaasEvent(f, withStatus(payment('PAYMENT_UPDATED'), 'REFUNDED'))).toBe(
+      'payment_updated',
+    )
+    expect(await handleAsaasEvent(f, withStatus(payment('PAYMENT_REFUNDED'), 'REFUNDED'))).toBe(
+      'reversed',
+    )
+    expect(await balance()).toBe(75)
+    expect(new Date((await sub()).paid_until).getTime()).toBeLessThanOrEqual(Date.now())
+    const [p] = await db`SELECT status FROM subscription_payments WHERE asaas_payment_id='pay_1'`
+    expect(p.status).toBe('REFUNDED')
+  })
+
+  it('evento genérico com status pago não marca pagamento novo como pago', async () => {
+    await subscribe()
+    await handleAsaasEvent(f, withStatus(payment('PAYMENT_UPDATED'), 'CONFIRMED'))
+    const [p] = await db`SELECT status FROM subscription_payments WHERE asaas_payment_id='pay_1'`
+    expect(p.status).toBe('PENDING')
+    // Pagamento em atraso continua em atraso.
+    await handleAsaasEvent(f, payment('PAYMENT_OVERDUE'))
+    await handleAsaasEvent(f, withStatus(payment('PAYMENT_UPDATED'), 'RECEIVED'))
+    const [q] = await db`SELECT status FROM subscription_payments WHERE asaas_payment_id='pay_1'`
+    expect(q.status).toBe('OVERDUE')
+    expect((await sub()).paid_until).toBeNull()
+    expect(await balance()).toBeUndefined()
+  })
+
+  it('atraso atrasado depois da confirmação mantém a assinatura ativa', async () => {
+    await subscribe()
+    await handleAsaasEvent(f, payment('PAYMENT_CONFIRMED'))
+    expect(await handleAsaasEvent(f, payment('PAYMENT_OVERDUE'))).toBe('overdue')
+    expect((await sub()).status).toBe('active')
+    const [p] = await db`SELECT status FROM subscription_payments WHERE asaas_payment_id='pay_1'`
+    expect(p.status).toBe('CONFIRMED')
+  })
+
+  it('atraso numa assinatura nunca paga mantém pending', async () => {
+    await subscribe()
+    expect(await handleAsaasEvent(f, payment('PAYMENT_OVERDUE'))).toBe('overdue')
+    expect((await sub()).status).toBe('pending')
+    const [p] = await db`SELECT status FROM subscription_payments WHERE asaas_payment_id='pay_1'`
+    expect(p.status).toBe('OVERDUE')
   })
 
   it('atraso, cancelamento e evento de fora do CalorIA', async () => {
@@ -300,7 +353,11 @@ export async function resetSubscriptionSchema(db: postgres.Sql) {
   } as unknown as FastifyInstance
   const user = randomUUID()
   let purchaseId = ''
-  beforeAll(() => resetSubscriptionSchema(db))
+  const purchasesFlag = env.CREDIT_PURCHASES_ENABLED
+  beforeAll(async () => {
+    env.CREDIT_PURCHASES_ENABLED = true
+    await resetSubscriptionSchema(db)
+  })
   beforeEach(async () => {
     await db`TRUNCATE credit_purchases,credit_packages,payment_webhook_events,payment_customers,credit_ledger,credit_wallets,profiles,auth.users CASCADE`
     await db`INSERT INTO auth.users(id) VALUES(${user})`
@@ -312,6 +369,7 @@ export async function resetSubscriptionSchema(db: postgres.Sql) {
     purchaseId = c.id
   })
   afterAll(async () => {
+    env.CREDIT_PURCHASES_ENABLED = purchasesFlag
     await db.end()
   })
   const ev = (
@@ -363,6 +421,37 @@ export async function resetSubscriptionSchema(db: postgres.Sql) {
     ])
   })
 
+  // R1 (lote 8): a flag só barra o checkout. Desligada e religada, o Asaas
+  // reentrega o evento e ele seria 'duplicate': o pagamento ficava sem crédito.
+  const withPurchasesOff = async (fn: () => Promise<void>) => {
+    env.CREDIT_PURCHASES_ENABLED = false
+    try {
+      await fn()
+    } finally {
+      env.CREDIT_PURCHASES_ENABLED = true
+    }
+  }
+
+  it('R1: recarga desligada, compra pendente confirmada: credita', async () => {
+    await withPurchasesOff(async () => {
+      expect(await handleAsaasEvent(f, ev('PAYMENT_CONFIRMED', 'evt_off'))).toBe('purchase_paid')
+    })
+    expect(await balance()).toBe(75 + 50)
+    expect((await purchase()).status).toBe('paid')
+    // Religada, a reentrega do mesmo evento não credita de novo.
+    expect(await handleAsaasEvent(f, ev('PAYMENT_CONFIRMED', 'evt_off'))).toBe('duplicate')
+    expect(await balance()).toBe(75 + 50)
+  })
+
+  it('R1: recarga desligada, estorno: é aplicado', async () => {
+    await handleAsaasEvent(f, ev('PAYMENT_CONFIRMED'))
+    await withPurchasesOff(async () => {
+      expect(await handleAsaasEvent(f, ev('PAYMENT_REFUNDED'))).toBe('purchase_reversed')
+    })
+    expect(await balance()).toBe(75)
+    expect((await purchase()).status).toBe('refunded')
+  })
+
   it('vencida ou removida sem pagamento fecha a compra; pagamento de outro sistema é ignorado', async () => {
     expect(await handleAsaasEvent(f, ev('PAYMENT_OVERDUE'))).toBe('purchase_closed')
     expect((await purchase()).status).toBe('expired')
@@ -370,6 +459,199 @@ export async function resetSubscriptionSchema(db: postgres.Sql) {
       'ignored',
     )
     expect(await balance()).toBeUndefined()
+  })
+
+  const purchaseAsaas = (): AsaasClient => ({
+    createCustomer: async () => ({ id: 'cus_1' }),
+    createSubscription: async () => ({ id: 'sub_x' }),
+    createPayment: async () => ({
+      id: 'pay_nova',
+      status: 'PENDING',
+      invoiceUrl: 'https://asaas/i/n',
+    }),
+    listSubscriptionPayments: async () => [],
+    deleteSubscription: async () => {},
+    findPaymentByExternalReference: async () => null,
+    findSubscriptionByExternalReference: async () => null,
+    getSubscription: async (id) => ({ id }),
+  })
+
+  /**
+   * Asaas com estado, por externalReference. `mode`: 'ok'; 'created_then_timeout'
+   * (cria e a resposta se perde); 'timeout' (nada criado); 'lookup_fails'.
+   */
+  function statefulAsaas() {
+    const payments = new Map<
+      string,
+      { id: string; invoiceUrl: string; externalReference: string }
+    >()
+    const state = {
+      mode: 'ok' as 'ok' | 'created_then_timeout' | 'timeout' | 'lookup_fails',
+      creates: 0,
+    }
+    const client: AsaasClient = {
+      ...purchaseAsaas(),
+      createPayment: async (i) => {
+        state.creates++
+        if (state.mode === 'timeout') throw asaasError(true)
+        const p = {
+          id: `pay_${state.creates}`,
+          invoiceUrl: `https://asaas/i/${state.creates}`,
+          externalReference: i.externalReference,
+        }
+        payments.set(i.externalReference, p)
+        if (state.mode === 'created_then_timeout') throw asaasError(true)
+        return { ...p, status: 'PENDING' }
+      },
+      findPaymentByExternalReference: async (ref) => {
+        if (state.mode === 'lookup_fails') throw asaasError(true, 503)
+        const p = payments.get(ref)
+        return p ? { ...p, status: 'PENDING' } : null
+      },
+    }
+    return { client, state, payments }
+  }
+  const age = (id: string, interval: string) =>
+    db`UPDATE credit_purchases SET created_at = now() - ${interval}::interval WHERE id = ${id}`
+  const prepareBuyer = async () => {
+    await db`UPDATE credit_purchases SET status='paid' WHERE id=${purchaseId}`
+    await db`INSERT INTO payment_customers(user_id,asaas_customer_id) VALUES(${user},'cus_1')`
+  }
+  const stuckRow = async () =>
+    await db`SELECT id, status, asaas_payment_id, invoice_url FROM credit_purchases
+        WHERE user_id=${user} AND id <> ${purchaseId} ORDER BY created_at`
+
+  it('R4: timeout depois de criar → checkout novo reconcilia: nenhuma segunda cobrança, mesma fatura', async () => {
+    await prepareBuyer()
+    const a = statefulAsaas()
+    a.state.mode = 'created_then_timeout'
+    await expect(
+      checkoutPurchase(f, a.client, user, { package_code: 'p10' }),
+    ).rejects.toMatchObject({
+      statusCode: 502,
+      code: 'PAYMENT_PROVIDER_ERROR',
+    })
+    const [kept] = await stuckRow()
+    expect(kept).toMatchObject({ status: 'pending', asaas_payment_id: null })
+    a.state.mode = 'ok'
+    // Logo em seguida: outro checkout pode estar em voo.
+    await expect(
+      checkoutPurchase(f, a.client, user, { package_code: 'p10' }),
+    ).rejects.toMatchObject({
+      statusCode: 409,
+      code: 'CHECKOUT_IN_PROGRESS',
+    })
+    await age(kept.id, '2 minutes')
+    const r = await checkoutPurchase(f, a.client, user, { package_code: 'p10' })
+    expect(r).toEqual({ purchase_id: kept.id, status: 'pending', invoice_url: 'https://asaas/i/1' })
+    expect(a.state.creates).toBe(1)
+    expect(await stuckRow()).toEqual([
+      {
+        id: kept.id,
+        status: 'pending',
+        asaas_payment_id: 'pay_1',
+        invoice_url: 'https://asaas/i/1',
+      },
+    ])
+    // E o webhook do pagamento casa e credita.
+    expect(await handleAsaasEvent(f, ev('PAYMENT_RECEIVED', 'evt_r4', 'pay_1', kept.id))).toBe(
+      'purchase_paid',
+    )
+    expect(await balance()).toBe(75 + 50)
+  })
+
+  it('R4: timeout sem criar → checkout novo fecha a linha e segue com cobrança nova', async () => {
+    await prepareBuyer()
+    const a = statefulAsaas()
+    a.state.mode = 'timeout'
+    await expect(
+      checkoutPurchase(f, a.client, user, { package_code: 'p10' }),
+    ).rejects.toMatchObject({
+      statusCode: 502,
+    })
+    const [kept] = await stuckRow()
+    await age(kept.id, '2 minutes')
+    a.state.mode = 'ok'
+    const r = await checkoutPurchase(f, a.client, user, { package_code: 'p10' })
+    expect(r.purchase_id).not.toBe(kept.id)
+    expect(r.invoice_url).toBe('https://asaas/i/2')
+    const rows = await stuckRow()
+    expect(rows).toEqual([
+      { id: kept.id, status: 'canceled', asaas_payment_id: null, invoice_url: null },
+      {
+        id: r.purchase_id,
+        status: 'pending',
+        asaas_payment_id: 'pay_2',
+        invoice_url: 'https://asaas/i/2',
+      },
+    ])
+    // A linha fechada não foi apagada: se a cobrança aparecer depois (busca que não
+    // a viu a tempo), o webhook ainda casa pela referência e credita.
+    expect(
+      await handleAsaasEvent(f, ev('PAYMENT_RECEIVED', 'evt_tarde', 'pay_tarde', kept.id)),
+    ).toBe('purchase_paid')
+    expect(await balance()).toBe(75 + 50)
+  })
+
+  it('R4: busca no Asaas falhando → 409 e a linha fica', async () => {
+    await prepareBuyer()
+    const a = statefulAsaas()
+    a.state.mode = 'timeout'
+    await expect(checkoutPurchase(f, a.client, user, { package_code: 'p10' })).rejects.toThrow()
+    const [kept] = await stuckRow()
+    await age(kept.id, '2 minutes')
+    a.state.mode = 'lookup_fails'
+    await expect(
+      checkoutPurchase(f, a.client, user, { package_code: 'p10' }),
+    ).rejects.toMatchObject({
+      statusCode: 409,
+      code: 'CHECKOUT_IN_PROGRESS',
+    })
+    expect(await stuckRow()).toEqual([
+      { id: kept.id, status: 'pending', asaas_payment_id: null, invoice_url: null },
+    ])
+    expect(a.state.creates).toBe(1)
+  })
+
+  it('R4: recusa definitiva (4xx) apaga a linha, como antes', async () => {
+    await prepareBuyer()
+    const client: AsaasClient = {
+      ...purchaseAsaas(),
+      createPayment: async () => {
+        throw asaasError(false, 400)
+      },
+    }
+    await expect(checkoutPurchase(f, client, user, { package_code: 'p10' })).rejects.toMatchObject({
+      statusCode: 502,
+    })
+    expect(await stuckRow()).toEqual([])
+  })
+
+  it('compra presa sem id do Asaas: o evento grava o id e fecha; o pacote volta a ser comprável', async () => {
+    await db`UPDATE credit_purchases SET status='paid' WHERE id=${purchaseId}`
+    await db`INSERT INTO payment_customers(user_id,asaas_customer_id) VALUES(${user},'cus_1')`
+    const [stuck] =
+      await db`INSERT INTO credit_purchases(user_id,package_id,credits,price_cents,created_at)
+      SELECT ${user}, package_id, 10, 6000, now() - interval '3 days' FROM credit_purchases
+      WHERE id=${purchaseId} RETURNING id`
+    expect(
+      await handleAsaasEvent(f, ev('PAYMENT_OVERDUE', 'evt_stuck', 'pay_stuck', stuck.id)),
+    ).toBe('purchase_closed')
+    const [row] =
+      await db`SELECT status, asaas_payment_id FROM credit_purchases WHERE id=${stuck.id}`
+    expect(row).toEqual({ status: 'expired', asaas_payment_id: 'pay_stuck' })
+    const r = await checkoutPurchase(f, purchaseAsaas(), user, { package_code: 'p10' })
+    expect(r.purchase_id).not.toBe(stuck.id)
+  })
+
+  it('migração: compra sem id que já não está pending não barra uma compra nova', async () => {
+    await db`UPDATE credit_purchases SET status='paid' WHERE id=${purchaseId}`
+    await db`INSERT INTO payment_customers(user_id,asaas_customer_id) VALUES(${user},'cus_1')`
+    await db`INSERT INTO credit_purchases(user_id,package_id,credits,price_cents,status)
+      SELECT ${user}, package_id, 10, 6000, 'expired' FROM credit_purchases WHERE id=${purchaseId}`
+    const r = await checkoutPurchase(f, purchaseAsaas(), user, { package_code: 'p10' })
+    const [row] = await db`SELECT asaas_payment_id FROM credit_purchases WHERE id=${r.purchase_id}`
+    expect(row.asaas_payment_id).toBe('pay_nova')
   })
 
   it('migração: pacote abaixo de R$ 5 é recusado; uma compra em criação por pacote', async () => {
@@ -384,4 +666,316 @@ export async function resetSubscriptionSchema(db: postgres.Sql) {
     await db`DELETE FROM auth.users WHERE id=${user}`
     expect((await purchase()).user_id).toBeNull()
   })
+})
+;(url ? describe : describe.skip)('assinaturas / checkout concorrente em PostgreSQL real', () => {
+  const db = postgres(url ?? 'postgres://localhost/unused', { max: 5, onnotice: () => {} })
+  const noop = () => {}
+  const f = {
+    db,
+    log: { info: noop, warn: noop, error: noop, debug: noop },
+  } as unknown as FastifyInstance
+  const user = randomUUID()
+  const BODY = { plan_code: 'pro', cpf_cnpj: '529.982.247-25', name: 'Ana Souza' }
+  beforeAll(() => resetSubscriptionSchema(db))
+  beforeEach(async () => {
+    await db`TRUNCATE credit_purchases,credit_packages,payment_webhook_events,subscription_payments,subscriptions,subscription_plans,payment_customers,credit_ledger,credit_wallets,profiles,auth.users CASCADE`
+    await db`INSERT INTO auth.users(id) VALUES(${user})`
+    await db`INSERT INTO payment_customers(user_id,asaas_customer_id) VALUES(${user},'cus_1')`
+    await db`INSERT INTO subscription_plans(code,name,price_cents,cycle,credits_per_cycle) VALUES('pro','Pro',2990,'MONTHLY',100)`
+  })
+  afterAll(async () => {
+    await db.end()
+  })
+
+  /** Fake do Asaas cujo createSubscription pode ficar parado até `release()`. */
+  function gatedAsaas() {
+    const created: string[] = []
+    const deleted: string[] = []
+    let release!: () => void
+    let entered!: () => void
+    const gate = new Promise<void>((r) => {
+      release = r
+    })
+    const inside = new Promise<void>((r) => {
+      entered = r
+    })
+    let parked = true
+    const client: AsaasClient = {
+      createCustomer: async () => ({ id: 'cus_1' }),
+      createSubscription: async () => {
+        const id = `sub_${created.length + 1}`
+        created.push(id)
+        if (parked) {
+          parked = false
+          entered()
+          await gate
+        }
+        return { id }
+      },
+      createPayment: async () => ({ id: 'pay_x', status: 'PENDING' }),
+      listSubscriptionPayments: async () => [],
+      deleteSubscription: async (id) => {
+        deleted.push(id)
+      },
+      findPaymentByExternalReference: async () => null,
+      findSubscriptionByExternalReference: async () => null,
+      getSubscription: async (id) => ({ id }),
+    }
+    return { client, created, deleted, release, inside }
+  }
+  const open = () =>
+    db`SELECT id, status, asaas_subscription_id FROM subscriptions
+      WHERE user_id=${user} AND status IN ('pending','active','past_due')`
+
+  it('dois toques: o segundo checkout recebe 409 e só uma assinatura é criada no Asaas', async () => {
+    const a = gatedAsaas()
+    const first = checkout(f, a.client, user, BODY)
+    await a.inside
+    await expect(checkout(f, a.client, user, BODY)).rejects.toMatchObject({
+      statusCode: 409,
+      code: 'CHECKOUT_IN_PROGRESS',
+    })
+    a.release()
+    const r = await first
+    expect(a.created).toEqual(['sub_1'])
+    expect(a.deleted).toEqual([])
+    const rows = await open()
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({ id: r.subscription_id, asaas_subscription_id: 'sub_1' })
+  })
+
+  it('linha cancelada durante a criação: a assinatura nova é cancelada no Asaas e o checkout dá 409', async () => {
+    const a = gatedAsaas()
+    const first = checkout(f, a.client, user, BODY)
+    await a.inside
+    await cancelMySubscription(f, a.client, user)
+    a.release()
+    await expect(first).rejects.toMatchObject({ statusCode: 409, code: 'CHECKOUT_IN_PROGRESS' })
+    expect(a.deleted).toEqual(['sub_1'])
+    expect(await open()).toHaveLength(0)
+    const [row] = await db`SELECT status, asaas_subscription_id FROM subscriptions`
+    expect(row).toMatchObject({ status: 'canceled', asaas_subscription_id: null })
+  })
+
+  it('pending sem id há mais de 10 minutos é abandonada: o checkout novo cancela e segue', async () => {
+    const [plan] = await db`SELECT id FROM subscription_plans WHERE code='pro'`
+    const [old] =
+      await db`INSERT INTO subscriptions(user_id,plan_id,status,price_cents,cycle,credits_per_cycle,unlimited,created_at)
+      VALUES(${user},${plan.id},'pending',2990,'MONTHLY',100,false,now() - interval '11 minutes') RETURNING id`
+    const a = gatedAsaas()
+    a.release()
+    const r = await checkout(f, a.client, user, BODY)
+    expect(r.subscription_id).not.toBe(old.id)
+    expect(a.created).toEqual(['sub_1'])
+    const [prev] = await db`SELECT status FROM subscriptions WHERE id=${old.id}`
+    expect(prev.status).toBe('canceled')
+  })
+
+  /**
+   * Asaas de assinatura com estado, por externalReference. `mode`: 'ok';
+   * 'created_then_timeout' (cria e a resposta se perde); 'timeout' (nada
+   * criado); 'lookup_fails' (a busca por referência falha).
+   */
+  function statefulSubAsaas() {
+    const subs = new Map<string, { id: string; externalReference: string }>()
+    const state = {
+      mode: 'ok' as 'ok' | 'created_then_timeout' | 'timeout' | 'lookup_fails',
+      creates: 0,
+      deleted: [] as string[],
+    }
+    const client: AsaasClient = {
+      ...gatedAsaas().client,
+      createSubscription: async (i) => {
+        state.creates++
+        if (state.mode === 'timeout') throw asaasError(true)
+        const sub = { id: `sub_${state.creates}`, externalReference: i.externalReference }
+        subs.set(i.externalReference, sub)
+        if (state.mode === 'created_then_timeout') throw asaasError(true)
+        return sub
+      },
+      listSubscriptionPayments: async (id) => [
+        {
+          id: `pay_${id}`,
+          status: 'PENDING',
+          dueDate: '2026-11-26',
+          invoiceUrl: `https://asaas/i/${id}`,
+        },
+      ],
+      deleteSubscription: async (id) => {
+        state.deleted.push(id)
+      },
+      findSubscriptionByExternalReference: async (ref) => {
+        if (state.mode === 'lookup_fails') throw asaasError(true, 503)
+        return subs.get(ref) ?? null
+      },
+      getSubscription: async (id) => {
+        const sub = [...subs.values()].find((x) => x.id === id)
+        if (!sub) throw asaasError(false, 404)
+        return sub
+      },
+    }
+    return { client, state }
+  }
+
+  it('R4: dois toques com a assinatura já criada no Asaas: o segundo recebe a mesma assinatura', async () => {
+    const a = gatedAsaas()
+    const refs = new Map<string, string>()
+    const client: AsaasClient = {
+      ...a.client,
+      createSubscription: async (i) => {
+        refs.set(i.externalReference, `sub_${a.created.length + 1}`)
+        return a.client.createSubscription(i)
+      },
+      findSubscriptionByExternalReference: async (ref) =>
+        refs.has(ref) ? { id: refs.get(ref) as string } : null,
+    }
+    const first = checkout(f, client, user, BODY)
+    await a.inside
+    const second = await checkout(f, client, user, BODY)
+    a.release()
+    const r = await first
+    expect(second.subscription_id).toBe(r.subscription_id)
+    expect(a.created).toEqual(['sub_1'])
+    expect(a.deleted).toEqual([])
+    expect(await open()).toEqual([
+      { id: r.subscription_id, status: 'pending', asaas_subscription_id: 'sub_1' },
+    ])
+  })
+
+  it('R4: timeout depois de criar → checkout novo reconcilia: nenhuma segunda criação, mesma fatura', async () => {
+    const a = statefulSubAsaas()
+    a.state.mode = 'created_then_timeout'
+    await expect(checkout(f, a.client, user, BODY)).rejects.toMatchObject({ statusCode: 502 })
+    const [kept] = await open()
+    expect(kept).toMatchObject({ status: 'pending', asaas_subscription_id: null })
+    a.state.mode = 'ok'
+    const r = await checkout(f, a.client, user, BODY)
+    expect(r).toEqual({
+      subscription_id: kept.id,
+      status: 'pending',
+      invoice_url: 'https://asaas/i/sub_1',
+    })
+    expect(a.state.creates).toBe(1)
+    expect(a.state.deleted).toEqual([])
+    expect(await open()).toEqual([
+      { id: kept.id, status: 'pending', asaas_subscription_id: 'sub_1' },
+    ])
+  })
+
+  it('R4: timeout depois de criar, checkout de outro plano: cancela a achada no Asaas e cria a nova', async () => {
+    await db`INSERT INTO subscription_plans(code,name,price_cents,cycle,credits_per_cycle) VALUES('max','Max',4990,'MONTHLY',300)`
+    const a = statefulSubAsaas()
+    a.state.mode = 'created_then_timeout'
+    await expect(checkout(f, a.client, user, BODY)).rejects.toThrow()
+    const [kept] = await open()
+    a.state.mode = 'ok'
+    const r = await checkout(f, a.client, user, { ...BODY, plan_code: 'max' })
+    expect(r.subscription_id).not.toBe(kept.id)
+    expect(a.state.deleted).toEqual(['sub_1'])
+    const [prev] =
+      await db`SELECT status, asaas_subscription_id FROM subscriptions WHERE id=${kept.id}`
+    expect(prev).toEqual({ status: 'canceled', asaas_subscription_id: 'sub_1' })
+    expect(await open()).toEqual([
+      { id: r.subscription_id, status: 'pending', asaas_subscription_id: 'sub_2' },
+    ])
+  })
+
+  it('R4: timeout sem criar → recente dá 409; antiga é cancelada localmente e o checkout segue', async () => {
+    const a = statefulSubAsaas()
+    a.state.mode = 'timeout'
+    await expect(checkout(f, a.client, user, BODY)).rejects.toMatchObject({ statusCode: 502 })
+    const [kept] = await open()
+    a.state.mode = 'ok'
+    await expect(checkout(f, a.client, user, BODY)).rejects.toMatchObject({
+      statusCode: 409,
+      code: 'CHECKOUT_IN_PROGRESS',
+    })
+    await db`UPDATE subscriptions SET created_at = now() - interval '11 minutes' WHERE id=${kept.id}`
+    const r = await checkout(f, a.client, user, BODY)
+    expect(r.subscription_id).not.toBe(kept.id)
+    expect(a.state.deleted).toEqual([])
+    const [prev] = await db`SELECT status FROM subscriptions WHERE id=${kept.id}`
+    expect(prev.status).toBe('canceled')
+  })
+
+  it('R4: a busca no Asaas falhando → 409, mesmo com a linha antiga; nada é criado nem cancelado', async () => {
+    const a = statefulSubAsaas()
+    a.state.mode = 'timeout'
+    await expect(checkout(f, a.client, user, BODY)).rejects.toThrow()
+    const [kept] = await open()
+    await db`UPDATE subscriptions SET created_at = now() - interval '11 minutes' WHERE id=${kept.id}`
+    a.state.mode = 'lookup_fails'
+    await expect(checkout(f, a.client, user, BODY)).rejects.toMatchObject({
+      statusCode: 409,
+      code: 'CHECKOUT_IN_PROGRESS',
+    })
+    expect(a.state.creates).toBe(1)
+    expect(await open()).toEqual([{ id: kept.id, status: 'pending', asaas_subscription_id: null }])
+  })
+
+  it('R4: webhook de assinatura órfã (timeout depois de criar) casa pela referência e credita', async () => {
+    const a = statefulSubAsaas()
+    a.state.mode = 'created_then_timeout'
+    await expect(checkout(f, a.client, user, BODY)).rejects.toThrow()
+    const [kept] = await open()
+    const ev: AsaasEvent = {
+      id: 'evt_orfa',
+      event: 'PAYMENT_CONFIRMED',
+      payment: { id: 'pay_orfa', subscription: 'sub_1', value: 29.9, dueDate: '2026-11-26' },
+    }
+    // Sem o cliente (comportamento antigo) o evento seria ignorado.
+    expect(await handleAsaasEvent(f, ev, a.client)).toBe('paid')
+    const [row] =
+      await db`SELECT status, asaas_subscription_id FROM subscriptions WHERE id=${kept.id}`
+    expect(row).toEqual({ status: 'active', asaas_subscription_id: 'sub_1' })
+    const [w] = await db`SELECT balance_units FROM credit_wallets WHERE user_id=${user}`
+    expect(w.balance_units).toBe(75 + 500)
+    // Assinatura de outro sistema (404 no Asaas): só registra.
+    expect(
+      await handleAsaasEvent(
+        f,
+        {
+          ...ev,
+          id: 'evt_outra',
+          payment: { ...ev.payment, id: 'pay_x', subscription: 'sub_999' },
+        } as AsaasEvent,
+        a.client,
+      ),
+    ).toBe('ignored')
+  })
+})
+;(url ? describe : describe.skip)('recarga de créditos / sem a tabela (027 não aplicada)', () => {
+  const db = postgres(url ?? 'postgres://localhost/unused', { max: 2, onnotice: () => {} })
+  const noop = () => {}
+  const f = {
+    db,
+    log: { info: noop, warn: noop, error: noop, debug: noop },
+  } as unknown as FastifyInstance
+  const purchasesFlag = env.CREDIT_PURCHASES_ENABLED
+  beforeAll(async () => {
+    await resetSubscriptionSchema(db)
+    await db`DROP TABLE credit_purchases CASCADE`
+  })
+  afterAll(async () => {
+    env.CREDIT_PURCHASES_ENABLED = purchasesFlag
+    await db.end()
+  })
+
+  it.each([false, true])(
+    'P6/R1: cobrança avulsa só é registrada, sem 500 (recarga ligada: %s)',
+    async (enabled) => {
+      env.CREDIT_PURCHASES_ENABLED = enabled
+      const id = `evt_sem_tabela_${enabled}`
+      expect(
+        await handleAsaasEvent(f, {
+          id,
+          event: 'PAYMENT_CONFIRMED',
+          payment: { id: `pay_${enabled}`, value: 60, externalReference: randomUUID() },
+        }),
+      ).toBe('ignored')
+      expect(
+        await db`SELECT event_id FROM payment_webhook_events WHERE event_id=${id}`,
+      ).toHaveLength(1)
+    },
+  )
 })

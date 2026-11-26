@@ -3,12 +3,21 @@ import type { FastifyInstance } from 'fastify'
 import type OpenAI from 'openai'
 import { buildModelsField, checkDailyQuota, logAiUsage } from '../../shared/ai-usage.js'
 import { assertAiTariffConfigured } from '../../shared/credit-ai-policy.js'
-import { type CollectedUserData, collectedUserDataSchema } from '../../shared/diet-ai-schema.js'
+import {
+  COLLECTED_BOUNDS,
+  type CollectedUserData,
+  collectedUserDataSchema,
+} from '../../shared/diet-ai-schema.js'
 import { env } from '../../shared/env.js'
 import { AppError } from '../../shared/errors.js'
 import { assessSafety, describeInvalidFields } from '../../shared/guardrails/index.js'
 import { type CreditTransaction, runCreditOperation } from '../credits/credits.service.js'
-import { createDietJob, getPendingJob } from '../diets/jobs.service.js'
+import {
+  createDietJob,
+  getPendingJob,
+  insertDietJob,
+  isActiveJobConflict,
+} from '../diets/jobs.service.js'
 import {
   type ActionFeature,
   type ActionResult,
@@ -287,11 +296,16 @@ export const COLLECT_DIET_DATA_TOOL: OpenAI.Chat.ChatCompletionTool = {
         'health_conditions',
       ],
       properties: {
-        weight_kg: { type: 'number', minimum: 30, maximum: 300, description: 'Peso em kg' },
+        weight_kg: {
+          type: 'number',
+          minimum: COLLECTED_BOUNDS.weightKg[0],
+          maximum: COLLECTED_BOUNDS.weightKg[1],
+          description: 'Peso em kg',
+        },
         height_cm: {
           type: 'number',
-          minimum: 120,
-          maximum: 250,
+          minimum: COLLECTED_BOUNDS.heightCm[0],
+          maximum: COLLECTED_BOUNDS.heightCm[1],
           description: 'Altura em centímetros (175, nunca 1.75)',
         },
         age: { type: 'integer', minimum: 10, maximum: 100, description: 'Idade em anos' },
@@ -338,11 +352,26 @@ export const COLLECT_DIET_DATA_TOOL: OpenAI.Chat.ChatCompletionTool = {
 // ─── Tipos internos ─────────────────────────────────────────────────────────
 
 interface ChatHistoryMessage {
-  role: 'user' | 'assistant'
+  /** 'system' só existe em linhas antigas (marcadores); o app vê user/assistant. */
+  role: 'user' | 'assistant' | 'system'
   content: string
   /** Quando a mensagem aconteceu (ISO). Ausente no histórico anterior a 04/11. */
   at?: string
 }
+
+/**
+ * Turno pronto para gravar na liquidação do crédito: histórico, status e as
+ * escritas que dependem dele (job de dieta e perfil, R4 de 25/11).
+ */
+interface DeferredTurn {
+  /** Só as mensagens novas deste turno; o persistHistory anexa (R8). */
+  turn: ChatHistoryMessage[]
+  status: string
+  extra?: (sql: CreditTransaction) => Promise<void>
+  /** R7 (lote 8): a linha lida estava corrompida; a gravação a normaliza. */
+  repair?: boolean
+}
+type SaveTurn = (status: string, extra?: DeferredTurn['extra']) => Promise<void>
 
 const said = (role: ChatHistoryMessage['role'], content: string): ChatHistoryMessage => ({
   role,
@@ -361,7 +390,7 @@ export async function sendChatMessage(
   // The lease is account-wide when starting a conversation, and conversation-wide
   // thereafter. It is acquired by the wallet runner before history is read.
   const conversationId = data.conversation_id ?? randomUUID()
-  let completedHistory: ChatHistoryMessage[] | undefined
+  let deferred: DeferredTurn | undefined
   const { result, receipt } = await runCreditOperation(
     fastify,
     {
@@ -378,15 +407,22 @@ export async function sendChatMessage(
         userId,
         { ...data, conversation_id: conversationId },
         env.CREDITS_ENFORCEMENT_ENABLED
-          ? (history) => {
-              completedHistory = history
+          ? (turn) => {
+              deferred = turn
             }
           : undefined,
       ),
     async (tx) => {
-      if (completedHistory) {
-        await persistHistory(fastify, userId, conversationId, completedHistory, 'collecting', tx)
+      if (!deferred) return
+      const { turn, status, extra, repair } = deferred
+      // Histórico primeiro: diets.conversation_id referencia chat_history(id).
+      const write = async (sql: CreditTransaction) => {
+        await persistHistory(fastify, userId, conversationId, turn, status, sql, repair)
+        await extra?.(sql)
       }
+      // Conta ilimitada liquida sem transação (fastify.db): job e turno juntos.
+      if (extra && tx === fastify.db) await fastify.db.begin(write)
+      else await write(tx)
     },
   )
   return receipt ? { ...result, credit_receipt: receipt } : result
@@ -396,7 +432,7 @@ async function sendChatMessageCore(
   fastify: FastifyInstance,
   userId: string,
   data: ChatMessageBody,
-  deferHistory?: (history: ChatHistoryMessage[]) => void,
+  deferHistory?: (turn: DeferredTurn) => void,
 ): Promise<ChatResponse> {
   // OP2: teto diário de tokens antes de qualquer chamada de IA — usuário acima
   // da cota não paga nem a primeira chamada do turno.
@@ -411,13 +447,21 @@ async function sendChatMessageCore(
       throw new AppError(404, 'NOT_FOUND', 'Conversa não encontrada.')
     }
   }
-  const { messages: history, updatedAt: lastActivity } = await loadHistory(
-    fastify,
-    userId,
-    conversationId,
-  )
+  const {
+    messages: history,
+    updatedAt: lastActivity,
+    dirty,
+  } = await loadHistory(fastify, userId, conversationId)
 
+  const prior = history.length
   history.push(said('user', data.message))
+  // R8 (25/11): grava só o turno novo; o array lido antes da IA pode estar velho
+  // (o finalizeJob anexa o marcador de dieta concluída enquanto a IA responde).
+  const save: SaveTurn = async (status, extra) => {
+    const turn = history.slice(prior)
+    if (deferHistory) deferHistory({ turn, status, extra, repair: dirty })
+    else await persistHistory(fastify, userId, conversationId, turn, status, undefined, dirty)
+  }
 
   // Personaliza o tom do coach conforme a preferência do usuário.
   const [profile] = await fastify.db<{ coach_personality: string | null }[]>`
@@ -557,8 +601,7 @@ async function sendChatMessageCore(
       : null
     if (action) {
       history.push(said('assistant', action.message))
-      if (deferHistory) deferHistory(history)
-      else await persistHistory(fastify, userId, conversationId, history, 'collecting')
+      await save('collecting')
       return {
         conversation_id: conversationId,
         message: {
@@ -581,8 +624,7 @@ async function sendChatMessageCore(
       }
       const proposal = await proposeMealCorrection(fastify, userId, rawArgs, context.date)
       history.push(said('assistant', proposal.message))
-      if (deferHistory) deferHistory(history)
-      else await persistHistory(fastify, userId, conversationId, history, 'collecting')
+      await save('collecting')
       return {
         conversation_id: conversationId,
         message: {
@@ -605,8 +647,7 @@ async function sendChatMessageCore(
       }
       const correction = await applyMealCorrection(fastify, userId, rawArgs, context.date)
       history.push(said('assistant', correction.message))
-      if (deferHistory) deferHistory(history)
-      else await persistHistory(fastify, userId, conversationId, history, 'collecting')
+      await save('collecting')
       return {
         conversation_id: conversationId,
         message: {
@@ -629,6 +670,8 @@ async function sendChatMessageCore(
         history,
         toolCall,
         data.tzOffsetMinutes,
+        save,
+        Boolean(deferHistory),
       )
     }
     fastify.log.warn(
@@ -645,8 +688,7 @@ async function sendChatMessageCore(
     throw new AppError(502, 'AI_TRUNCATED', 'A IA devolveu uma resposta vazia. Tente novamente.')
   }
   history.push(said('assistant', assistantMessage))
-  if (deferHistory) deferHistory(history)
-  else await persistHistory(fastify, userId, conversationId, history, 'collecting')
+  await save('collecting')
 
   return {
     conversation_id: conversationId,
@@ -680,7 +722,7 @@ async function runAction(
       ? proposeLogMeal(rawArgs, context.date)
       : name === 'propose_log_weight'
         ? await proposeLogWeight(fastify, userId, rawArgs, context.date)
-        : proposeCompletePlanMeal(rawArgs, context.today)
+        : proposeCompletePlanMeal(rawArgs, context.today, context.date)
   fastify.log.info(
     { userId, kind: result.proposal?.kind ?? null },
     `Ação proposta pelo coach: ${name}`,
@@ -697,9 +739,22 @@ async function handleDietGeneration(
   history: ChatHistoryMessage[],
   toolCall: OpenAI.Chat.ChatCompletionMessageToolCall,
   tzOffsetMinutes: number | undefined,
+  save: SaveTurn,
+  deferred: boolean,
 ): Promise<ChatResponse> {
-  // Valida os dados coletados pela IA
-  const rawArgs = JSON.parse(toolCall.function.arguments) as unknown
+  // Valida os dados coletados pela IA. R5 (25/11): argumento malformado é erro
+  // de IA (sem cobrança e sem gravar), não SyntaxError/503.
+  let rawArgs: unknown
+  try {
+    rawArgs = JSON.parse(toolCall.function.arguments)
+  } catch {
+    fastify.log.warn({ userId }, 'Argumentos de collect_diet_data malformados')
+    throw new AppError(
+      502,
+      'AI_TRUNCATED',
+      'A IA não conseguiu concluir a resposta. Tente novamente.',
+    )
+  }
   const parseResult = collectedUserDataSchema.safeParse(rawArgs)
 
   if (!parseResult.success) {
@@ -710,7 +765,7 @@ async function handleDietGeneration(
     // S4: pergunta específica por campo (altura em metros, peso implausível…).
     const fallbackMsg = describeInvalidFields(parseResult.error.issues, rawArgs)
     history.push(said('assistant', fallbackMsg))
-    await persistHistory(fastify, userId, conversationId, history, 'collecting')
+    await save('collecting')
     return {
       conversation_id: conversationId,
       message: { role: 'assistant', content: fallbackMsg, created_at: new Date().toISOString() },
@@ -729,7 +784,7 @@ async function handleDietGeneration(
   if (!safety.ok) {
     fastify.log.info({ userId, reason: safety.reason }, 'Geração de dieta recusada por segurança')
     history.push(said('assistant', safety.userMessage))
-    await persistHistory(fastify, userId, conversationId, history, 'collecting')
+    await save('collecting')
     return {
       conversation_id: conversationId,
       message: {
@@ -750,30 +805,97 @@ async function handleDietGeneration(
   // ── Enfileira o job de geração (gera 1 dia por chamada, via polling) ──────
   // Não gera os 7 dias aqui: estouraria o limite de tempo da função serverless.
   let job: { jobId: string; dietId: string }
-  try {
-    job = await createDietJob(fastify, userId, conversationId, userData)
-  } catch (err) {
-    fastify.log.error({ err }, 'Erro ao criar job de geração de dieta')
-    const retryMsg =
-      'Tive um problema ao iniciar sua dieta agora. Podemos tentar de novo em instantes?'
-    history.push(said('assistant', retryMsg))
-    await persistHistory(fastify, userId, conversationId, history, 'collecting')
-    return {
-      conversation_id: conversationId,
-      message: { role: 'assistant', content: retryMsg, created_at: new Date().toISOString() },
-      diet_generated: false,
-      diet_id: null,
-      diet_job_id: null,
+  let reused = false
+  if (deferred) {
+    // R4 (25/11): com cobrança, job, perfil e histórico só são gravados na
+    // liquidação; os ids saem agora porque vão na resposta (que é o replay).
+    // Geração já em andamento é reaproveitada, como no createDietJob.
+    const running = await getPendingJob(fastify, userId)
+    reused = running !== null
+    job = running
+      ? { jobId: running.id, dietId: running.diet_id }
+      : { jobId: randomUUID(), dietId: randomUUID() }
+  } else {
+    try {
+      job = await createDietJob(fastify, userId, conversationId, userData)
+    } catch (err) {
+      fastify.log.error({ err }, 'Erro ao criar job de geração de dieta')
+      const retryMsg =
+        'Tive um problema ao iniciar sua dieta agora. Podemos tentar de novo em instantes?'
+      history.push(said('assistant', retryMsg))
+      await save('collecting')
+      return {
+        conversation_id: conversationId,
+        message: { role: 'assistant', content: retryMsg, created_at: new Date().toISOString() },
+        diet_generated: false,
+        diet_id: null,
+        diet_job_id: null,
+      }
     }
+    await updateProfileFromDietData(fastify.db, userId, userData)
   }
 
-  // Atualiza perfil do usuário com os dados coletados.
-  // goal: o cadastro aceita 'health', que a tool só consegue expressar como
-  // 'maintain' (mesma meta) — não rebaixa 'health' para 'maintain'.
-  // birth_date: aproximação (1º de julho do ano correspondente à idade) gravada
-  // APENAS se ainda for NULL — permite pré-carregar a idade em conversas
-  // futuras sem sobrescrever uma data real informada pelo usuário (F6).
-  await fastify.db`
+  // Sinaliza que está gerando; o front faz polling em /diets/jobs/:id/step.
+  history.push(said('assistant', userMessage))
+  // C2: marcador só no histórico — a resposta ao app continua sendo só a
+  // mensagem do coach, mas nas próximas rodadas o modelo vê que já gerou.
+  history.push(said('assistant', formatDietStartedMarker(new Date(), tzOffsetMinutes)))
+  await save(
+    'generating',
+    deferred
+      ? async (sql) => {
+          // Mesmo guard do createDietJob, agora sob a transação: outra geração
+          // que começou enquanto a IA respondia recusa este turno (sem cobrança).
+          const [running] = reused
+            ? []
+            : await sql<{ id: string }[]>`
+                SELECT id FROM diet_jobs
+                WHERE user_id = ${userId} AND status IN ('pending', 'running')
+                LIMIT 1
+              `
+          if (running)
+            throw new AppError(409, 'CONVERSATION_BUSY', 'Sua dieta já está sendo gerada.')
+          try {
+            if (!reused) await insertDietJob(sql, userId, conversationId, userData, job)
+            await updateProfileFromDietData(sql, userId, userData)
+          } catch (err) {
+            // R7: o índice da 031 fecha a corrida que o SELECT acima deixa aberta.
+            if (isActiveJobConflict(err))
+              throw new AppError(409, 'CONVERSATION_BUSY', 'Sua dieta já está sendo gerada.')
+            fastify.log.error({ err }, 'Erro ao criar job de geração de dieta')
+            throw new AppError(
+              500,
+              'HISTORY_WRITE_FAILED',
+              'Não consegui salvar a conversa. Envie a mensagem de novo.',
+            )
+          }
+        }
+      : undefined,
+  )
+
+  fastify.log.info({ userId, jobId: job.jobId }, 'Job de dieta enfileirado')
+
+  return {
+    conversation_id: conversationId,
+    message: { role: 'assistant', content: userMessage, created_at: new Date().toISOString() },
+    diet_generated: false,
+    diet_id: null,
+    diet_job_id: job.jobId,
+  }
+}
+
+// Atualiza perfil do usuário com os dados coletados.
+// goal: o cadastro aceita 'health', que a tool só consegue expressar como
+// 'maintain' (mesma meta) — não rebaixa 'health' para 'maintain'.
+// birth_date: aproximação (1º de julho do ano correspondente à idade) gravada
+// APENAS se ainda for NULL — permite pré-carregar a idade em conversas
+// futuras sem sobrescrever uma data real informada pelo usuário (F6).
+async function updateProfileFromDietData(
+  sql: CreditTransaction,
+  userId: string,
+  userData: CollectedUserData,
+): Promise<void> {
+  await sql`
     UPDATE profiles
     SET
       weight_kg      = ${userData.weight_kg},
@@ -788,23 +910,6 @@ async function handleDietGeneration(
       updated_at     = NOW()
     WHERE id = ${userId}
   `
-
-  // Sinaliza que está gerando; o front faz polling em /diets/jobs/:id/step.
-  history.push(said('assistant', userMessage))
-  // C2: marcador só no histórico — a resposta ao app continua sendo só a
-  // mensagem do coach, mas nas próximas rodadas o modelo vê que já gerou.
-  history.push(said('assistant', formatDietStartedMarker(new Date(), tzOffsetMinutes)))
-  await persistHistory(fastify, userId, conversationId, history, 'generating')
-
-  fastify.log.info({ userId, jobId: job.jobId }, 'Job de dieta enfileirado')
-
-  return {
-    conversation_id: conversationId,
-    message: { role: 'assistant', content: userMessage, created_at: new Date().toISOString() },
-    diet_generated: false,
-    diet_id: null,
-    diet_job_id: job.jobId,
-  }
 }
 
 // ─── Histórico de chat ────────────────────────────────────────────────────────
@@ -814,7 +919,7 @@ export async function getChatHistory(
   userId: string,
   conversationId: string,
 ): Promise<{
-  messages: { role: ChatHistoryMessage['role']; content: string; created_at?: string }[]
+  messages: { role: 'user' | 'assistant'; content: string; created_at?: string }[]
   status: string
 }> {
   const [row] = await fastify.db<{ messages: unknown; status: string }[]>`
@@ -826,8 +931,13 @@ export async function getChatHistory(
   if (!row) throw new AppError(404, 'CONVERSATION_NOT_FOUND', 'Conversa não encontrada')
   // Leitura para o usuário: os marcadores continuam no banco e no histórico do
   // modelo (loadHistory), mas apareciam como balões do coach entre colchetes.
+  // R7 (lote 8): só user/assistant chegam ao app (o schema da resposta não
+  // aceita outro papel; antes um elemento inválido virava 500).
   const messages = normalizeHistory(row.messages)
-    .filter((m) => typeof m.content !== 'string' || !isInternalChatMarker(m.content))
+    .filter(
+      (m): m is ChatHistoryMessage & { role: 'user' | 'assistant' } =>
+        m.role !== 'system' && !isInternalChatMarker(m.content),
+    )
     .slice(-HISTORY_PAGE)
     // 05/11 (M2): o app mostrava toda mensagem antiga com o horário de agora.
     .map((m) => ({ role: m.role, content: m.content, ...(m.at ? { created_at: m.at } : {}) }))
@@ -847,28 +957,65 @@ export function capHistory<T>(messages: T[]): T[] {
   return messages.length > HISTORY_MAX_MESSAGES ? messages.slice(-HISTORY_MAX_MESSAGES) : messages
 }
 
+const HISTORY_ROLES = new Set(['user', 'assistant', 'system'])
+/** Strings e arrays aninhados que ainda são expandidos (string de string de array…). */
+const MAX_HISTORY_NESTING = 6
+
+function isHistoryMessage(value: unknown): value is ChatHistoryMessage {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const m = value as Record<string, unknown>
+  return typeof m.role === 'string' && HISTORY_ROLES.has(m.role) && typeof m.content === 'string'
+}
+
+function collectHistory(value: unknown, out: ChatHistoryMessage[], depth: number): void {
+  if (typeof value === 'string') {
+    if (depth >= MAX_HISTORY_NESTING) return
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(value)
+    } catch {
+      return // texto solto não é mensagem
+    }
+    collectHistory(parsed, out, depth + 1)
+    return
+  }
+  if (Array.isArray(value)) {
+    if (depth >= MAX_HISTORY_NESTING) return
+    for (const item of value) collectHistory(item, out, depth + 1)
+    return
+  }
+  if (!isHistoryMessage(value)) return
+  out.push({
+    role: value.role,
+    content: value.content,
+    ...(typeof value.at === 'string' ? { at: value.at } : {}),
+  })
+}
+
 /**
- * Garante que o histórico seja sempre um array. Dependendo do driver/pooler, a
- * coluna JSONB `messages` pode voltar como string (JSON) em vez de array já
- * parseado — normalizamos os dois casos.
+ * Histórico sempre como array de mensagens válidas, na ordem. A coluna pode
+ * voltar como string (JSON) dependendo do driver/pooler, e linhas antigas têm
+ * o histórico serializado DENTRO do array (`["<json do histórico>", {marcador}]`,
+ * do `${texto}::jsonb` antigo concatenado com o marcador). R7 (lote 8): toda
+ * string que for JSON de array ou de mensagem é expandida no lugar; o que não
+ * for mensagem (role user/assistant/system e content string) é descartado.
  */
 export function normalizeHistory(raw: unknown): ChatHistoryMessage[] {
-  let value = raw
-  if (typeof value === 'string') {
-    try {
-      value = JSON.parse(value)
-    } catch {
-      return []
-    }
-  }
-  return Array.isArray(value) ? (value as ChatHistoryMessage[]) : []
+  const out: ChatHistoryMessage[] = []
+  collectHistory(raw, out, 0)
+  return out
+}
+
+/** A linha já está no formato canônico (array só de mensagens válidas)? */
+export function isCanonicalHistory(raw: unknown): boolean {
+  return Array.isArray(raw) && raw.every(isHistoryMessage)
 }
 
 async function loadHistory(
   fastify: FastifyInstance,
   userId: string,
   conversationId: string,
-): Promise<{ messages: ChatHistoryMessage[]; updatedAt: Date | null }> {
+): Promise<{ messages: ChatHistoryMessage[]; updatedAt: Date | null; dirty: boolean }> {
   try {
     const [row] = await fastify.db<{ messages: unknown; updated_at: Date | string | null }[]>`
       SELECT messages, updated_at FROM chat_history
@@ -878,6 +1025,7 @@ async function loadHistory(
     return {
       messages: normalizeHistory(row?.messages),
       updatedAt: updated && !Number.isNaN(updated.getTime()) ? updated : null,
+      dirty: Boolean(row) && !isCanonicalHistory(row?.messages),
     }
   } catch {
     if (env.CREDITS_ENFORCEMENT_ENABLED)
@@ -886,32 +1034,85 @@ async function loadHistory(
         'CREDITS_UNAVAILABLE',
         'Não foi possível recuperar a conversa. Tente novamente.',
       )
-    return { messages: [], updatedAt: null }
+    return { messages: [], updatedAt: null, dirty: false }
   }
 }
 
+/**
+ * R7 (lote 8): reparação preguiçosa. Relê a linha (pega o que foi anexado
+ * depois da leitura, como o marcador do finalizeJob) e, se ainda não estiver no
+ * formato canônico, regrava o array normalizado. O UPDATE só vale se a linha
+ * não mudou desde essa releitura: fora de transação (conta ilimitada) um
+ * append concorrente não é sobrescrito, e a linha fica para a próxima gravação.
+ * O append do turno vem em seguida.
+ */
+async function repairHistory(
+  sql: CreditTransaction,
+  userId: string,
+  conversationId: string,
+): Promise<void> {
+  const [row] = await sql<{ messages: unknown }[]>`
+    SELECT messages FROM chat_history
+    WHERE id = ${conversationId} AND user_id = ${userId}
+    FOR UPDATE
+  `
+  if (!row || isCanonicalHistory(row.messages)) return
+  const repaired = JSON.stringify(capHistory(normalizeHistory(row.messages)))
+  const seen = JSON.stringify(row.messages)
+  await sql`
+    UPDATE chat_history SET messages = ${repaired}::text::jsonb
+    WHERE id = ${conversationId} AND user_id = ${userId} AND messages = ${seen}::text::jsonb
+  `
+}
+
+/**
+ * Anexa o turno (`messages || turno`) em vez de regravar o array lido antes da
+ * IA, como o finalizeJob faz com o marcador (R8, 25/11). O teto de
+ * HISTORY_MAX_MESSAGES é aplicado no SQL, mantendo as mais recentes.
+ *
+ * `${texto}::jsonb` no postgres.js grava uma STRING jsonb (o parâmetro é
+ * serializado como JSON de novo): daí o normalizeHistory. O turno vai como
+ * `::text::jsonb` (array de verdade) e o valor antigo em string é desembrulhado
+ * antes de concatenar.
+ */
 async function persistHistory(
   fastify: FastifyInstance,
   userId: string,
   conversationId: string,
-  messages: ChatHistoryMessage[],
+  turn: ChatHistoryMessage[],
   status: string,
   transaction?: CreditTransaction,
+  repair = false,
 ): Promise<void> {
-  const messagesStr = JSON.stringify(capHistory(messages))
-  try {
-    const sql = transaction ?? fastify.db
+  const messagesStr = JSON.stringify(capHistory(turn))
+  const append = async (sql: CreditTransaction): Promise<number> => {
+    if (repair) await repairHistory(sql, userId, conversationId)
     const rows = await sql`
       INSERT INTO chat_history (id, user_id, messages, status)
-      VALUES (${conversationId}, ${userId}, ${messagesStr}::jsonb, ${status})
+      VALUES (${conversationId}, ${userId}, ${messagesStr}::text::jsonb, ${status})
       ON CONFLICT (id) DO UPDATE
-        SET messages   = ${messagesStr}::jsonb,
+        SET messages   = (
+              SELECT COALESCE(jsonb_agg(e.value ORDER BY e.n), '[]'::jsonb)
+              FROM (
+                SELECT CASE jsonb_typeof(chat_history.messages)
+                         WHEN 'array' THEN chat_history.messages
+                         WHEN 'string' THEN (chat_history.messages #>> '{}')::jsonb
+                         ELSE '[]'::jsonb
+                       END || EXCLUDED.messages AS merged
+              ) AS h,
+              jsonb_array_elements(h.merged) WITH ORDINALITY AS e(value, n)
+              WHERE e.n > jsonb_array_length(h.merged) - ${HISTORY_MAX_MESSAGES}
+            ),
             status     = ${status},
             updated_at = NOW()
         WHERE chat_history.user_id = EXCLUDED.user_id
       RETURNING id
     `
-    if (transaction && rows.length === 0) {
+    return rows.length
+  }
+  try {
+    const written = await append(transaction ?? fastify.db)
+    if (transaction && written === 0) {
       throw new AppError(404, 'NOT_FOUND', 'Conversa não encontrada.')
     }
   } catch (err) {

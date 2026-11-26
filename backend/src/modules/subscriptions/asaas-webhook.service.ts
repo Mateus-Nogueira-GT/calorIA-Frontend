@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify'
 import type postgres from 'postgres'
 import { CREDIT_POLICY } from '../credits/credit-policy.js'
 import { ensureWallet } from '../credits/credits.service.js'
+import { type AsaasClient, isDefinitiveProviderError } from './asaas.client.js'
 import type { Cycle } from './subscriptions.schemas.js'
 
 type Tx = postgres.Sql | postgres.TransactionSql
@@ -44,6 +45,13 @@ const REVERSED = new Set([
   'PAYMENT_CHARGEBACK_REQUESTED',
 ])
 const REVERSED_STATUS = ['REFUNDED', 'PARTIALLY_REFUNDED', 'CHARGEBACK_REQUESTED']
+const PAID_STATUS = ['CONFIRMED', 'RECEIVED']
+const GENERIC = new Set([
+  'PAYMENT_CREATED',
+  'PAYMENT_UPDATED',
+  'PAYMENT_DELETED',
+  'PAYMENT_RESTORED',
+])
 
 interface SubRow {
   id: string
@@ -81,21 +89,25 @@ async function upsertPaymentStatus(
   sub: SubRow,
   p: NonNullable<AsaasEvent['payment']>,
   status: string,
-) {
-  await tx`
+  keepExisting = false,
+): Promise<string> {
+  const [row] = await tx<{ status: string }[]>`
     INSERT INTO subscription_payments(asaas_payment_id, subscription_id, status, value_cents, due_date, invoice_url)
     VALUES(${p.id}, ${sub.id}, ${status}, ${p.value == null ? null : Math.round(p.value * 100)},
       ${p.dueDate ?? null}, ${p.invoiceUrl ?? null})
     ON CONFLICT (asaas_payment_id) DO UPDATE SET
       -- Fora de ordem: estorno nunca é desfeito e pagamento confirmado não volta a "em aberto".
       status = CASE
+        WHEN ${keepExisting}::boolean THEN subscription_payments.status
         WHEN subscription_payments.status = ANY(${REVERSED_STATUS}::text[]) THEN subscription_payments.status
         WHEN subscription_payments.status IN ('CONFIRMED','RECEIVED')
           AND EXCLUDED.status IN ('PENDING','OVERDUE') THEN subscription_payments.status
         ELSE EXCLUDED.status END,
       invoice_url = COALESCE(EXCLUDED.invoice_url, subscription_payments.invoice_url),
       due_date = COALESCE(EXCLUDED.due_date, subscription_payments.due_date),
-      updated_at = now()`
+      updated_at = now()
+    RETURNING status`
+  return row.status
 }
 
 /**
@@ -185,15 +197,64 @@ async function markReversed(
   await tx`UPDATE subscription_payments SET reversed_units = ${take} WHERE asaas_payment_id = ${p.id}`
 }
 
+const ASAAS_ID = /^[A-Za-z0-9_]{1,64}$/
+
+/**
+ * Assinatura que o checkout criou mas cujo id se perdeu (timeout depois de
+ * criar): o pagamento chega com um `subscription` que não casa com nenhuma
+ * linha. Busca a assinatura no Asaas e, se o externalReference dela for uma
+ * linha local pending sem id, grava o id. Fora da transação do evento (sem
+ * segurar a transação durante o HTTP); a gravação é idempotente. Erro ambíguo
+ * na busca lança, para a rota devolver 500 e o Asaas reenviar o evento.
+ */
+async function bindOrphanSubscription(
+  f: FastifyInstance,
+  asaas: AsaasClient,
+  asaasSubscriptionId: string,
+): Promise<void> {
+  if (!ASAAS_ID.test(asaasSubscriptionId)) return
+  const known = await f.db`
+    SELECT 1 AS known FROM subscriptions WHERE asaas_subscription_id = ${asaasSubscriptionId}`
+  if (known.length) return
+  // Sem nenhuma linha pending sem id não há órfã para ligar: evento de outro
+  // sistema na mesma conta do Asaas. Não consulta o Asaas (uma falha ambígua
+  // aqui viraria 500 e pausaria a fila, o mesmo problema do P6).
+  const candidate = await f.db`
+    SELECT 1 AS candidate FROM subscriptions
+    WHERE asaas_subscription_id IS NULL AND status = 'pending' LIMIT 1`
+  if (!candidate.length) return
+  let remote: { externalReference?: string | null; deleted?: boolean }
+  try {
+    remote = await asaas.getSubscription(asaasSubscriptionId)
+  } catch (err) {
+    if (isDefinitiveProviderError(err)) return
+    throw err
+  }
+  if (remote?.deleted) return
+  const ref = remote?.externalReference
+  if (!ref || !UUID.test(ref)) return
+  const bound = await f.db`
+    UPDATE subscriptions SET asaas_subscription_id = ${asaasSubscriptionId}, updated_at = now()
+    WHERE id = ${ref} AND asaas_subscription_id IS NULL AND status = 'pending'
+    RETURNING id`
+  if (bound.length)
+    f.log.info({ subscription_reconciled: { id: ref } }, 'subscription_orphan_bound')
+}
+
 /**
  * Processa um evento do Asaas numa transação: o registro do evento e o seu
  * efeito entram juntos. Repetição (entrega "at least once") não tem efeito.
- * Eventos que não são de assinatura do CalorIA são só registrados.
+ * Eventos que não são de assinatura do CalorIA são só registrados. Com o
+ * cliente do Asaas, um pagamento de assinatura desconhecida tenta antes achar a
+ * linha local órfã (bindOrphanSubscription).
  */
 export async function handleAsaasEvent(
   f: FastifyInstance,
   ev: AsaasEvent,
+  asaas?: AsaasClient,
 ): Promise<WebhookOutcome> {
+  const orphan = ev.event.startsWith('PAYMENT_') ? ev.payment?.subscription : null
+  if (asaas && orphan) await bindOrphanSubscription(f, asaas, orphan)
   return f.db.begin(async (tx) => {
     const resource = ev.payment?.id ?? ev.subscription?.id ?? null
     const fresh = await tx`
@@ -214,8 +275,17 @@ export async function handleAsaasEvent(
 
     const p = ev.payment
     if (!p?.id || !ev.event.startsWith('PAYMENT_')) return 'ignored'
-    // Cobrança avulsa (sem assinatura): recarga de créditos.
-    if (!p.subscription) return handlePurchaseEvent(tx, ev.event, p)
+    // Cobrança avulsa (sem assinatura): recarga de créditos. A flag só barra o
+    // checkout (R1, lote 8): desligada, o evento de uma compra já criada ainda
+    // credita ou estorna; ignorá-lo o deixaria registrado e a reentrega
+    // seria 'duplicate'. Sem a tabela (027 não aplicada) só registra (P6),
+    // conferido antes de qualquer consulta a ela (erro abortaria a transação).
+    if (!p.subscription) {
+      const [table] = await tx<{ present: boolean }[]>`
+        SELECT to_regclass('public.credit_purchases') IS NOT NULL AS present`
+      if (!table?.present) return 'ignored'
+      return handlePurchaseEvent(tx, ev.event, p)
+    }
     const [sub] = await tx<SubRow[]>`
       SELECT id, user_id, status, cycle, credits_per_cycle, paid_until FROM subscriptions
       WHERE asaas_subscription_id = ${p.subscription} FOR UPDATE`
@@ -231,23 +301,26 @@ export async function handleAsaasEvent(
       return 'reversed'
     }
     if (ev.event === 'PAYMENT_OVERDUE') {
-      await upsertPaymentStatus(tx, sub, p, status)
-      await tx`
-        UPDATE subscriptions SET status = 'past_due', updated_at = now()
-        WHERE id = ${sub.id} AND status IN ('pending','active')`
+      // Só quem já pagou fica em atraso: OVERDUE atrasado de um pagamento já
+      // confirmado não conta, e assinatura nunca paga continua pending.
+      const saved = await upsertPaymentStatus(tx, sub, p, status)
+      if (saved === 'OVERDUE')
+        await tx`
+          UPDATE subscriptions SET status = 'past_due', updated_at = now()
+          WHERE id = ${sub.id} AND status = 'active'`
       return 'overdue'
     }
-    if (
-      ['PAYMENT_CREATED', 'PAYMENT_UPDATED', 'PAYMENT_DELETED', 'PAYMENT_RESTORED'].includes(
-        ev.event,
-      )
-    ) {
-      await upsertPaymentStatus(
-        tx,
-        sub,
-        p,
-        ev.event === 'PAYMENT_DELETED' ? 'DELETED' : (p.status ?? 'PENDING'),
-      )
+    if (GENERIC.has(ev.event)) {
+      if (ev.event === 'PAYMENT_DELETED') {
+        await upsertPaymentStatus(tx, sub, p, 'DELETED')
+        return 'payment_updated'
+      }
+      // Pago e estornado só pelos handlers dedicados (markPaid, markReversed):
+      // um evento genérico com esses status não pode adiantar o efeito. Linha
+      // nova fica PENDING; linha existente mantém o status.
+      const raw = p.status ?? 'PENDING'
+      const terminal = PAID_STATUS.includes(raw) || REVERSED_STATUS.includes(raw)
+      await upsertPaymentStatus(tx, sub, p, terminal ? 'PENDING' : raw, terminal)
       return 'payment_updated'
     }
     return 'ignored'
@@ -277,11 +350,18 @@ async function handlePurchaseEvent(
   let [purchase] = await tx<PurchaseRow[]>`
     SELECT id, user_id, status, credits, credited_units FROM credit_purchases
     WHERE asaas_payment_id = ${p.id} FOR UPDATE`
-  if (!purchase && p.externalReference && UUID.test(p.externalReference))
-    [purchase] = await tx<PurchaseRow[]>`
+  if (!purchase && p.externalReference && UUID.test(p.externalReference)) {
+    ;[purchase] = await tx<PurchaseRow[]>`
       SELECT id, user_id, status, credits, credited_units FROM credit_purchases
       WHERE id = ${p.externalReference} AND (asaas_payment_id IS NULL OR asaas_payment_id = ${p.id})
       FOR UPDATE`
+    // Grava o id em qualquer evento: compra sem id (checkout caiu no meio)
+    // fica ligada ao pagamento e deixa de contar como "em criação".
+    if (purchase)
+      await tx`
+        UPDATE credit_purchases SET asaas_payment_id = ${p.id}, updated_at = now()
+        WHERE id = ${purchase.id} AND asaas_payment_id IS NULL`
+  }
   if (!purchase) return 'ignored'
 
   if (PAID.has(event)) {
