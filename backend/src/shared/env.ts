@@ -73,6 +73,15 @@ const envSchema = z
       z.string().url().optional(),
     ),
 
+    // A5 do pente fino: /auth/reset-password só com a sessão de recuperação do
+    // link do e-mail. `log` (padrão) só registra o formato do `amr` e se haveria
+    // recusa; `enforce` exige amr recovery/otp de até 1 h (senão 401). Ligar
+    // `enforce` só depois de ler os logs do `amr` em produção.
+    AUTH_RESET_REQUIRE_RECOVERY: z.preprocess(
+      (v) => (v === '' || v == null ? undefined : v),
+      z.enum(['log', 'enforce']).default('log'),
+    ),
+
     // IA via OpenRouter (API compatível com a OpenAI). OPENAI_API_KEY é a key do
     // OpenRouter; OPENAI_BASE_URL aponta para o endpoint do OpenRouter. Os modelos
     // vêm prefixados (ex: openai/gpt-6.1-sol).

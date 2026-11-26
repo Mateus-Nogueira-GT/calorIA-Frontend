@@ -330,9 +330,56 @@ export async function forgotPassword(
   return { success: true }
 }
 
+/** Métodos do `amr` que provam posse do e-mail (link de recuperação). */
+const RECOVERY_METHODS = new Set(['recovery', 'otp'])
+const RECOVERY_MAX_AGE_S = 60 * 60
+
+/**
+ * Lê o `amr` do access token. Só roda DEPOIS do `getUser`, que já validou o
+ * token no Supabase: aqui é só decodificação, sem confiar na assinatura.
+ * O Supabase pode mandar objetos ({ method, timestamp }) ou strings (RFC 8176,
+ * via hook de token). String não tem timestamp, então não prova recência.
+ */
+export function recoveryCheck(accessToken: string, nowS = Math.floor(Date.now() / 1000)) {
+  let amr: unknown
+  try {
+    const part = accessToken.split('.')[1] ?? ''
+    amr = (JSON.parse(Buffer.from(part, 'base64url').toString('utf8')) as { amr?: unknown }).amr
+  } catch {
+    amr = undefined
+  }
+  const entries = Array.isArray(amr) ? amr : []
+  const format =
+    amr === undefined
+      ? 'absent'
+      : !Array.isArray(amr)
+        ? 'invalid'
+        : entries.every((e) => typeof e === 'string')
+          ? 'strings'
+          : entries.every((e) => e && typeof e === 'object')
+            ? 'objects'
+            : 'mixed'
+  const methods = entries
+    .map((e) => (typeof e === 'string' ? e : (e as { method?: unknown })?.method))
+    .filter((m): m is string => typeof m === 'string')
+    .map((m) => m.slice(0, 40))
+  const ages = entries
+    .filter((e) => e && typeof e === 'object')
+    .map((e) => e as { method?: unknown; timestamp?: unknown })
+    .filter((e) => typeof e.method === 'string' && RECOVERY_METHODS.has(e.method))
+    .map((e) => (typeof e.timestamp === 'number' ? nowS - e.timestamp : null))
+    .filter((age): age is number => age !== null)
+  const recoveryAge = ages.length ? Math.min(...ages) : null
+  const ok = recoveryAge !== null && recoveryAge >= -60 && recoveryAge <= RECOVERY_MAX_AGE_S
+  return { format, methods, recoveryAge, ok }
+}
+
 /**
  * Define a nova senha a partir do access_token de recovery (link do email).
  * Valida o token consultando o próprio Supabase; token inválido/expirado → 401.
+ * A5: com AUTH_RESET_REQUIRE_RECOVERY=enforce, só aceita a sessão de
+ * recuperação recente; em `log` (padrão) só registra. Depois da troca, encerra
+ * as outras sessões do usuário (best-effort).
  */
 export async function resetPassword(
   fastify: FastifyInstance,
@@ -344,12 +391,41 @@ export async function resetPassword(
     throw new AppError(401, 'INVALID_RESET_TOKEN', 'Link de recuperação inválido ou expirado')
   }
 
+  const mode = env.AUTH_RESET_REQUIRE_RECOVERY
+  const check = recoveryCheck(accessToken)
+  // Sem token, e-mail nem id: só o formato, para decidir quando ligar o enforce.
+  fastify.log.info(
+    {
+      reset_recovery: {
+        mode,
+        amr_format: check.format,
+        methods: check.methods,
+        recovery_age_s: check.recoveryAge,
+        would_reject: !check.ok,
+      },
+    },
+    'reset_password_recovery_check',
+  )
+  if (mode === 'enforce' && !check.ok) {
+    throw new AppError(401, 'INVALID_RESET_TOKEN', 'Link de recuperação inválido ou expirado')
+  }
+
   const { error: updateError } = await fastify.supabase.auth.admin.updateUserById(data.user.id, {
     password: newPassword,
   })
   if (updateError) {
     fastify.log.error({ err: updateError }, 'Falha ao redefinir senha')
     throw new AppError(500, 'RESET_FAILED', 'Não foi possível redefinir a senha. Tente novamente.')
+  }
+
+  // Quem tinha a senha antiga (ou um token roubado) perde as outras sessões.
+  // A desta requisição (a de recuperação) fica; o access token já emitido
+  // segue válido até o `exp`, o que morre é o refresh.
+  try {
+    const { error: signOutError } = await fastify.supabase.auth.admin.signOut(accessToken, 'others')
+    if (signOutError) fastify.log.warn({ err: signOutError }, 'reset_password_signout_failed')
+  } catch (err) {
+    fastify.log.warn({ err }, 'reset_password_signout_failed')
   }
 
   return { success: true }
