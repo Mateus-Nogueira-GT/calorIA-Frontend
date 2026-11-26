@@ -5,7 +5,12 @@ import { AppError } from '../../shared/errors.js'
 import type { JwtPayload } from '../../shared/types.js'
 import { CREDIT_POLICY } from './credit-policy.js'
 import { registerCreditErrors } from './credits.errors.js'
-import { cancelCreditOperation, reconcileCreditOperations, wallet } from './credits.service.js'
+import {
+  cancelCreditOperation,
+  creditsVisible,
+  reconcileCreditOperations,
+  wallet,
+} from './credits.service.js'
 const routes: FastifyPluginAsyncZod = async (f) => {
   registerCreditErrors(f)
   f.addHook('preHandler', async (req) => {
@@ -19,6 +24,8 @@ const routes: FastifyPluginAsyncZod = async (f) => {
       units_per_credit: 5,
       enforcement_enabled: env.CREDITS_ENFORCEMENT_ENABLED,
       invites_enabled: env.CREDIT_INVITES_ENABLED,
+      // Só com a recarga ligada: com tudo desligado o corpo fica igual ao de antes.
+      ...(env.CREDIT_PURCHASES_ENABLED ? { purchases_enabled: true } : {}),
       policy: CREDIT_POLICY,
     }
   })
@@ -26,8 +33,7 @@ const routes: FastifyPluginAsyncZod = async (f) => {
     '/ledger',
     { schema: { querystring: z.object({ cursor: z.string().uuid().optional() }) } },
     async (req) => {
-      if (!env.CREDITS_ENFORCEMENT_ENABLED && !env.CREDIT_INVITES_ENABLED)
-        return { items: [], next_cursor: null }
+      if (!creditsVisible()) return { items: [], next_cursor: null }
       const user = (req.user as JwtPayload).sub
       const cursor = req.query.cursor
       const items =

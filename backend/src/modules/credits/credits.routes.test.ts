@@ -5,10 +5,21 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { env } from '../../shared/env.js'
 import adminRoutes from '../admin/admin.routes.js'
 import inviteRoutes from '../credit-invites/credit-invites.routes.js'
+import { CREDIT_POLICY } from './credit-policy.js'
 import creditsRoutes from './credits.routes.js'
-const original = [env.CREDITS_ENFORCEMENT_ENABLED, env.CREDIT_INVITES_ENABLED]
+const original = [
+  env.CREDITS_ENFORCEMENT_ENABLED,
+  env.CREDIT_INVITES_ENABLED,
+  env.CREDIT_PURCHASES_ENABLED,
+  env.SUBSCRIPTIONS_ENABLED,
+]
 afterEach(() => {
-  ;[env.CREDITS_ENFORCEMENT_ENABLED, env.CREDIT_INVITES_ENABLED] = original
+  ;[
+    env.CREDITS_ENFORCEMENT_ENABLED,
+    env.CREDIT_INVITES_ENABLED,
+    env.CREDIT_PURCHASES_ENABLED,
+    env.SUBSCRIPTIONS_ENABLED,
+  ] = original
 })
 async function app(db = vi.fn().mockResolvedValue([])) {
   const f = Fastify()
@@ -44,6 +55,70 @@ describe('credit HTTP boundaries', () => {
       available_units: 0,
     })
     expect(db).not.toHaveBeenCalled()
+    await f.close()
+  })
+  it('R5: tudo desligado → corpo de /credits/me e /ledger idêntico ao de hoje, sem tocar no banco', async () => {
+    env.CREDITS_ENFORCEMENT_ENABLED = false
+    env.CREDIT_INVITES_ENABLED = false
+    env.CREDIT_PURCHASES_ENABLED = false
+    const db = vi.fn().mockRejectedValue(Error('must not query'))
+    const f = await app(db)
+    const headers = { authorization: `Bearer ${f.jwt.sign({ sub: 'user' })}` }
+    const me = await f.inject({ url: '/credits/me', headers })
+    expect(me.json()).toEqual({
+      balance_units: 0,
+      reserved_units: 0,
+      available_units: 0,
+      unlimited: false,
+      units_per_credit: 5,
+      enforcement_enabled: false,
+      invites_enabled: false,
+      policy: CREDIT_POLICY,
+    })
+    expect(Object.keys(me.json())).toEqual([
+      'balance_units',
+      'reserved_units',
+      'available_units',
+      'unlimited',
+      'units_per_credit',
+      'enforcement_enabled',
+      'invites_enabled',
+      'policy',
+    ])
+    const ledger = await f.inject({ url: '/credits/ledger', headers })
+    expect(ledger.json()).toEqual({ items: [], next_cursor: null })
+    expect(db).not.toHaveBeenCalled()
+    await f.close()
+  })
+  it('R5: só a recarga ligada → saldo e extrato reais e purchases_enabled: true', async () => {
+    env.CREDITS_ENFORCEMENT_ENABLED = false
+    env.CREDIT_INVITES_ENABLED = false
+    env.CREDIT_PURCHASES_ENABLED = true
+    env.SUBSCRIPTIONS_ENABLED = false
+    const entry = { id: 'l1', units: 50, kind: 'purchase', operation_id: null, created_at: 'x' }
+    const db = Object.assign(
+      vi.fn(async (strings: TemplateStringsArray) => {
+        const sql = strings.join('?')
+        if (sql.includes('FROM credit_wallets'))
+          return [{ balance_units: 125, reserved_units: 0, unlimited: false }]
+        if (sql.includes('FROM credit_ledger')) return [entry]
+        return []
+      }),
+      { begin: (fn: (tx: unknown) => unknown) => fn(db) },
+    )
+    const f = await app(db as unknown as ReturnType<typeof vi.fn>)
+    const headers = { authorization: `Bearer ${f.jwt.sign({ sub: 'user' })}` }
+    const me = await f.inject({ url: '/credits/me', headers })
+    expect(me.statusCode).toBe(200)
+    expect(me.json()).toMatchObject({
+      balance_units: 125,
+      available_units: 125,
+      enforcement_enabled: false,
+      invites_enabled: false,
+      purchases_enabled: true,
+    })
+    const ledger = await f.inject({ url: '/credits/ledger', headers })
+    expect(ledger.json()).toEqual({ items: [entry], next_cursor: null })
     await f.close()
   })
   it('DB outage is503 and cannot masquerade as zero balance', async () => {

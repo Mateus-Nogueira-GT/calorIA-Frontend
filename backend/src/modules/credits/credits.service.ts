@@ -53,8 +53,17 @@ export async function hasUnlimitedSubscription(
     await tx`SELECT 1 FROM subscriptions WHERE user_id=${userId} AND unlimited AND paid_until > now() LIMIT 1`
   return rows.length > 0
 }
+/**
+ * Saldo real quando algum recurso de créditos está ligado: cobrança, convites
+ * ou recarga (quem vende créditos mostra o saldo, mesmo sem a cobrança ligada).
+ */
+export function creditsVisible(): boolean {
+  return (
+    env.CREDITS_ENFORCEMENT_ENABLED || env.CREDIT_INVITES_ENABLED || env.CREDIT_PURCHASES_ENABLED
+  )
+}
 export async function wallet(fastify: FastifyInstance, userId: string) {
-  if (!env.CREDITS_ENFORCEMENT_ENABLED && !env.CREDIT_INVITES_ENABLED)
+  if (!creditsVisible())
     return { balance_units: 0, reserved_units: 0, available_units: 0, unlimited: false }
   const [row] = await fastify.db.begin(async (tx) => {
     await ensureWallet(tx, userId)

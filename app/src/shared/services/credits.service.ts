@@ -7,6 +7,8 @@ export interface Wallet {
   units_per_credit: number;
   enforcement_enabled: boolean;
   invites_enabled: boolean;
+  /** Recarga de créditos ligada. Só vem quando é true (ausente em backend antigo ou desligada). */
+  purchases_enabled?: boolean;
   /** Ausente em backend antigo. */
   unlimited?: boolean;
   policy: { photo_units: number; message_units: number; welcome_units: number; version: string };

@@ -94,3 +94,20 @@ describe('R5: volta ao app', () => {
     expect(read).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('P8: visibilidade dos créditos', () => {
+  it('só a recarga ligada (purchases_enabled) já mostra os créditos', async () => {
+    read.mockResolvedValueOnce({ ...wallet, purchases_enabled: true });
+    await useCreditsStore.getState().load();
+    expect(useCreditsStore.getState().featureVisible).toBe(true);
+  });
+
+  it('tudo desligado (backend sem o campo novo): continua escondido', async () => {
+    read.mockResolvedValueOnce(wallet);
+    await useCreditsStore.getState().load();
+    expect(useCreditsStore.getState().featureVisible).toBe(false);
+    read.mockResolvedValueOnce({ ...wallet, purchases_enabled: false });
+    await useCreditsStore.getState().load();
+    expect(useCreditsStore.getState().featureVisible).toBe(false);
+  });
+});
