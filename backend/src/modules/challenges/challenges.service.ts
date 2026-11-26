@@ -41,12 +41,14 @@ function toChallenge(row: DbChallengeRow): Challenge {
 
 // Fragmento de colunas reutilizado (camelCase derivado: datas, contagem, joinedByMe).
 // `is_finished` é DERIVADO da data (F3 da spec) — nenhum cron muda status.
+// S6: compara com o "hoje" de Brasília; CURRENT_DATE em UTC encerrava o último
+// dia às 21h.
 function selectChallenge(fastify: FastifyInstance, userId: string) {
   return fastify.db`
     c.id, c.title, c.description, c.invite_code,
     c.starts_at::DATE::TEXT AS start_date,
     COALESCE(c.ends_at, c.starts_at + (c.duration_days || ' days')::interval)::DATE::TEXT AS end_date,
-    (COALESCE(c.ends_at, c.starts_at + (c.duration_days || ' days')::interval)::DATE < CURRENT_DATE) AS is_finished,
+    (COALESCE(c.ends_at, c.starts_at + (c.duration_days || ' days')::interval)::DATE < (now() AT TIME ZONE 'America/Sao_Paulo')::date) AS is_finished,
     (SELECT COUNT(*) FROM challenge_members cm WHERE cm.challenge_id = c.id AND cm.status = 'active')::INT AS participant_count,
     EXISTS (
       SELECT 1 FROM challenge_members me
@@ -59,17 +61,24 @@ function selectChallenge(fastify: FastifyInstance, userId: string) {
   `
 }
 
-/** Início e fim efetivos (ends_at ou starts_at + duração) como 'YYYY-MM-DD'. */
+/**
+ * Início e fim efetivos (ends_at ou starts_at + duração) como 'YYYY-MM-DD', e
+ * se o fim já passou no "hoje" de Brasília (S6).
+ */
 async function getChallengePeriod(
   fastify: FastifyInstance,
   challengeId: string,
-): Promise<{ start: string | null; end: string | null }> {
-  const [row] = await fastify.db<{ start_date: string | null; end_date: string | null }[]>`
+): Promise<{ start: string | null; end: string | null; ended: boolean }> {
+  const [row] = await fastify.db<
+    { start_date: string | null; end_date: string | null; ended: boolean | null }[]
+  >`
     SELECT starts_at::DATE::TEXT AS start_date,
-      COALESCE(ends_at, starts_at + (duration_days || ' days')::interval)::DATE::TEXT AS end_date
+      COALESCE(ends_at, starts_at + (duration_days || ' days')::interval)::DATE::TEXT AS end_date,
+      COALESCE(ends_at, starts_at + (duration_days || ' days')::interval)::DATE
+        < (now() AT TIME ZONE 'America/Sao_Paulo')::date AS ended
     FROM challenges WHERE id = ${challengeId}
   `
-  return { start: row?.start_date ?? null, end: row?.end_date ?? null }
+  return { start: row?.start_date ?? null, end: row?.end_date ?? null, ended: row?.ended === true }
 }
 
 async function getChallengeById(
@@ -148,9 +157,8 @@ export async function joinChallenge(
     throw new AppError(409, 'CHALLENGE_NOT_ACTIVE', 'Este desafio não está ativo')
 
   // F2: não se entra em desafio que já terminou.
-  const { end: endDate } = await getChallengePeriod(fastify, challengeId)
-  if (endDate && utcTodayString() > endDate)
-    throw new AppError(409, 'CHALLENGE_ENDED', 'Este desafio já foi encerrado')
+  const { ended } = await getChallengePeriod(fastify, challengeId)
+  if (ended) throw new AppError(409, 'CHALLENGE_ENDED', 'Este desafio já foi encerrado')
 
   const [existing] = await fastify.db<{ id: string; status: string }[]>`
     SELECT id, status FROM challenge_members WHERE challenge_id = ${challengeId} AND user_id = ${userId}

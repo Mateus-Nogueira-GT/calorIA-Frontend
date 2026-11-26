@@ -17,7 +17,7 @@
 1. [x] R3: guardas de data do check-in, com teste de integração e unit.
 2. [x] R1: sequência efetiva na leitura (ranking, amigos, perfil, coach), com teste de integração do
        ranking e unit/integração dos demais.
-3. [ ] R6: `finished`/join com a data de SP, com teste de relógio controlado.
+3. [x] R6: `finished`/join com a data de SP, com teste de relógio controlado.
 4. [ ] R2: post de marco só quando a sequência sobe, mais try/catch, com teste em `diets`.
 5. [ ] R7: migration 029, `ON CONFLICT` e trava no app, com testes de Postgres, de backend e de app.
 6. [ ] R4: totais do Diário, com teste do `FoodLogScreen`/`DayMacroSummary`.

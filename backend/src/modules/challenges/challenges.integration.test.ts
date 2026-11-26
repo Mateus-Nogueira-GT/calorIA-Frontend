@@ -11,7 +11,7 @@ import {
 import { fetchUserContext } from '../chat/chat-context.js'
 import { listFriends } from '../friends/friends.service.js'
 import { getUserProfile } from '../users/users.service.js'
-import { checkIn, getLeaderboard } from './challenges.service.js'
+import { checkIn, getLeaderboard, joinChallenge, listMyChallenges } from './challenges.service.js'
 
 function shift(date: string, days: number): string {
   return new Date(Date.parse(`${date}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10)
@@ -156,6 +156,44 @@ function shift(date: string, days: number): string {
 
       expect((await fetchUserContext(fastify, userA)).streak).toBe(0)
       expect((await fetchUserContext(fastify, userB)).streak).toBe(4)
+    })
+  })
+
+  describe('último dia vale até a meia-noite de Brasília (R6)', () => {
+    // Relógio controlado: dentro da transação, public.now() (que lê test.now)
+    // vem antes de pg_catalog no search_path. A sessão está em UTC, como no Supabase.
+    beforeAll(async () => {
+      await db.unsafe(`CREATE OR REPLACE FUNCTION public.now() RETURNS timestamptz
+        LANGUAGE sql STABLE AS $$ SELECT current_setting('test.now')::timestamptz $$`)
+    })
+    const at = <T>(instant: string, fn: (f: FastifyInstance) => Promise<T>) =>
+      db.begin(async (sql) => {
+        await sql.unsafe(
+          `SET LOCAL test.now = '${instant}'; SET LOCAL search_path = public, pg_catalog`,
+        )
+        return fn({ db: sql, log: { warn: () => {} } } as unknown as FastifyInstance)
+      }) as Promise<T>
+
+    beforeEach(async () => {
+      await db`UPDATE challenges SET starts_at = '2026-11-25', ends_at = '2026-12-02' WHERE id = ${challengeId}`
+      await db`UPDATE challenge_members SET status = 'quit' WHERE challenge_id = ${challengeId} AND user_id = ${userB}`
+    })
+
+    it('03/12 00:30Z (21:30 de 02/12 em SP): ainda não terminou e aceita entrada', async () => {
+      const [mine] = await at('2026-12-03T00:30:00Z', (f) => listMyChallenges(f, userA))
+      expect(mine).toMatchObject({ endDate: '2026-12-02', finished: false })
+
+      const joined = await at('2026-12-03T00:30:00Z', (f) => joinChallenge(f, userB, challengeId))
+      expect(joined).toMatchObject({ joinedByMe: true, finished: false })
+    })
+
+    it('03/12 03:30Z (00:30 de 03/12 em SP): terminou e recusa entrada', async () => {
+      const [mine] = await at('2026-12-03T03:30:00Z', (f) => listMyChallenges(f, userA))
+      expect(mine).toMatchObject({ finished: true })
+
+      await expect(
+        at('2026-12-03T03:30:00Z', (f) => joinChallenge(f, userB, challengeId)),
+      ).rejects.toMatchObject({ code: 'CHALLENGE_ENDED' })
     })
   })
 })
