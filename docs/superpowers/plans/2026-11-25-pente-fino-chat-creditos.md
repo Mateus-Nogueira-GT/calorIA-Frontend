@@ -16,11 +16,16 @@
 1. [x] R1 e R2: `operation-requests.ts`, `coach.service.ts` e `retryLastAction` no store do coach, com
        testes de app. Commit.
 2. [ ] R3: operação de custo zero para conta ilimitada, com integração Postgres e unit. Commit.
+       **Pulada (26/11):** contradiz a decisão C2 da spec de 23/10 (conta ilimitada segue o caminho
+       da cobrança desligada) e o teste `credit-grants.integration.test.ts` "usa IA com saldo 0 sem
+       criar operação nem débito". Além disso, `credit_operations.cost_units` tem `CHECK(cost_units > 0)`,
+       e reconcile/cancel/release subtraem `cost_units` de `reserved_units`: exige migration `030_*`
+       e decisão de produto.
 3. [x] R4 e R5: `handleDietGeneration` persiste na liquidação e o parse fica protegido, com testes
        vitest. Commit.
 4. [x] R8: `persistHistory` passa a anexar, com teste de integração Postgres e os testes unit de chat
        ajustados. Commit.
 5. [x] R6: token de sequência no voice-player, com teste. Commit.
 6. [x] R7: orçamento do banner de dieta, com teste. Commit.
-7. [ ] Fechamento: no backend, `npm run typecheck && npm test` mais as integrações; no app,
+7. [x] Fechamento: no backend, `npm run typecheck && npm test` mais as integrações; no app,
        `npx tsc --noEmit && npx jest`.
