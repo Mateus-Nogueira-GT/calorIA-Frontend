@@ -452,21 +452,32 @@ export async function toggleMealCompleted(
   // Só ao passar de pendente para feita (marcar de novo não credita streak duas vezes).
   if (newState && !meal.was_completed) {
     // Mesma data usada para decidir o estado acima (local do cliente, ou UTC).
-    await fastify.db`
-      SELECT update_user_streak(${userId}, ${date}::date)
+    // S2: a subconsulta usa o snapshot da instrução e lê a sequência de ANTES
+    // da função; assim o marco só sai quando a sequência subiu nesta chamada
+    // (a 2ª refeição do 7º dia repetia o post "7 dias seguidos").
+    const [previous] = await fastify.db<{ previous_streak: number | null }[]>`
+      SELECT
+        (SELECT current_streak FROM streaks WHERE user_id = ${userId}) AS previous_streak,
+        update_user_streak(${userId}, ${date}::date)
     `
 
     const [streak] = await fastify.db<{ current_streak: number }[]>`
       SELECT current_streak FROM streaks WHERE user_id = ${userId}
     `
-    if (streak && streak.current_streak > 0 && streak.current_streak % 7 === 0) {
-      await createSystemPost(
-        fastify,
-        userId,
-        'streak_milestone',
-        `${streak.current_streak} dias seguidos seguindo a dieta! 🔥`,
-        { streak: streak.current_streak },
-      )
+    const advanced = streak && streak.current_streak > (previous?.previous_streak ?? 0)
+    if (advanced && streak.current_streak % 7 === 0) {
+      // Best-effort, como no check-in do desafio: a refeição já está marcada.
+      try {
+        await createSystemPost(
+          fastify,
+          userId,
+          'streak_milestone',
+          `${streak.current_streak} dias seguidos seguindo a dieta! 🔥`,
+          { streak: streak.current_streak },
+        )
+      } catch (err) {
+        fastify.log.warn({ err }, 'Falha ao publicar marco de streak da dieta')
+      }
     }
   }
 
