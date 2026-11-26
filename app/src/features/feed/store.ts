@@ -6,6 +6,7 @@ import {
   PostAchievement,
 } from '@shared/services/feed.service';
 import { showAlert } from '@shared/utils/show-alert';
+import { captureSessionOwner, isCurrentOwner } from '@shared/services/session-owner';
 
 interface FeedState {
   posts: Post[];
@@ -41,15 +42,24 @@ const initialState = {
   commentsErrorByPost: {} as Record<string, boolean>,
 };
 
+// S7: posts com curtida/descurtida em andamento. Dois toques rápidos mandavam
+// POST e DELETE em paralelo, e a resposta que chegasse por último decidia a tela.
+const likesInFlight = new Set<string>();
+
 export const useFeedStore = create<FeedState>((set, get) => ({
   ...initialState,
 
+  // S10: a resposta que chega depois de trocar de conta é da conta anterior —
+  // o logout já limpou o store, e ela não pode repopular o feed da seguinte.
   loadInitial: async () => {
+    const owner = captureSessionOwner();
     set({ isLoadingInitial: true });
     try {
       const page = await feedService.getFeed();
+      if (!isCurrentOwner(owner)) return;
       set({ posts: page.posts, nextCursor: page.nextCursor, isLoadingInitial: false });
     } catch (e) {
+      if (!isCurrentOwner(owner)) return;
       set({ isLoadingInitial: false });
       throw e;
     }
@@ -58,26 +68,30 @@ export const useFeedStore = create<FeedState>((set, get) => ({
   loadMore: async () => {
     const { nextCursor, isLoadingMore } = get();
     if (nextCursor === null || isLoadingMore) return;
+    const owner = captureSessionOwner();
     set({ isLoadingMore: true });
     try {
       const page = await feedService.getFeed(nextCursor);
+      if (!isCurrentOwner(owner)) return;
       set((s) => ({
         posts: [...s.posts, ...page.posts],
         nextCursor: page.nextCursor,
         isLoadingMore: false,
       }));
     } catch {
-      set({ isLoadingMore: false });
+      if (isCurrentOwner(owner)) set({ isLoadingMore: false });
     }
   },
 
   refresh: async () => {
+    const owner = captureSessionOwner();
     set({ isRefreshing: true });
     try {
       const page = await feedService.getFeed();
+      if (!isCurrentOwner(owner)) return;
       set({ posts: page.posts, nextCursor: page.nextCursor, isRefreshing: false });
     } catch {
-      set({ isRefreshing: false });
+      if (isCurrentOwner(owner)) set({ isRefreshing: false });
     }
   },
 
@@ -98,7 +112,8 @@ export const useFeedStore = create<FeedState>((set, get) => ({
 
   toggleLike: async (postId) => {
     const target = get().posts.find((p) => p.id === postId);
-    if (!target) return;
+    if (!target || likesInFlight.has(postId)) return;
+    likesInFlight.add(postId);
     const snapshot = { likedByMe: target.likedByMe, likeCount: target.likeCount };
     const optimistic = {
       likedByMe: !snapshot.likedByMe,
@@ -122,6 +137,8 @@ export const useFeedStore = create<FeedState>((set, get) => ({
       }));
       showAlert('Não foi possível curtir', 'Tente novamente.');
       throw e;
+    } finally {
+      likesInFlight.delete(postId);
     }
   },
 

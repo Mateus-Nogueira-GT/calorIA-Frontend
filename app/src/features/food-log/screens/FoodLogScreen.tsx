@@ -160,7 +160,7 @@ export function FoodLogScreen({
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
           >
             <CalorieProgressBar consumed={consumed} goal={goal} />
-            <DayMacroSummary meals={meals} />
+            <DayMacroSummary totals={dayTotals} />
             {meals.length === 0 ? (
               <View style={styles.emptyState}>
                 <DiaryEmptyIcon />

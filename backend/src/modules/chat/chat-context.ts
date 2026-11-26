@@ -290,7 +290,9 @@ export async function fetchUserContext(
   let streak: number | null = null
   try {
     const [row] = await fastify.db<{ current_streak: number }[]>`
-      SELECT current_streak FROM streaks WHERE user_id = ${userId}
+      SELECT CASE WHEN last_active_date < (now() AT TIME ZONE 'America/Sao_Paulo')::date - 1
+        THEN 0 ELSE current_streak END AS current_streak
+      FROM streaks WHERE user_id = ${userId}
     `
     streak = row?.current_streak ?? null
   } catch {

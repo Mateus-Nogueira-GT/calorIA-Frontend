@@ -41,12 +41,14 @@ function toChallenge(row: DbChallengeRow): Challenge {
 
 // Fragmento de colunas reutilizado (camelCase derivado: datas, contagem, joinedByMe).
 // `is_finished` é DERIVADO da data (F3 da spec) — nenhum cron muda status.
+// S6: compara com o "hoje" de Brasília; CURRENT_DATE em UTC encerrava o último
+// dia às 21h.
 function selectChallenge(fastify: FastifyInstance, userId: string) {
   return fastify.db`
     c.id, c.title, c.description, c.invite_code,
     c.starts_at::DATE::TEXT AS start_date,
     COALESCE(c.ends_at, c.starts_at + (c.duration_days || ' days')::interval)::DATE::TEXT AS end_date,
-    (COALESCE(c.ends_at, c.starts_at + (c.duration_days || ' days')::interval)::DATE < CURRENT_DATE) AS is_finished,
+    (COALESCE(c.ends_at, c.starts_at + (c.duration_days || ' days')::interval)::DATE < (now() AT TIME ZONE 'America/Sao_Paulo')::date) AS is_finished,
     (SELECT COUNT(*) FROM challenge_members cm WHERE cm.challenge_id = c.id AND cm.status = 'active')::INT AS participant_count,
     EXISTS (
       SELECT 1 FROM challenge_members me
@@ -59,16 +61,24 @@ function selectChallenge(fastify: FastifyInstance, userId: string) {
   `
 }
 
-/** Data-fim efetiva (ends_at ou starts_at + duração) como 'YYYY-MM-DD'. */
-async function getChallengeEndDate(
+/**
+ * Início e fim efetivos (ends_at ou starts_at + duração) como 'YYYY-MM-DD', e
+ * se o fim já passou no "hoje" de Brasília (S6).
+ */
+async function getChallengePeriod(
   fastify: FastifyInstance,
   challengeId: string,
-): Promise<string | null> {
-  const [row] = await fastify.db<{ end_date: string | null }[]>`
-    SELECT COALESCE(ends_at, starts_at + (duration_days || ' days')::interval)::DATE::TEXT AS end_date
+): Promise<{ start: string | null; end: string | null; ended: boolean }> {
+  const [row] = await fastify.db<
+    { start_date: string | null; end_date: string | null; ended: boolean | null }[]
+  >`
+    SELECT starts_at::DATE::TEXT AS start_date,
+      COALESCE(ends_at, starts_at + (duration_days || ' days')::interval)::DATE::TEXT AS end_date,
+      COALESCE(ends_at, starts_at + (duration_days || ' days')::interval)::DATE
+        < (now() AT TIME ZONE 'America/Sao_Paulo')::date AS ended
     FROM challenges WHERE id = ${challengeId}
   `
-  return row?.end_date ?? null
+  return { start: row?.start_date ?? null, end: row?.end_date ?? null, ended: row?.ended === true }
 }
 
 async function getChallengeById(
@@ -147,9 +157,8 @@ export async function joinChallenge(
     throw new AppError(409, 'CHALLENGE_NOT_ACTIVE', 'Este desafio não está ativo')
 
   // F2: não se entra em desafio que já terminou.
-  const endDate = await getChallengeEndDate(fastify, challengeId)
-  if (endDate && utcTodayString() > endDate)
-    throw new AppError(409, 'CHALLENGE_ENDED', 'Este desafio já foi encerrado')
+  const { ended } = await getChallengePeriod(fastify, challengeId)
+  if (ended) throw new AppError(409, 'CHALLENGE_ENDED', 'Este desafio já foi encerrado')
 
   const [existing] = await fastify.db<{ id: string; status: string }[]>`
     SELECT id, status FROM challenge_members WHERE challenge_id = ${challengeId} AND user_id = ${userId}
@@ -247,11 +256,15 @@ export async function getLeaderboard(
       current_streak: number
     }[]
   >`
-    SELECT cm.user_id, p.full_name, p.username, cm.current_streak
+    SELECT cm.user_id, p.full_name, p.username,
+      -- S1: sequência efetiva. Quem parou (último check-in antes de ontem em
+      -- Brasília) vale 0, sem depender de job que regrave current_streak.
+      CASE WHEN cm.last_check_in < (now() AT TIME ZONE 'America/Sao_Paulo')::date - 1
+        THEN 0 ELSE cm.current_streak END AS current_streak
     FROM challenge_members cm
     JOIN profiles p ON p.id = cm.user_id
     WHERE cm.challenge_id = ${challengeId} AND cm.status = 'active'
-    ORDER BY cm.current_streak DESC, cm.total_days DESC
+    ORDER BY 4 DESC, cm.total_days DESC, cm.user_id
   `
 
   return rows.map((r, i) => ({
@@ -301,22 +314,29 @@ export async function checkIn(
   const today = localDate ?? utcTodayString()
 
   // F2: check-in só até a data-fim — sem isso o desafio era "eterno".
-  const endDate = await getChallengeEndDate(fastify, challengeId)
+  const { start: startDate, end: endDate } = await getChallengePeriod(fastify, challengeId)
   if (endDate && today > endDate)
     throw new AppError(409, 'CHALLENGE_ENDED', 'Este desafio já foi encerrado')
+  if (startDate && today < startDate)
+    throw new AppError(409, 'CHALLENGE_NOT_STARTED', 'Este desafio ainda não começou')
 
   if (member.last_check_in === today)
     throw new AppError(409, 'ALREADY_CHECKED_IN', 'Você já fez check-in hoje neste desafio')
+  // S3: a janela de ±1 dia deixava alternar hoje/ontem (ou ontem, hoje e amanhã
+  // no mesmo dia real) e inflar a sequência. Check-in só anda para frente.
+  if (member.last_check_in && today < member.last_check_in)
+    throw new AppError(409, 'CHECK_IN_OUT_OF_ORDER', 'Já existe check-in em data posterior')
 
-  const [updated] = await fastify.db.begin(async (sql) => {
-    await sql`INSERT INTO challenge_days (member_id, check_date) VALUES (${member.id}, ${today}) ON CONFLICT DO NOTHING`
+  const updated = await fastify.db.begin(async (sql) => {
+    const inserted =
+      await sql`INSERT INTO challenge_days (member_id, check_date) VALUES (${member.id}, ${today}) ON CONFLICT DO NOTHING`
 
     // B3: a guarda `member.last_check_in === today` acima é check-then-act — dois
     // toques rápidos passavam os dois. A segunda transação lia last_check_in=hoje,
     // o CASE dava falso e caía no ELSE 1: quem tinha 5 dias de sequência ficava
     // com 1, e total_days incrementava em dobro. Repetimos a condição DENTRO do
     // UPDATE, onde ela é avaliada sob o lock da linha; 0 linhas = já fez hoje.
-    return sql<ChallengeMember[]>`
+    const [row] = await sql<ChallengeMember[]>`
       UPDATE challenge_members
       SET
         current_streak = CASE
@@ -327,17 +347,19 @@ export async function checkIn(
           WHEN last_check_in = ${today}::DATE - INTERVAL '1 day' THEN current_streak + 1
           ELSE 1
         END),
-        total_days = total_days + 1,
+        total_days = total_days + ${inserted.count},
         last_check_in = ${today},
         updated_at = NOW()
       WHERE id = ${member.id}
-        AND last_check_in IS DISTINCT FROM ${today}::DATE
+        AND (last_check_in IS NULL OR last_check_in < ${today}::DATE)
       RETURNING id, user_id, status, current_streak, best_streak, total_days, last_check_in::TEXT AS last_check_in
     `
+    // 0 linhas = outra requisição já registrou este dia (ou um posterior).
+    // Lança DENTRO da transação para desfazer o INSERT em challenge_days.
+    if (!row)
+      throw new AppError(409, 'ALREADY_CHECKED_IN', 'Você já fez check-in hoje neste desafio')
+    return row
   })
-
-  if (!updated)
-    throw new AppError(409, 'ALREADY_CHECKED_IN', 'Você já fez check-in hoje neste desafio')
 
   // L5: best-effort, como em joinChallenge. O check-in já está commitado neste
   // ponto — uma falha ao publicar o marco devolvia 500, o usuário lia "não foi

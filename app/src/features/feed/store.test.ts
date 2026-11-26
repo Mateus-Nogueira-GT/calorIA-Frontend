@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import { act, renderHook } from '@testing-library/react-native';
 import { useFeedStore } from './store';
+import { useAuthStore } from '@features/auth/store';
 import type { Post, FeedPage, Comment } from '@shared/services/feed.service';
 
 const author = { id: 'u1', name: 'Ana' };
@@ -154,5 +155,80 @@ describe('useFeedStore', () => {
     await act(() => result.current.loadComments('p1'));
 
     expect(result.current.commentsErrorByPost['p1']).toBe(false);
+  });
+
+  it('dois toques rápidos na curtida geram uma requisição só (S7)', async () => {
+    useFeedStore.setState({ posts: [post('p1')] });
+    let resolveLike!: (v: { likeCount: number; likedByMe: boolean }) => void;
+    feedService.like.mockReturnValue(
+      new Promise((r) => {
+        resolveLike = r;
+      }),
+    );
+
+    const first = useFeedStore.getState().toggleLike('p1');
+    const second = useFeedStore.getState().toggleLike('p1');
+    expect(feedService.like).toHaveBeenCalledTimes(1);
+    expect(feedService.unlike).not.toHaveBeenCalled();
+
+    resolveLike({ likeCount: 1, likedByMe: true });
+    await Promise.all([first, second]);
+    expect(useFeedStore.getState().posts[0]).toMatchObject({ likedByMe: true, likeCount: 1 });
+
+    // Terminada a requisição, o próximo toque volta a valer.
+    feedService.unlike.mockResolvedValue({ likeCount: 0, likedByMe: false });
+    await useFeedStore.getState().toggleLike('p1');
+    expect(feedService.unlike).toHaveBeenCalledTimes(1);
+  });
+
+  describe('troca de conta com o feed pendente (S10)', () => {
+    const USER_A = { id: 'uA', name: 'A', email: 'a@exemplo.com' };
+    const USER_B = { id: 'uB', name: 'B', email: 'b@exemplo.com' };
+    beforeEach(() => {
+      useAuthStore.getState().clearToken();
+      useAuthStore.getState().setToken('token-a', USER_A, 'refresh-a');
+    });
+    const switchAccount = () => {
+      useAuthStore.getState().clearToken();
+      useAuthStore.getState().setToken('token-b', USER_B, 'refresh-b');
+    };
+    const pendingPage = () => {
+      let resolve!: (p: FeedPage) => void;
+      feedService.getFeed.mockReturnValue(
+        new Promise<FeedPage>((r) => {
+          resolve = r;
+        }),
+      );
+      return (page: FeedPage) => resolve(page);
+    };
+
+    it('loadInitial descarta a resposta da conta anterior', async () => {
+      const resolve = pendingPage();
+      const loading = useFeedStore.getState().loadInitial();
+      switchAccount();
+      resolve({ posts: [post('pA')], nextCursor: 'cA' });
+      await loading;
+      expect(useFeedStore.getState().posts).toEqual([]);
+      expect(useFeedStore.getState().nextCursor).toBeNull();
+    });
+
+    it('refresh descarta a resposta da conta anterior', async () => {
+      const resolve = pendingPage();
+      const loading = useFeedStore.getState().refresh();
+      switchAccount();
+      resolve({ posts: [post('pA')], nextCursor: null });
+      await loading;
+      expect(useFeedStore.getState().posts).toEqual([]);
+    });
+
+    it('loadMore não anexa posts da conta anterior', async () => {
+      useFeedStore.setState({ posts: [post('p1')], nextCursor: 'c1' });
+      const resolve = pendingPage();
+      const loading = useFeedStore.getState().loadMore();
+      switchAccount();
+      resolve({ posts: [post('pA')], nextCursor: null });
+      await loading;
+      expect(useFeedStore.getState().posts).toEqual([]);
+    });
   });
 });

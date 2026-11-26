@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { decodeFeedCursor, encodeFeedCursor, toAchievement } from './feed.service.js'
+import { fakeFastify } from '../../shared/testing/fake-fastify.js'
+import { decodeFeedCursor, encodeFeedCursor, likePost, toAchievement } from './feed.service.js'
 
 describe('toAchievement', () => {
   it('metadata.achievement tem prioridade sobre o tipo', () => {
@@ -33,5 +34,35 @@ describe('cursor keyset do feed (G2)', () => {
     const d = decodeFeedCursor('2026-07-24 12:00:00+00')
     expect(d.createdAt).toBe('2026-07-24 12:00:00+00')
     expect(d.id).toBe('ffffffff-ffff-ffff-ffff-ffffffffffff')
+  })
+})
+
+describe('likePost — curtida idempotente (S8)', () => {
+  const post = [{ id: 'p1', user_id: 'autor' }]
+
+  it('INSERT com ON CONFLICT; sem linha inserida, não notifica de novo', async () => {
+    const { fastify, calls } = fakeFastify([
+      ['FROM feed_posts p', post],
+      ['INSERT INTO post_likes', []],
+      ['SELECT likes_count', [{ likes_count: 1 }]],
+    ])
+
+    await expect(likePost(fastify, 'eu', 'p1')).resolves.toEqual({ likeCount: 1, likedByMe: true })
+
+    const insert = calls.find((c) => c.sql.includes('INSERT INTO post_likes'))
+    expect(insert?.sql).toContain('ON CONFLICT')
+    expect(calls.some((c) => c.sql.includes('INSERT INTO notifications'))).toBe(false)
+  })
+
+  it('primeira curtida notifica o autor', async () => {
+    const { fastify, calls } = fakeFastify([
+      ['FROM feed_posts p', post],
+      ['INSERT INTO post_likes', [{}]],
+      ['SELECT likes_count', [{ likes_count: 1 }]],
+    ])
+
+    await likePost(fastify, 'eu', 'p1')
+
+    expect(calls.some((c) => c.sql.includes('INSERT INTO notifications'))).toBe(true)
   })
 })

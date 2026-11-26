@@ -2,14 +2,16 @@ import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Text } from '@shared/components';
 import { colors, typography, spacing } from '@theme';
-import { Meal } from '@shared/services/food-log.service';
-import { getDayTotals } from '@shared/utils/calories';
+import type { DayTotals } from '@shared/utils/calories';
 
-interface Props { meals: Meal[] }
+/**
+ * S4: recebe os MESMOS totais da barra de progresso (getDayTotals da tela, com
+ * as refeições do plano concluídas). Somar só o diário livre aqui fazia o
+ * "Total consumido" divergir da barra logo acima.
+ */
+interface Props { totals: DayTotals }
 
-export function DayMacroSummary({ meals }: Props): React.JSX.Element {
-  // Mesma regra da tela Hoje: ignora registro impossível e arredonda a soma.
-  const totals = getDayTotals({ freeMeals: meals });
+export function DayMacroSummary({ totals }: Props): React.JSX.Element {
 
   const items = [
     { label: 'Calorias', value: String(totals.calories), suffix: 'kcal', color: colors.brandPrimary },

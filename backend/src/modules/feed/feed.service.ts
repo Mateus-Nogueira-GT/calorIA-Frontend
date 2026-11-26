@@ -273,11 +273,13 @@ export async function likePost(
 ): Promise<LikeResult> {
   const post = await assertPostVisible(fastify, userId, postId)
 
-  const [existing] = await fastify.db<{ id: string }[]>`
-    SELECT id FROM post_likes WHERE post_id = ${postId} AND user_id = ${userId}
+  // S8: SELECT-then-INSERT deixava dois toques simultâneos baterem no UNIQUE
+  // (23505 → 500). ON CONFLICT torna a curtida idempotente; só notifica quem inseriu.
+  const inserted = await fastify.db`
+    INSERT INTO post_likes (post_id, user_id) VALUES (${postId}, ${userId})
+    ON CONFLICT (post_id, user_id) DO NOTHING
   `
-  if (!existing) {
-    await fastify.db`INSERT INTO post_likes (post_id, user_id) VALUES (${postId}, ${userId})`
+  if (inserted.count > 0) {
     try {
       await createNotification(fastify, {
         userId: post.user_id,
