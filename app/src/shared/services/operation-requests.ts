@@ -61,7 +61,8 @@ async function serialized<T>(owner: string, action: () => Promise<T>): Promise<T
 
 function reusable(item: PendingRequest, retry: boolean): boolean {
   if (completed.has(item.key) || superseded.has(item.key) || item.superseded) return false;
-  if (retry) return true;
+  // A janela é só do chat (R1); foto ambígua mantém a chave para o replay.
+  if (retry || item.type !== 'chat') return true;
   const age = Date.now() - Date.parse(item.created_at);
   return Number.isFinite(age) && age < REUSE_WINDOW_MS;
 }

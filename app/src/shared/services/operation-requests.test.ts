@@ -92,6 +92,15 @@ describe('durable operation metadata', () => {
       'request-key-old-00002',
     );
   });
+  it('a janela vale só para o chat: foto ambígua antiga ainda reaproveita a chave', async () => {
+    const probe = await beginRequest('photo', 'same-photo');
+    await finishRequest(probe, mockUser.user.id);
+    const old = new Date(Date.now() - REUSE_WINDOW_MS - 1000).toISOString();
+    store([
+      { key: 'request-key-photo-0001', type: 'photo', signature: probe.signature, created_at: old },
+    ]);
+    expect((await beginRequest('photo', 'same-photo')).key).toBe('request-key-photo-0001');
+  });
   it('serializes concurrent metadata mutations and retains different unresolved payloads', async () => {
     await Promise.all([
       beginRequest('photo', 'private-photo-1'),
