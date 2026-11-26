@@ -73,6 +73,22 @@ const envSchema = z
       z.string().url().optional(),
     ),
 
+    // A4 do pente fino: cadastro por e-mail exige confirmar o e-mail antes da
+    // sessão. Desligada (padrão) = conta já confirmada e sessão na resposta,
+    // como as versões instaladas do app esperam. Não protege contas antigas.
+    AUTH_REQUIRE_EMAIL_CONFIRMATION: z.preprocess(
+      (v) => (v === '' || v == null ? undefined : v),
+      z
+        .enum(['true', 'false'])
+        .default('false')
+        .transform((v) => v === 'true'),
+    ),
+    // Para onde o link de confirmação leva. Vazio → Site URL do projeto. Precisa
+    // estar na allow-list de Redirect URLs do Supabase.
+    AUTH_EMAIL_CONFIRMATION_REDIRECT_URL: z.preprocess(
+      (v) => (v === '' || v == null ? undefined : v),
+      z.string().url().optional(),
+    ),
     // A5 do pente fino: /auth/reset-password só com a sessão de recuperação do
     // link do e-mail. `log` (padrão) só registra o formato do `amr` e se haveria
     // recusa; `enforce` exige amr recovery/otp de até 1 h (senão 401). Ligar

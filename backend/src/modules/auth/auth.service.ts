@@ -2,7 +2,13 @@ import type { Session, User } from '@supabase/supabase-js'
 import type { FastifyInstance } from 'fastify'
 import { env } from '../../shared/env.js'
 import { AppError } from '../../shared/errors.js'
-import type { AuthResponse, LoginBody, RefreshBody, RegisterBody } from './auth.schemas.js'
+import type {
+  AuthResponse,
+  ConfirmationRequired,
+  LoginBody,
+  RefreshBody,
+  RegisterBody,
+} from './auth.schemas.js'
 
 /** Mapeia uma sessão do Supabase para o shape de resposta de auth da API. */
 function sessionToAuthResponse(session: Session, user: User): AuthResponse {
@@ -21,17 +27,20 @@ function sessionToAuthResponse(session: Session, user: User): AuthResponse {
 
 /**
  * Cadastra um novo usuário via Supabase Auth.
- * Após criar o usuário, já retorna a sessão autenticada.
+ * Flag desligada (padrão): conta já confirmada e sessão na resposta.
+ * A4, AUTH_REQUIRE_EMAIL_CONFIRMATION=true: conta sem confirmação, e-mail de
+ * confirmação disparado e resposta sem sessão. O login com e-mail não
+ * confirmado já devolve 403 EMAIL_NOT_CONFIRMED.
  */
 export async function registerUser(
   fastify: FastifyInstance,
   data: RegisterBody,
-): Promise<AuthResponse> {
-  // Cria o usuário via admin (confirma o email automaticamente)
+): Promise<AuthResponse | ConfirmationRequired> {
+  const requireConfirmation = env.AUTH_REQUIRE_EMAIL_CONFIRMATION
   const { data: createdUser, error: createError } = await fastify.supabase.auth.admin.createUser({
     email: data.email,
     password: data.password,
-    email_confirm: true,
+    email_confirm: !requireConfirmation,
     user_metadata: { name: data.name },
   })
 
@@ -59,8 +68,50 @@ export async function registerUser(
   // Deriva um username (a busca/pedido de amizade dependem dele; sem isso fica NULL).
   await ensureUsername(fastify, createdUser.user.id, data.email)
 
+  if (requireConfirmation) {
+    // O admin.createUser não manda e-mail. Falha aqui não desfaz o cadastro:
+    // um 500 deixaria a pessoa presa no 409 ao tentar de novo; o app oferece
+    // "Reenviar" (POST /auth/resend-confirmation).
+    await sendSignupConfirmation(fastify, data.email)
+    return { status: 'confirmation_required', email: data.email }
+  }
+
   // Faz login para retornar os tokens
   return loginUser(fastify, { email: data.email, password: data.password })
+}
+
+/** Dispara o e-mail de confirmação do Supabase. Best-effort; o log não leva o e-mail. */
+async function sendSignupConfirmation(fastify: FastifyInstance, email: string): Promise<void> {
+  const emailRedirectTo = env.AUTH_EMAIL_CONFIRMATION_REDIRECT_URL
+  try {
+    const { error } = await fastify.supabaseAuth.auth.resend({
+      type: 'signup',
+      email,
+      ...(emailRedirectTo ? { options: { emailRedirectTo } } : {}),
+    })
+    if (error) {
+      const { status, code } = error as { status?: number; code?: string }
+      fastify.log.warn({ confirmation_email_failed: { status, code } }, 'confirmation_email_failed')
+    }
+  } catch (err) {
+    fastify.log.warn(
+      { confirmation_email_failed: { error: (err as Error)?.name ?? 'unknown' } },
+      'confirmation_email_failed',
+    )
+  }
+}
+
+/**
+ * Reenvia o e-mail de confirmação do cadastro. Resposta sempre neutra (não
+ * revela se o e-mail existe ou já foi confirmado). Com a flag desligada não
+ * chama o Supabase: toda conta nova já nasce confirmada.
+ */
+export async function resendConfirmation(
+  fastify: FastifyInstance,
+  email: string,
+): Promise<{ success: boolean }> {
+  if (env.AUTH_REQUIRE_EMAIL_CONFIRMATION) await sendSignupConfirmation(fastify, email)
+  return { success: true }
 }
 
 /**

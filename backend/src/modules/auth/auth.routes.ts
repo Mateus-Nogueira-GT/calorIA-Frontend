@@ -9,6 +9,8 @@ import {
   logoutResponseSchema,
   refreshBodySchema,
   registerBodySchema,
+  registerResponseSchema,
+  resendConfirmationBodySchema,
   resetPasswordBodySchema,
   successResponseSchema,
 } from './auth.schemas.js'
@@ -20,6 +22,7 @@ import {
   logout,
   refreshSession,
   registerUser,
+  resendConfirmation,
   resetPassword,
 } from './auth.service.js'
 
@@ -36,10 +39,12 @@ const authRoutes: FastifyPluginAsyncZod = async (fastify) => {
       schema: {
         tags: ['Auth'],
         summary: 'Criar conta',
-        description: 'Registra um novo usuário e retorna tokens de autenticação.',
+        description:
+          'Registra um novo usuário. Retorna os tokens; com AUTH_REQUIRE_EMAIL_CONFIRMATION=true, ' +
+          'retorna { status: "confirmation_required", email } e envia o e-mail de confirmação.',
         body: registerBodySchema,
         response: {
-          201: authResponseSchema,
+          201: registerResponseSchema,
           409: errorSchema.describe('Email já cadastrado'),
           422: errorSchema.describe('Dados inválidos'),
         },
@@ -164,6 +169,26 @@ const authRoutes: FastifyPluginAsyncZod = async (fastify) => {
     },
     async (request, reply) => {
       return reply.send(await forgotPassword(fastify, request.body.email))
+    },
+  )
+
+  /**
+   * POST /auth/resend-confirmation
+   * Reenvia o e-mail de confirmação do cadastro. Resposta idêntica com ou sem conta.
+   */
+  fastify.post(
+    '/resend-confirmation',
+    {
+      config: { rateLimit: { max: 5, timeWindow: '1 minute' } },
+      schema: {
+        tags: ['Auth'],
+        summary: 'Reenviar e-mail de confirmação',
+        body: resendConfirmationBodySchema,
+        response: { 200: successResponseSchema },
+      },
+    },
+    async (request, reply) => {
+      return reply.send(await resendConfirmation(fastify, request.body.email))
     },
   )
 

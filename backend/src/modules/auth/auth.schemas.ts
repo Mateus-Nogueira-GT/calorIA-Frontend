@@ -57,6 +57,10 @@ export const resetPasswordBodySchema = z.object({
     .max(100),
 })
 
+export const resendConfirmationBodySchema = z.object({
+  email: z.string().email('Email inválido'),
+})
+
 export const successResponseSchema = z.object({
   success: z.boolean(),
 })
@@ -79,6 +83,15 @@ export const authResponseSchema = z.object({
   user: authUserSchema,
 })
 
+/** A4: cadastro com AUTH_REQUIRE_EMAIL_CONFIRMATION=true. Sem sessão. */
+export const confirmationRequiredSchema = z.object({
+  status: z.literal('confirmation_required'),
+  email: z.string().email(),
+})
+
+/** Com a flag desligada, a resposta continua sendo a sessão (authResponseSchema). */
+export const registerResponseSchema = z.union([authResponseSchema, confirmationRequiredSchema])
+
 export const errorSchema = z.object({
   error: z.string(),
   message: z.string(),
@@ -90,3 +103,4 @@ export type RegisterBody = z.infer<typeof registerBodySchema>
 export type LoginBody = z.infer<typeof loginBodySchema>
 export type RefreshBody = z.infer<typeof refreshBodySchema>
 export type AuthResponse = z.infer<typeof authResponseSchema>
+export type ConfirmationRequired = z.infer<typeof confirmationRequiredSchema>
