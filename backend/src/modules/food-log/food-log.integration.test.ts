@@ -115,7 +115,6 @@ if (
       fat: 25,
       fiber: 8,
       mealType: 'lunch',
-      date: '2026-11-26',
     })
     const count = async (userId: string, name: string) => {
       const [row] =
@@ -183,20 +182,13 @@ if (
       await planMeal('Jantar do plano', 700, null)
       // 23h30 de Brasília do dia 24 = 02h30 UTC do dia 25: é do dia 24 no fuso do cliente.
       await planMeal('Ceia do plano', 300, '2026-11-25T02:30:00Z')
-      await addMeal(
-        fastify,
-        u,
-        addMealBodySchema.parse({
-          name: 'Banana',
-          calories: 100,
-          protein: 1,
-          carbs: 23,
-          fat: 0,
-          fiber: 2,
-          mealType: 'snack',
-          date: '2026-11-25',
-        }),
-      )
+      // Refeição livre por SQL: data fixa, fora da janela de datas do POST.
+      const [banana] = await db`
+        INSERT INTO meals (user_id, meal_type, meal_date, name)
+        VALUES (${u}, 'afternoon_snack', '2026-11-25', 'Banana') RETURNING id`
+      await db`
+        INSERT INTO meal_items (meal_id, food_name, quantity_g, calories, protein_g, carbs_g, fat_g, fiber_g, source)
+        VALUES (${banana.id}, 'Banana', 100, 100, 1, 23, 0, 2, 'manual')`
 
       const summary = await getSummary(fastify, u, '2026-11-20', '2026-11-26', {
         tzOffsetMinutes: -180,
