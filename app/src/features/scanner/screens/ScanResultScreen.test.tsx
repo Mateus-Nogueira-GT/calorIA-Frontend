@@ -87,7 +87,9 @@ describe('ScanResultScreen', () => {
           carbs: 44,
           fat: 1,
           confidence: 0.4,
-          alternatives: [{ name: 'Feijão', calories: 150, protein: 9, carbs: 27, fat: 1 }],
+          alternatives: [
+            { name: 'Feijão', calories: 150, protein: 9, carbs: 27, fat: 1, fiber: 8 },
+          ],
         },
       ],
     });
