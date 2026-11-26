@@ -16,7 +16,7 @@
 1. [x] R1 e R2: `operation-requests.ts`, `coach.service.ts` e `retryLastAction` no store do coach, com
        testes de app. Commit.
 2. [ ] R3: operação de custo zero para conta ilimitada, com integração Postgres e unit. Commit.
-3. [ ] R4 e R5: `handleDietGeneration` persiste na liquidação e o parse fica protegido, com testes
+3. [x] R4 e R5: `handleDietGeneration` persiste na liquidação e o parse fica protegido, com testes
        vitest. Commit.
 4. [ ] R8: `persistHistory` passa a anexar, com teste de integração Postgres e os testes unit de chat
        ajustados. Commit.

@@ -8,7 +8,7 @@ import { env } from '../../shared/env.js'
 import { AppError } from '../../shared/errors.js'
 import { assessSafety, describeInvalidFields } from '../../shared/guardrails/index.js'
 import { type CreditTransaction, runCreditOperation } from '../credits/credits.service.js'
-import { createDietJob, getPendingJob } from '../diets/jobs.service.js'
+import { createDietJob, getPendingJob, insertDietJob } from '../diets/jobs.service.js'
 import {
   type ActionFeature,
   type ActionResult,
@@ -344,6 +344,17 @@ interface ChatHistoryMessage {
   at?: string
 }
 
+/**
+ * Turno pronto para gravar na liquidação do crédito: histórico, status e as
+ * escritas que dependem dele (job de dieta e perfil, R4 de 25/11).
+ */
+interface DeferredTurn {
+  history: ChatHistoryMessage[]
+  status: string
+  extra?: (sql: CreditTransaction) => Promise<void>
+}
+type SaveTurn = (status: string, extra?: DeferredTurn['extra']) => Promise<void>
+
 const said = (role: ChatHistoryMessage['role'], content: string): ChatHistoryMessage => ({
   role,
   content,
@@ -361,7 +372,7 @@ export async function sendChatMessage(
   // The lease is account-wide when starting a conversation, and conversation-wide
   // thereafter. It is acquired by the wallet runner before history is read.
   const conversationId = data.conversation_id ?? randomUUID()
-  let completedHistory: ChatHistoryMessage[] | undefined
+  let deferred: DeferredTurn | undefined
   const { result, receipt } = await runCreditOperation(
     fastify,
     {
@@ -378,15 +389,21 @@ export async function sendChatMessage(
         userId,
         { ...data, conversation_id: conversationId },
         env.CREDITS_ENFORCEMENT_ENABLED
-          ? (history) => {
-              completedHistory = history
+          ? (turn) => {
+              deferred = turn
             }
           : undefined,
       ),
     async (tx) => {
-      if (completedHistory) {
-        await persistHistory(fastify, userId, conversationId, completedHistory, 'collecting', tx)
+      if (!deferred) return
+      const { history, status, extra } = deferred
+      const write = async (sql: CreditTransaction) => {
+        await extra?.(sql)
+        await persistHistory(fastify, userId, conversationId, history, status, sql)
       }
+      // Conta ilimitada liquida sem transação (fastify.db): job e turno juntos.
+      if (extra && tx === fastify.db) await fastify.db.begin(write)
+      else await write(tx)
     },
   )
   return receipt ? { ...result, credit_receipt: receipt } : result
@@ -396,7 +413,7 @@ async function sendChatMessageCore(
   fastify: FastifyInstance,
   userId: string,
   data: ChatMessageBody,
-  deferHistory?: (history: ChatHistoryMessage[]) => void,
+  deferHistory?: (turn: DeferredTurn) => void,
 ): Promise<ChatResponse> {
   // OP2: teto diário de tokens antes de qualquer chamada de IA — usuário acima
   // da cota não paga nem a primeira chamada do turno.
@@ -418,6 +435,10 @@ async function sendChatMessageCore(
   )
 
   history.push(said('user', data.message))
+  const save: SaveTurn = async (status, extra) => {
+    if (deferHistory) deferHistory({ history, status, extra })
+    else await persistHistory(fastify, userId, conversationId, history, status)
+  }
 
   // Personaliza o tom do coach conforme a preferência do usuário.
   const [profile] = await fastify.db<{ coach_personality: string | null }[]>`
@@ -557,8 +578,7 @@ async function sendChatMessageCore(
       : null
     if (action) {
       history.push(said('assistant', action.message))
-      if (deferHistory) deferHistory(history)
-      else await persistHistory(fastify, userId, conversationId, history, 'collecting')
+      await save('collecting')
       return {
         conversation_id: conversationId,
         message: {
@@ -581,8 +601,7 @@ async function sendChatMessageCore(
       }
       const proposal = await proposeMealCorrection(fastify, userId, rawArgs, context.date)
       history.push(said('assistant', proposal.message))
-      if (deferHistory) deferHistory(history)
-      else await persistHistory(fastify, userId, conversationId, history, 'collecting')
+      await save('collecting')
       return {
         conversation_id: conversationId,
         message: {
@@ -605,8 +624,7 @@ async function sendChatMessageCore(
       }
       const correction = await applyMealCorrection(fastify, userId, rawArgs, context.date)
       history.push(said('assistant', correction.message))
-      if (deferHistory) deferHistory(history)
-      else await persistHistory(fastify, userId, conversationId, history, 'collecting')
+      await save('collecting')
       return {
         conversation_id: conversationId,
         message: {
@@ -629,6 +647,8 @@ async function sendChatMessageCore(
         history,
         toolCall,
         data.tzOffsetMinutes,
+        save,
+        Boolean(deferHistory),
       )
     }
     fastify.log.warn(
@@ -645,8 +665,7 @@ async function sendChatMessageCore(
     throw new AppError(502, 'AI_TRUNCATED', 'A IA devolveu uma resposta vazia. Tente novamente.')
   }
   history.push(said('assistant', assistantMessage))
-  if (deferHistory) deferHistory(history)
-  else await persistHistory(fastify, userId, conversationId, history, 'collecting')
+  await save('collecting')
 
   return {
     conversation_id: conversationId,
@@ -697,9 +716,22 @@ async function handleDietGeneration(
   history: ChatHistoryMessage[],
   toolCall: OpenAI.Chat.ChatCompletionMessageToolCall,
   tzOffsetMinutes: number | undefined,
+  save: SaveTurn,
+  deferred: boolean,
 ): Promise<ChatResponse> {
-  // Valida os dados coletados pela IA
-  const rawArgs = JSON.parse(toolCall.function.arguments) as unknown
+  // Valida os dados coletados pela IA. R5 (25/11): argumento malformado é erro
+  // de IA (sem cobrança e sem gravar), não SyntaxError/503.
+  let rawArgs: unknown
+  try {
+    rawArgs = JSON.parse(toolCall.function.arguments)
+  } catch {
+    fastify.log.warn({ userId }, 'Argumentos de collect_diet_data malformados')
+    throw new AppError(
+      502,
+      'AI_TRUNCATED',
+      'A IA não conseguiu concluir a resposta. Tente novamente.',
+    )
+  }
   const parseResult = collectedUserDataSchema.safeParse(rawArgs)
 
   if (!parseResult.success) {
@@ -710,7 +742,7 @@ async function handleDietGeneration(
     // S4: pergunta específica por campo (altura em metros, peso implausível…).
     const fallbackMsg = describeInvalidFields(parseResult.error.issues, rawArgs)
     history.push(said('assistant', fallbackMsg))
-    await persistHistory(fastify, userId, conversationId, history, 'collecting')
+    await save('collecting')
     return {
       conversation_id: conversationId,
       message: { role: 'assistant', content: fallbackMsg, created_at: new Date().toISOString() },
@@ -729,7 +761,7 @@ async function handleDietGeneration(
   if (!safety.ok) {
     fastify.log.info({ userId, reason: safety.reason }, 'Geração de dieta recusada por segurança')
     history.push(said('assistant', safety.userMessage))
-    await persistHistory(fastify, userId, conversationId, history, 'collecting')
+    await save('collecting')
     return {
       conversation_id: conversationId,
       message: {
@@ -750,30 +782,94 @@ async function handleDietGeneration(
   // ── Enfileira o job de geração (gera 1 dia por chamada, via polling) ──────
   // Não gera os 7 dias aqui: estouraria o limite de tempo da função serverless.
   let job: { jobId: string; dietId: string }
-  try {
-    job = await createDietJob(fastify, userId, conversationId, userData)
-  } catch (err) {
-    fastify.log.error({ err }, 'Erro ao criar job de geração de dieta')
-    const retryMsg =
-      'Tive um problema ao iniciar sua dieta agora. Podemos tentar de novo em instantes?'
-    history.push(said('assistant', retryMsg))
-    await persistHistory(fastify, userId, conversationId, history, 'collecting')
-    return {
-      conversation_id: conversationId,
-      message: { role: 'assistant', content: retryMsg, created_at: new Date().toISOString() },
-      diet_generated: false,
-      diet_id: null,
-      diet_job_id: null,
+  let reused = false
+  if (deferred) {
+    // R4 (25/11): com cobrança, job, perfil e histórico só são gravados na
+    // liquidação; os ids saem agora porque vão na resposta (que é o replay).
+    // Geração já em andamento é reaproveitada, como no createDietJob.
+    const running = await getPendingJob(fastify, userId)
+    reused = running !== null
+    job = running
+      ? { jobId: running.id, dietId: running.diet_id }
+      : { jobId: randomUUID(), dietId: randomUUID() }
+  } else {
+    try {
+      job = await createDietJob(fastify, userId, conversationId, userData)
+    } catch (err) {
+      fastify.log.error({ err }, 'Erro ao criar job de geração de dieta')
+      const retryMsg =
+        'Tive um problema ao iniciar sua dieta agora. Podemos tentar de novo em instantes?'
+      history.push(said('assistant', retryMsg))
+      await save('collecting')
+      return {
+        conversation_id: conversationId,
+        message: { role: 'assistant', content: retryMsg, created_at: new Date().toISOString() },
+        diet_generated: false,
+        diet_id: null,
+        diet_job_id: null,
+      }
     }
+    await updateProfileFromDietData(fastify.db, userId, userData)
   }
 
-  // Atualiza perfil do usuário com os dados coletados.
-  // goal: o cadastro aceita 'health', que a tool só consegue expressar como
-  // 'maintain' (mesma meta) — não rebaixa 'health' para 'maintain'.
-  // birth_date: aproximação (1º de julho do ano correspondente à idade) gravada
-  // APENAS se ainda for NULL — permite pré-carregar a idade em conversas
-  // futuras sem sobrescrever uma data real informada pelo usuário (F6).
-  await fastify.db`
+  // Sinaliza que está gerando; o front faz polling em /diets/jobs/:id/step.
+  history.push(said('assistant', userMessage))
+  // C2: marcador só no histórico — a resposta ao app continua sendo só a
+  // mensagem do coach, mas nas próximas rodadas o modelo vê que já gerou.
+  history.push(said('assistant', formatDietStartedMarker(new Date(), tzOffsetMinutes)))
+  await save(
+    'generating',
+    deferred
+      ? async (sql) => {
+          // Mesmo guard do createDietJob, agora sob a transação: outra geração
+          // que começou enquanto a IA respondia recusa este turno (sem cobrança).
+          const [running] = reused
+            ? []
+            : await sql<{ id: string }[]>`
+                SELECT id FROM diet_jobs
+                WHERE user_id = ${userId} AND status IN ('pending', 'running')
+                LIMIT 1
+              `
+          if (running)
+            throw new AppError(409, 'CONVERSATION_BUSY', 'Sua dieta já está sendo gerada.')
+          try {
+            if (!reused) await insertDietJob(sql, userId, conversationId, userData, job)
+            await updateProfileFromDietData(sql, userId, userData)
+          } catch (err) {
+            fastify.log.error({ err }, 'Erro ao criar job de geração de dieta')
+            throw new AppError(
+              500,
+              'HISTORY_WRITE_FAILED',
+              'Não consegui salvar a conversa. Envie a mensagem de novo.',
+            )
+          }
+        }
+      : undefined,
+  )
+
+  fastify.log.info({ userId, jobId: job.jobId }, 'Job de dieta enfileirado')
+
+  return {
+    conversation_id: conversationId,
+    message: { role: 'assistant', content: userMessage, created_at: new Date().toISOString() },
+    diet_generated: false,
+    diet_id: null,
+    diet_job_id: job.jobId,
+  }
+}
+
+// Atualiza perfil do usuário com os dados coletados.
+// goal: o cadastro aceita 'health', que a tool só consegue expressar como
+// 'maintain' (mesma meta) — não rebaixa 'health' para 'maintain'.
+// birth_date: aproximação (1º de julho do ano correspondente à idade) gravada
+// APENAS se ainda for NULL — permite pré-carregar a idade em conversas
+// futuras sem sobrescrever uma data real informada pelo usuário (F6).
+async function updateProfileFromDietData(
+  sql: CreditTransaction,
+  userId: string,
+  userData: CollectedUserData,
+): Promise<void> {
+  await sql`
     UPDATE profiles
     SET
       weight_kg      = ${userData.weight_kg},
@@ -788,23 +884,6 @@ async function handleDietGeneration(
       updated_at     = NOW()
     WHERE id = ${userId}
   `
-
-  // Sinaliza que está gerando; o front faz polling em /diets/jobs/:id/step.
-  history.push(said('assistant', userMessage))
-  // C2: marcador só no histórico — a resposta ao app continua sendo só a
-  // mensagem do coach, mas nas próximas rodadas o modelo vê que já gerou.
-  history.push(said('assistant', formatDietStartedMarker(new Date(), tzOffsetMinutes)))
-  await persistHistory(fastify, userId, conversationId, history, 'generating')
-
-  fastify.log.info({ userId, jobId: job.jobId }, 'Job de dieta enfileirado')
-
-  return {
-    conversation_id: conversationId,
-    message: { role: 'assistant', content: userMessage, created_at: new Date().toISOString() },
-    diet_generated: false,
-    diet_id: null,
-    diet_job_id: job.jobId,
-  }
 }
 
 // ─── Histórico de chat ────────────────────────────────────────────────────────

@@ -15,6 +15,7 @@ import { AppError } from '../../shared/errors.js'
 import { mealTypesFor, reconcileDay } from '../../shared/guardrails/day.js'
 import { type DayGuardrailResult, applyDayGuardrails } from '../../shared/guardrails/index.js'
 import { DIET_COMPLETED_MARKER } from '../chat/history-markers.js'
+import type { CreditTransaction } from '../credits/credits.service.js'
 import { createSystemPost } from '../feed/feed.service.js'
 import { hasFiberColumns } from './fiber-columns.js'
 
@@ -188,33 +189,44 @@ export async function createDietJob(
     return { jobId: emAndamento.id, dietId: emAndamento.diet_id }
   }
 
+  const ids = { jobId: randomUUID(), dietId: randomUUID() }
+  await fastify.db.begin((sql) => insertDietJob(sql, userId, conversationId, userData, ids))
+  return ids
+}
+
+/**
+ * Grava o cabeçalho da dieta (draft) e o job com ids já escolhidos. O chat
+ * cobrado chama direto, dentro da transação de liquidação (R4, 25/11): se a
+ * liquidação falhar, nada fica gravado.
+ */
+export async function insertDietJob(
+  sql: CreditTransaction,
+  userId: string,
+  conversationId: string,
+  userData: CollectedUserData,
+  ids: { jobId: string; dietId: string },
+): Promise<void> {
   const t = computeTargets(userData)
-  const dietId = randomUUID()
-  const jobId = randomUUID()
+  const { dietId, jobId } = ids
   const inputJson = JSON.stringify(userData)
-
-  await fastify.db.begin(async (sql) => {
-    await sql`
-      INSERT INTO diets (
-        id, user_id, conversation_id, name, description,
-        user_weight_kg, user_height_cm, user_age, user_gender, user_goal, user_activity_level,
-        tdee_calories, target_calories, target_protein_g, target_carbs_g, target_fat_g,
-        status, ai_model
-      ) VALUES (
-        ${dietId}, ${userId}, ${conversationId}, 'Plano personalizado', 'Gerado pelo Coach IA',
-        ${userData.weight_kg}, ${userData.height_cm}, ${userData.age},
-        ${userData.gender}, ${userData.goal}, ${userData.activity_level},
-        ${t.tdee}, ${t.targetCalories}, ${t.protein}, ${t.carbs}, ${t.fat},
-        'draft', ${env.OPENAI_DIET_MODEL}
-      )
-    `
-    await sql`
-      INSERT INTO diet_jobs (id, user_id, conversation_id, diet_id, status, input, total_days, days_completed)
-      VALUES (${jobId}, ${userId}, ${conversationId}, ${dietId}, 'pending', ${inputJson}::jsonb, ${TOTAL_DAYS}, 0)
-    `
-  })
-
-  return { jobId, dietId }
+  await sql`
+    INSERT INTO diets (
+      id, user_id, conversation_id, name, description,
+      user_weight_kg, user_height_cm, user_age, user_gender, user_goal, user_activity_level,
+      tdee_calories, target_calories, target_protein_g, target_carbs_g, target_fat_g,
+      status, ai_model
+    ) VALUES (
+      ${dietId}, ${userId}, ${conversationId}, 'Plano personalizado', 'Gerado pelo Coach IA',
+      ${userData.weight_kg}, ${userData.height_cm}, ${userData.age},
+      ${userData.gender}, ${userData.goal}, ${userData.activity_level},
+      ${t.tdee}, ${t.targetCalories}, ${t.protein}, ${t.carbs}, ${t.fat},
+      'draft', ${env.OPENAI_DIET_MODEL}
+    )
+  `
+  await sql`
+    INSERT INTO diet_jobs (id, user_id, conversation_id, diet_id, status, input, total_days, days_completed)
+    VALUES (${jobId}, ${userId}, ${conversationId}, ${dietId}, 'pending', ${inputJson}::jsonb, ${TOTAL_DAYS}, 0)
+  `
 }
 
 // ─── Geração de 1 dia (1 chamada GPT-5, cabe no limite serverless) ───────────
