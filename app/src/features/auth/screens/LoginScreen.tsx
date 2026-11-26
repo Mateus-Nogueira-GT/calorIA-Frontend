@@ -74,9 +74,31 @@ export function LoginScreen({ navigation }: AuthStackScreenProps<'Login'>): Reac
       const res = await authService.login({ email, password });
       setToken(res.token, res.user, res.refreshToken);
     } catch (err) {
+      const code = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
+      if (code === 'EMAIL_NOT_CONFIRMED') {
+        // A4: quem fechou o app antes de confirmar chega aqui; o link pode ter
+        // expirado ou ido para o spam.
+        Alert.alert('Não foi possível entrar', loginErrorMessage(err), [
+          { text: 'OK', style: 'cancel' },
+          { text: 'Reenviar e-mail', onPress: () => { resendConfirmation(email); } },
+        ]);
+        return;
+      }
       Alert.alert('Não foi possível entrar', loginErrorMessage(err));
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function resendConfirmation(target: string) {
+    try {
+      await authService.resendConfirmation(target);
+      Alert.alert(
+        'E-mail reenviado',
+        'Se o cadastro ainda estiver pendente, um novo link chega em instantes. Confira também o spam.',
+      );
+    } catch {
+      Alert.alert('Erro', 'Não foi possível reenviar agora. Tente novamente em instantes.');
     }
   }
 

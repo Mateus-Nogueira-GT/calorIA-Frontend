@@ -94,3 +94,42 @@ describe('authService.profileSetup', () => {
     }
   });
 });
+
+describe('authService.register (A4)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('resposta com sessão segue mapeada como hoje', async () => {
+    api.post.mockResolvedValue({
+      data: {
+        access_token: 'a',
+        refresh_token: 'r',
+        token_type: 'bearer',
+        expires_in: 3600,
+        user: { id: 'u1', email: 'ana@x.com', name: 'Ana' },
+      },
+    });
+    const res = await authService.register({ name: 'Ana', email: 'ana@x.com', password: 'senha12345' });
+    expect(res).toEqual({
+      token: 'a',
+      refreshToken: 'r',
+      user: { id: 'u1', name: 'Ana', email: 'ana@x.com' },
+    });
+  });
+
+  it('confirmation_required vira resultado sem sessão', async () => {
+    api.post.mockResolvedValue({ data: { status: 'confirmation_required', email: 'ana@x.com' } });
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { isConfirmationRequired } = require('./auth.service');
+    const res = await authService.register({ name: 'Ana', email: 'ana@x.com', password: 'senha12345' });
+    expect(res).toEqual({ status: 'confirmation_required', email: 'ana@x.com' });
+    expect(isConfirmationRequired(res)).toBe(true);
+  });
+
+  it('resendConfirmation posta o e-mail na rota nova', async () => {
+    api.post.mockResolvedValue({ data: { success: true } });
+    await expect(authService.resendConfirmation('ana@x.com')).resolves.toEqual({ success: true });
+    expect(api.post).toHaveBeenCalledWith('/auth/resend-confirmation', { email: 'ana@x.com' });
+  });
+});

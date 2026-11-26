@@ -32,9 +32,11 @@ jest.mock('@react-navigation/native', () => ({
 // As factories de jest.mock são içadas acima dos `const mock*`: referenciar a
 // função direto congela um valor indefinido. Chamar por dentro de uma arrow
 // adia a leitura para o momento da chamada (padrão já usado no apple-signin).
+const mockResendConfirmation = jest.fn().mockResolvedValue({ success: true });
 jest.mock('@shared/services/auth.service', () => ({
   authService: {
     login: (...args: unknown[]) => mockLogin(...args),
+    resendConfirmation: (...args: unknown[]) => mockResendConfirmation(...args),
     loginWithApple: (...args: unknown[]) => mockLoginWithApple(...args),
   },
 }));
@@ -176,6 +178,33 @@ describe('LoginScreen', () => {
       ),
     );
     expect(alertSpy).not.toHaveBeenCalledWith(expect.anything(), expect.stringContaining('Credenciais'));
+    alertSpy.mockRestore();
+  });
+
+  // A4: quem fechou o app antes de confirmar volta pelo login e recebe 403.
+  it('e-mail não confirmado: oferece reenviar o link', async () => {
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    mockLogin.mockRejectedValueOnce({
+      isAxiosError: true,
+      response: { status: 403, data: { error: 'EMAIL_NOT_CONFIRMED' } },
+    });
+    const { getByPlaceholderText, getByTestId } = render(
+      <LoginScreen navigation={{ navigate: mockNavigate, replace: mockReplace } as never} route={{} as never} />,
+    );
+    fireEvent.changeText(getByPlaceholderText('seu@email.com'), 'joao@test.com');
+    fireEvent.changeText(getByPlaceholderText('Sua senha'), 'senha12345');
+    fireEvent.press(getByTestId('login-btn'));
+    await waitFor(() =>
+      expect(alertSpy).toHaveBeenCalledWith(
+        'Não foi possível entrar',
+        expect.stringContaining('confirmar seu e-mail'),
+        expect.arrayContaining([expect.objectContaining({ text: 'Reenviar e-mail' })]),
+      ),
+    );
+    const buttons = alertSpy.mock.calls[0][2] as { text: string; onPress?: () => void }[];
+    buttons.find((b) => b.text === 'Reenviar e-mail')?.onPress?.();
+    await waitFor(() => expect(mockResendConfirmation).toHaveBeenCalledWith('joao@test.com'));
+    expect(mockSetToken).not.toHaveBeenCalled();
     alertSpy.mockRestore();
   });
 });
