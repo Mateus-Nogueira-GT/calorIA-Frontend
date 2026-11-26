@@ -12,7 +12,7 @@
 
 ## Tasks
 
-1. **R1 (C1).** Teste em `scan-portion.test.ts` e em `features/scanner/store.test.ts`, com 6000 → 600 g.
+1. [x] **R1 (C1).** Teste em `scan-portion.test.ts` e em `features/scanner/store.test.ts`, com 6000 → 600 g.
    Corrigir `scaleScanPortion`.
 2. **R2 (C2).** Teste em `features/coach/store.actions.test.ts`, com `addMeal` pendente e troca de sessão.
    Capturar o dono, passá-lo ao `addMeal` e proteger as gravações no store.

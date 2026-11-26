@@ -20,11 +20,16 @@ export function isValidScanWeight(value: number): boolean {
   return Number.isFinite(value) && value >= 0.1 && value <= MAX_SCAN_WEIGHT_GRAMS;
 }
 
-/** Não arredonda internamente: editar a porção repetidamente não perde nutrientes. */
+/**
+ * Não arredonda internamente: editar a porção repetidamente não perde nutrientes.
+ * O teto de 5 kg vale só para o peso novo: a origem pode ser uma panela de 6 kg
+ * (C1, pente fino 25/11), e trocar só o peso salvava 600 g com as kcal de 6 kg.
+ */
 export function scaleScanPortion(item: ScanItem, weightGrams: number): Partial<ScanItem> {
   if (!isValidScanWeight(weightGrams)) return {};
-  if (item.weightGrams == null || !isValidScanWeight(item.weightGrams)) return { weightGrams };
-  const ratio = weightGrams / item.weightGrams;
+  const origin = item.weightGrams;
+  if (origin == null || !Number.isFinite(origin) || origin <= 0) return { weightGrams };
+  const ratio = weightGrams / origin;
   return {
     weightGrams,
     calories: item.calories * ratio,

@@ -294,6 +294,18 @@ describe('porções do scanner até a escrita no diário', () => {
       expect.anything(),
     );
   });
+  it('C1: panela de 6 kg corrigida para 600 g salva as kcal de 600 g', async () => {
+    useScannerStore.setState({
+      items: [{ ...item('pot'), weightGrams: 6000, calories: 2230, protein: 90, carbs: 400 }],
+    });
+    useScannerStore.getState().updateItem('pot', { weightGrams: 600 });
+    expect(useScannerStore.getState().items[0].calories).toBeCloseTo(223);
+    await useScannerStore.getState().confirm();
+    expect(foodLogService.addMeal).toHaveBeenCalledWith(
+      expect.objectContaining({ weightGrams: 600, calories: 223, protein: 9, carbs: 40 }),
+      expect.anything(),
+    );
+  });
   it('peso inválido bloqueia confirmação e sua correção usa a última base válida', async () => {
     useScannerStore.setState({ items: [{ ...item('rice'), weightGrams: 200 }] });
     useScannerStore.getState().updateItem('rice', { weightGrams: 0 });
