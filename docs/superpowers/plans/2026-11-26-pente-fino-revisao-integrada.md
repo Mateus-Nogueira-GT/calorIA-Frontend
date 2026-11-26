@@ -28,10 +28,10 @@ Dois workers em paralelo. Cada um trabalha num worktree próprio, criado a parti
 
 ## W-B
 
-1. [ ] R2: pendências em memória isoladas por dono. Teste com duas contas.
-2. [ ] R3: `inputMode` entra na assinatura da pendência. Testes (voz contra texto, nos dois sentidos, e retry).
-3. [ ] R5: guarda de sessão nos `load()` de peso/evolução e de dieta, e nas ações do feed. Varrer os outros stores. Um teste por store corrigido.
-4. [ ] Rodar `tsc` e o jest completo.
+1. [x] R2: pendências em memória isoladas por dono. Teste com duas contas.
+2. [x] R3: `inputMode` entra na assinatura da pendência. Testes (voz contra texto, nos dois sentidos, e retry).
+3. [x] R5: guarda de sessão nos `load()` de peso/evolução e de dieta, e nas ações do feed. Varrer os outros stores. Um teste por store corrigido.
+4. [x] Rodar `tsc` e o jest completo.
 
 ## Fechamento (orquestrador)
 
