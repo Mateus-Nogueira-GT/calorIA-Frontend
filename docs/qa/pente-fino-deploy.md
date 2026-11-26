@@ -39,6 +39,7 @@ Ordem de aplicação no SQL Editor do Supabase. Nenhuma foi aplicada no remoto.
 | `030_food_log_idempotency.sql` | Qualquer momento | Coluna `meals.idempotency_key` com índice parcial único. O backend detecta a coluna e só deduplica depois que ela existir. |
 | `031_diet_jobs_one_running.sql` | Antes do backend novo | Tem `BEGIN/LOCK/COMMIT` próprios. Fecha os jobs ativos duplicados (mantém o mais recente; os outros viram `failed` com `DUPLICATE_ACTIVE_JOB`) antes de criar o índice. Rodar sozinha. |
 | `032_user_streak_lock.sql` | Antes do backend novo | `CREATE OR REPLACE` de `update_user_streak` com `FOR UPDATE`. Mesma assinatura da 014, sem mudar dados. |
+| `033_trigger_functions_security_definer.sql` | **Já, independente do código** | Torna `SECURITY DEFINER` os triggers `recalculate_meal_totals`, `recalculate_post_likes` e `recalculate_post_comments`. Sem ela, a exclusão de conta de quem tem refeição, curtida ou comentário falha com "Database error deleting user" (bug que já existia em produção, achado em 26/11). |
 
 **Checagem recomendada em produção** (achado F8): os writers antigos gravavam `chat_history.messages` como string jsonb, e as linhas antigas não foram reparadas. Para medir:
 

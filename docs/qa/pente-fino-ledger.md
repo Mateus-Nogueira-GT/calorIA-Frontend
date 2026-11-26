@@ -103,3 +103,11 @@ Validação final da integrada (merge `8a6001c`):
 | Backend unitários | 748 ✓ |
 | Integração Postgres (11 suítes) | 143 ✓ |
 | App | 967/967 ✓ (`--maxWorkers=2`; sob carga, telas estouram timeout) |
+
+## Achado na verificação do deploy (26/11/2026)
+
+**Bug que já existia em produção (crítico para a App Store):** a exclusão de conta falha para quem tem refeição, curtida ou comentário.
+- **Como apareceu:** reproduzido na produção atual (`DELETE /users/me` → 502, "Database error deleting user").
+- **Causa:** o Supabase Auth apaga `auth.users` com o papel `supabase_auth_admin`. Na cascata, os triggers `recalculate_meal_totals`, `recalculate_post_likes` e `recalculate_post_comments` (SECURITY INVOKER) fazem UPDATE em `meals`/`feed_posts` sem permissão.
+- **Correção:** migration `033_trigger_functions_security_definer.sql`.
+- **Teste:** `account-deletion.integration.test.ts` (`DELETION_TEST_DATABASE_URL`, banco `deletion_test`). Os 3 casos falham sem a 033 e passam com ela.
