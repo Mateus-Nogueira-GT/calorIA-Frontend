@@ -63,10 +63,10 @@ Validação final na integrada:
 
 | Item | Resultado | Ativação |
 |---|---|---|
-| A4 confirmação de e-mail no cadastro | Feito, dark | `AUTH_REQUIRE_EMAIL_CONFIRMATION=false` por padrão. **Continua explorável até ligar.** Antes, publicar o OTA e conferir o Supabase ("Confirm email" ligado, SMTP, resend `signup`, URL na allow-list). |
+| A4 confirmação de e-mail no cadastro | Mitigação pronta, dark (não fecha: se o dono clicar no link, a senha de quem cadastrou antes passa a valer; a ligação com o Google não foi testada) | `AUTH_REQUIRE_EMAIL_CONFIRMATION=false` por padrão. **Continua explorável até ligar.** Antes, publicar o OTA e conferir o Supabase ("Confirm email" ligado, SMTP, resend `signup`, URL na allow-list). |
 | A5 reset só com sessão de recuperação | Feito, em modo log | `AUTH_RESET_REQUIRE_RECOVERY=log`. **Continua explorável até `enforce`.** Antes, fazer um reset real e conferir o `amr` no log `reset_password_recovery_check`. O signOut das outras sessões depois do reset já vale. |
 | A7 rate limit por conta | Feito | Ativo. Fica aberto o store em memória por instância (infra). |
-| P7 timeout no Asaas | Feito | Reconciliação por `externalReference`; substitui a regra do lote 1. Fica aberto: assinatura cancelada só localmente que exista no Asaas continua cobrando. |
+| P7 timeout no Asaas | Feito em parte (webhook órfão só consulta o Asaas quando existe linha candidata e ignora assinatura `deleted`) | Reconciliação por `externalReference`; substitui a regra do lote 1. Fica aberto: assinatura cancelada só localmente que exista no Asaas continua cobrando. |
 | P8 saldo com a recarga ligada | Feito | Com a recarga ligada, a carteira real aparece (e cria o bônus de 75). Precisa de OTA. |
 | C4 `POST /food-log` idempotente | Feito (cartão do coach) | Migration 030. Scanner e registro manual ainda sem chave. |
 | Corrida no `createDietJob` | Feito | Migration 031 fecha os jobs ativos duplicados antes do índice e roda em conexão reservada. |
@@ -75,3 +75,9 @@ Validação final na integrada:
 | F3 | Não feito, por decisão do usuário | — |
 
 Migrations novas no total, nenhuma aplicada no remoto: 028, 029, 030 e 031.
+
+**Revisão pós-merge (26/11):**
+- O hook do A7 rodava antes do rate limit e cada `kid` desconhecido disparava uma busca de JWKS, sem limite. Agora o hook só busca um `kid` desconhecido a cada 10 s.
+- O webhook órfão do P7 consultava o Asaas em todo evento de assinatura desconhecida, inclusive de outros sistemas na mesma conta. Uma falha ambígua virava 500 e pausava a fila. Agora só consulta quando existe linha local candidata.
+
+Ambos com teste. Roteiro de deploy: [pente-fino-deploy.md](./pente-fino-deploy.md).
