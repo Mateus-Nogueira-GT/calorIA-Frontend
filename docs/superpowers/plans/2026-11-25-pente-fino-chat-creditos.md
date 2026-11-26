@@ -20,7 +20,7 @@
        vitest. Commit.
 4. [x] R8: `persistHistory` passa a anexar, com teste de integração Postgres e os testes unit de chat
        ajustados. Commit.
-5. [ ] R6: token de sequência no voice-player, com teste. Commit.
+5. [x] R6: token de sequência no voice-player, com teste. Commit.
 6. [ ] R7: orçamento do banner de dieta, com teste. Commit.
 7. [ ] Fechamento: no backend, `npm run typecheck && npm test` mais as integrações; no app,
        `npx tsc --noEmit && npx jest`.
