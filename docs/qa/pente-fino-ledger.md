@@ -81,3 +81,25 @@ Migrations novas no total, nenhuma aplicada no remoto: 028, 029, 030 e 031.
 - O webhook órfão do P7 consultava o Asaas em todo evento de assinatura desconhecida, inclusive de outros sistemas na mesma conta. Uma falha ambígua virava 500 e pausava a fila. Agora só consulta quando existe linha local candidata.
 
 Ambos com teste. Roteiro de deploy: [pente-fino-deploy.md](./pente-fino-deploy.md).
+
+## Lote 8: revisão da branch integrada (26/11/2026)
+
+A revisão externa da integrada apontou 7 itens. Os 7 foram reproduzidos: cada teste novo falha no código anterior ao lote (`e876747`), e o orquestrador conferiu isso. Spec: `2026-11-26-pente-fino-revisao-integrada.md`.
+
+| Item | Problema | Correção | Commit |
+|---|---|---|---|
+| R1 (alta, regressão) | Recarga paga ficava sem crédito quando a flag era desligada e religada (o evento era registrado e a reentrega caía como duplicata) | O evento de compra é processado se a tabela existir; a flag controla só o checkout | `5f7749e` |
+| R2 (alta, regressão) | Uma conta aposentava a pendência de chat de outra (risco de cobrança dupla) | Estado em memória isolado por dono | `52edf37` |
+| R3 (média, regressão) | Envio novo herdava o modo (voz/texto) de uma pendência | O modo entra na busca da pendência | `434e8b7` |
+| R4 (média) | Cartão do coach gravava `completed_at` no dia do toque | `completed_at` no dia proposto, com limites de data | `f51ba96` |
+| R5 (alta) | Dados da conta anterior reapareciam depois do logout | Guarda de sessão em peso, dieta, feed, amigos, desafios, diário e Dashboard | `9ab78e3` |
+| R6 (média) | Refeições simultâneas contavam o mesmo dia duas vezes na sequência | Migration 032 com `FOR UPDATE` em `update_user_streak` (única diferença em relação à 014) | `1978782` |
+| R7 (média) | Histórico antigo corrompido dava 500 | Normalização em todos os leitores e reparo na próxima gravação | `298f5b0` |
+
+Validação final da integrada (merge `8a6001c`):
+
+| Suíte | Resultado |
+|---|---|
+| Backend unitários | 748 ✓ |
+| Integração Postgres (11 suítes) | 143 ✓ |
+| App | 967/967 ✓ (`--maxWorkers=2`; sob carga, telas estouram timeout) |

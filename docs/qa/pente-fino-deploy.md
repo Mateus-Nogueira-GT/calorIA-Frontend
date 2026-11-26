@@ -38,6 +38,7 @@ Ordem de aplicação no SQL Editor do Supabase. Nenhuma foi aplicada no remoto.
 | `029_feed_counters_atomic.sql` | Antes do backend novo | Triggers de curtidas e comentários atômicos. Recalcula uma vez os contadores errados. |
 | `030_food_log_idempotency.sql` | Qualquer momento | Coluna `meals.idempotency_key` com índice parcial único. O backend detecta a coluna e só deduplica depois que ela existir. |
 | `031_diet_jobs_one_running.sql` | Antes do backend novo | Tem `BEGIN/LOCK/COMMIT` próprios. Fecha os jobs ativos duplicados (mantém o mais recente; os outros viram `failed` com `DUPLICATE_ACTIVE_JOB`) antes de criar o índice. Rodar sozinha. |
+| `032_user_streak_lock.sql` | Antes do backend novo | `CREATE OR REPLACE` de `update_user_streak` com `FOR UPDATE`. Mesma assinatura da 014, sem mudar dados. |
 
 **Checagem recomendada em produção** (achado F8): os writers antigos gravavam `chat_history.messages` como string jsonb, e as linhas antigas não foram reparadas. Para medir:
 
@@ -91,6 +92,9 @@ Antes de ligar, conferir:
 3. Se vier em outro formato, ajustar `RECOVERY_METHODS` em `auth.service.ts` antes de ligar.
 
 ### `CREDIT_PURCHASES_ENABLED=true`
+
+A flag controla só a criação de checkout. Com a tabela `credit_purchases` existindo, os webhooks de compra e estorno são processados mesmo com a flag desligada (lote 8, R1).
+
 
 - Aplicar 026, 027 e 028 antes (ver `docs/operacao-assinaturas.md`).
 - Com só a recarga ligada, a carteira real aparece e cria o bônus de boas-vindas de 75.

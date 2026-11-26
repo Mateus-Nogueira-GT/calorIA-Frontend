@@ -24,7 +24,7 @@ Dois workers em paralelo. Cada um trabalha num worktree próprio, criado a parti
 2. [x] R4: `completed_at` no dia da proposta, com os limites de data. Antes, ler `completedOnDate` no app. Testes.
 3. [x] R6: migration 032, decisão do marco travada e harness atualizado. Teste de integração com duas conexões concorrentes.
 4. [x] R7: normalizar o histórico em todos os leitores e reparar na gravação. Teste de integração conferindo o histórico inteiro.
-5. [ ] Rodar typecheck, a suíte inteira e todas as integrações tocadas.
+5. [x] Rodar typecheck, a suíte inteira e todas as integrações tocadas (feito pelo orquestrador; o W-A parou antes do relatório).
 
 ## W-B
 
@@ -35,6 +35,6 @@ Dois workers em paralelo. Cada um trabalha num worktree próprio, criado a parti
 
 ## Fechamento (orquestrador)
 
-- [ ] Mergear W-A e W-B na integrada.
-- [ ] Rodar as suítes completas e todas as integrações.
-- [ ] Atualizar o ledger e o roteiro de deploy (migration 032).
+- [x] Mergear W-A e W-B na integrada.
+- [x] Rodar as suítes completas e todas as integrações.
+- [x] Atualizar o ledger e o roteiro de deploy (migration 032).
