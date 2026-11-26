@@ -421,6 +421,37 @@ export async function resetSubscriptionSchema(db: postgres.Sql) {
     ])
   })
 
+  // R1 (lote 8): a flag só barra o checkout. Desligada e religada, o Asaas
+  // reentrega o evento e ele seria 'duplicate': o pagamento ficava sem crédito.
+  const withPurchasesOff = async (fn: () => Promise<void>) => {
+    env.CREDIT_PURCHASES_ENABLED = false
+    try {
+      await fn()
+    } finally {
+      env.CREDIT_PURCHASES_ENABLED = true
+    }
+  }
+
+  it('R1: recarga desligada, compra pendente confirmada: credita', async () => {
+    await withPurchasesOff(async () => {
+      expect(await handleAsaasEvent(f, ev('PAYMENT_CONFIRMED', 'evt_off'))).toBe('purchase_paid')
+    })
+    expect(await balance()).toBe(75 + 50)
+    expect((await purchase()).status).toBe('paid')
+    // Religada, a reentrega do mesmo evento não credita de novo.
+    expect(await handleAsaasEvent(f, ev('PAYMENT_CONFIRMED', 'evt_off'))).toBe('duplicate')
+    expect(await balance()).toBe(75 + 50)
+  })
+
+  it('R1: recarga desligada, estorno: é aplicado', async () => {
+    await handleAsaasEvent(f, ev('PAYMENT_CONFIRMED'))
+    await withPurchasesOff(async () => {
+      expect(await handleAsaasEvent(f, ev('PAYMENT_REFUNDED'))).toBe('purchase_reversed')
+    })
+    expect(await balance()).toBe(75)
+    expect((await purchase()).status).toBe('refunded')
+  })
+
   it('vencida ou removida sem pagamento fecha a compra; pagamento de outro sistema é ignorado', async () => {
     expect(await handleAsaasEvent(f, ev('PAYMENT_OVERDUE'))).toBe('purchase_closed')
     expect((await purchase()).status).toBe('expired')
@@ -912,4 +943,39 @@ export async function resetSubscriptionSchema(db: postgres.Sql) {
       ),
     ).toBe('ignored')
   })
+})
+;(url ? describe : describe.skip)('recarga de créditos / sem a tabela (027 não aplicada)', () => {
+  const db = postgres(url ?? 'postgres://localhost/unused', { max: 2, onnotice: () => {} })
+  const noop = () => {}
+  const f = {
+    db,
+    log: { info: noop, warn: noop, error: noop, debug: noop },
+  } as unknown as FastifyInstance
+  const purchasesFlag = env.CREDIT_PURCHASES_ENABLED
+  beforeAll(async () => {
+    await resetSubscriptionSchema(db)
+    await db`DROP TABLE credit_purchases CASCADE`
+  })
+  afterAll(async () => {
+    env.CREDIT_PURCHASES_ENABLED = purchasesFlag
+    await db.end()
+  })
+
+  it.each([false, true])(
+    'P6/R1: cobrança avulsa só é registrada, sem 500 (recarga ligada: %s)',
+    async (enabled) => {
+      env.CREDIT_PURCHASES_ENABLED = enabled
+      const id = `evt_sem_tabela_${enabled}`
+      expect(
+        await handleAsaasEvent(f, {
+          id,
+          event: 'PAYMENT_CONFIRMED',
+          payment: { id: `pay_${enabled}`, value: 60, externalReference: randomUUID() },
+        }),
+      ).toBe('ignored')
+      expect(
+        await db`SELECT event_id FROM payment_webhook_events WHERE event_id=${id}`,
+      ).toHaveLength(1)
+    },
+  )
 })

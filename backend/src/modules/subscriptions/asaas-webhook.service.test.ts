@@ -10,38 +10,45 @@ afterEach(() => {
 })
 
 describe('webhook do Asaas / cobrança avulsa', () => {
-  it('recarga desligada: cobrança sem assinatura é ignorada sem consultar credit_purchases', async () => {
-    env.CREDIT_PURCHASES_ENABLED = false
-    const { fastify, calls } = fakeFastify([
-      ['INSERT INTO payment_webhook_events', [{ event_id: 'evt_1' }]],
-    ])
-    const out = await handleAsaasEvent(fastify, {
-      id: 'evt_1',
-      event: 'PAYMENT_CONFIRMED',
-      payment: {
-        id: 'pay_1',
-        value: 60,
-        externalReference: '44444444-4444-4444-4444-444444444444',
-      },
-    })
-    expect(out).toBe('ignored')
-    expect(calls.some((c) => c.sql.includes('credit_purchases'))).toBe(false)
-    // O evento continua registrado (idempotência da fila do Asaas).
-    expect(calls.some((c) => c.sql.includes('INSERT INTO payment_webhook_events'))).toBe(true)
+  const event = (id: string) => ({
+    id,
+    event: 'PAYMENT_CONFIRMED',
+    payment: {
+      id: 'pay_1',
+      value: 60,
+      externalReference: '44444444-4444-4444-4444-444444444444',
+    },
   })
 
-  it('recarga ligada: cobrança sem assinatura procura a compra', async () => {
-    env.CREDIT_PURCHASES_ENABLED = true
-    const { fastify, calls } = fakeFastify([
-      ['INSERT INTO payment_webhook_events', [{ event_id: 'evt_2' }]],
-    ])
-    await handleAsaasEvent(fastify, {
-      id: 'evt_2',
-      event: 'PAYMENT_CONFIRMED',
-      payment: { id: 'pay_1', value: 60 },
-    })
-    expect(calls.some((c) => c.sql.includes('FROM credit_purchases'))).toBe(true)
-  })
+  // R1 (lote 8): quem decide é a existência da tabela, não a flag (a flag só
+  // barra o checkout). Sem a 027 a cobrança avulsa é só registrada (P6).
+  it.each([false, true])(
+    'sem a tabela credit_purchases: só registra, sem consultá-la (recarga ligada: %s)',
+    async (enabled) => {
+      env.CREDIT_PURCHASES_ENABLED = enabled
+      const { fastify, calls } = fakeFastify([
+        ['INSERT INTO payment_webhook_events', [{ event_id: 'evt_1' }]],
+        ['to_regclass', [{ present: false }]],
+      ])
+      expect(await handleAsaasEvent(fastify, event('evt_1'))).toBe('ignored')
+      expect(calls.some((c) => c.sql.includes('FROM credit_purchases'))).toBe(false)
+      // O evento continua registrado (idempotência da fila do Asaas).
+      expect(calls.some((c) => c.sql.includes('INSERT INTO payment_webhook_events'))).toBe(true)
+    },
+  )
+
+  it.each([false, true])(
+    'com a tabela: procura a compra mesmo com a recarga desligada (ligada: %s)',
+    async (enabled) => {
+      env.CREDIT_PURCHASES_ENABLED = enabled
+      const { fastify, calls } = fakeFastify([
+        ['INSERT INTO payment_webhook_events', [{ event_id: 'evt_2' }]],
+        ['to_regclass', [{ present: true }]],
+      ])
+      await handleAsaasEvent(fastify, event('evt_2'))
+      expect(calls.some((c) => c.sql.includes('FROM credit_purchases'))).toBe(true)
+    },
+  )
 })
 
 describe('webhook do Asaas / assinatura órfã (R4)', () => {

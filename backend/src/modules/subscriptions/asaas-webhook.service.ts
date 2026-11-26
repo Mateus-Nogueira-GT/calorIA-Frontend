@@ -1,7 +1,6 @@
 import { createHash, timingSafeEqual } from 'node:crypto'
 import type { FastifyInstance } from 'fastify'
 import type postgres from 'postgres'
-import { env } from '../../shared/env.js'
 import { CREDIT_POLICY } from '../credits/credit-policy.js'
 import { ensureWallet } from '../credits/credits.service.js'
 import { type AsaasClient, isDefinitiveProviderError } from './asaas.client.js'
@@ -276,10 +275,15 @@ export async function handleAsaasEvent(
 
     const p = ev.payment
     if (!p?.id || !ev.event.startsWith('PAYMENT_')) return 'ignored'
-    // Cobrança avulsa (sem assinatura): recarga de créditos. Com a recarga
-    // desligada a tabela pode nem existir (027 não aplicada): só registra.
+    // Cobrança avulsa (sem assinatura): recarga de créditos. A flag só barra o
+    // checkout (R1, lote 8): desligada, o evento de uma compra já criada ainda
+    // credita ou estorna; ignorá-lo o deixaria registrado e a reentrega
+    // seria 'duplicate'. Sem a tabela (027 não aplicada) só registra (P6),
+    // conferido antes de qualquer consulta a ela (erro abortaria a transação).
     if (!p.subscription) {
-      if (!env.CREDIT_PURCHASES_ENABLED) return 'ignored'
+      const [table] = await tx<{ present: boolean }[]>`
+        SELECT to_regclass('public.credit_purchases') IS NOT NULL AS present`
+      if (!table?.present) return 'ignored'
       return handlePurchaseEvent(tx, ev.event, p)
     }
     const [sub] = await tx<SubRow[]>`
