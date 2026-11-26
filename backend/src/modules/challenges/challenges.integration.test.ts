@@ -8,7 +8,10 @@ import {
   socialTestDb,
   socialTestUrl,
 } from '../../shared/testing/social-schema.js'
-import { checkIn } from './challenges.service.js'
+import { fetchUserContext } from '../chat/chat-context.js'
+import { listFriends } from '../friends/friends.service.js'
+import { getUserProfile } from '../users/users.service.js'
+import { checkIn, getLeaderboard } from './challenges.service.js'
 
 function shift(date: string, days: number): string {
   return new Date(Date.parse(`${date}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10)
@@ -106,6 +109,53 @@ function shift(date: string, days: number): string {
       await checkIn(fastify, userB, challengeId, shift(today, -1))
       const res = await checkIn(fastify, userB, challengeId, today)
       expect(res).toMatchObject({ current_streak: 2, total_days: 2 })
+    })
+  })
+
+  describe('sequência efetiva na leitura (R1)', () => {
+    // Datas relativas ao "hoje" de Brasília calculado pelo próprio banco.
+    const spToday = db`(now() AT TIME ZONE 'America/Sao_Paulo')::date`
+
+    it('ranking: quem parou aparece com 0 e vem depois de quem está em dia', async () => {
+      await db`UPDATE challenge_members SET current_streak = 10, best_streak = 10, total_days = 10,
+        last_check_in = ${spToday} - 5 WHERE challenge_id = ${challengeId} AND user_id = ${userA}`
+      await db`UPDATE challenge_members SET current_streak = 3, best_streak = 3, total_days = 3,
+        last_check_in = ${spToday} WHERE challenge_id = ${challengeId} AND user_id = ${userB}`
+
+      const rows = await getLeaderboard(fastify, userA, challengeId)
+
+      expect(rows.map((r) => [r.user.id, r.streak])).toEqual([
+        [userB, 3],
+        [userA, 0],
+      ])
+    })
+
+    it('ranking: check-in de ontem ainda conta, e o empate cai em total_days e user_id', async () => {
+      await db`UPDATE challenge_members SET current_streak = 2, total_days = 2,
+        last_check_in = ${spToday} - 1 WHERE challenge_id = ${challengeId}`
+
+      const rows = await getLeaderboard(fastify, userA, challengeId)
+
+      expect(rows.map((r) => r.streak)).toEqual([2, 2])
+      expect(rows.map((r) => r.user.id)).toEqual([userA, userB].sort())
+    })
+
+    it('amigos, perfil e coach: sequência pessoal parada vale 0', async () => {
+      await db`TRUNCATE friendships`
+      await db`INSERT INTO friendships (requester_id, addressee_id, status) VALUES (${userA}, ${userB}, 'accepted')`
+      await db`UPDATE streaks SET current_streak = 10, best_streak = 10, last_active_date = ${spToday} - 5 WHERE user_id = ${userA}`
+      await db`UPDATE streaks SET current_streak = 4, best_streak = 4, last_active_date = ${spToday} - 1 WHERE user_id = ${userB}`
+
+      const [friendOfB] = await listFriends(fastify, userB)
+      expect(friendOfB).toMatchObject({ id: userA, current_streak: 0 })
+      const [friendOfA] = await listFriends(fastify, userA)
+      expect(friendOfA).toMatchObject({ id: userB, current_streak: 4 })
+
+      expect((await getUserProfile(fastify, userA)).current_streak).toBe(0)
+      expect((await getUserProfile(fastify, userB)).current_streak).toBe(4)
+
+      expect((await fetchUserContext(fastify, userA)).streak).toBe(0)
+      expect((await fetchUserContext(fastify, userB)).streak).toBe(4)
     })
   })
 })

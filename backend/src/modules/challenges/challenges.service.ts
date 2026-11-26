@@ -248,11 +248,15 @@ export async function getLeaderboard(
       current_streak: number
     }[]
   >`
-    SELECT cm.user_id, p.full_name, p.username, cm.current_streak
+    SELECT cm.user_id, p.full_name, p.username,
+      -- S1: sequência efetiva. Quem parou (último check-in antes de ontem em
+      -- Brasília) vale 0, sem depender de job que regrave current_streak.
+      CASE WHEN cm.last_check_in < (now() AT TIME ZONE 'America/Sao_Paulo')::date - 1
+        THEN 0 ELSE cm.current_streak END AS current_streak
     FROM challenge_members cm
     JOIN profiles p ON p.id = cm.user_id
     WHERE cm.challenge_id = ${challengeId} AND cm.status = 'active'
-    ORDER BY cm.current_streak DESC, cm.total_days DESC
+    ORDER BY 4 DESC, cm.total_days DESC, cm.user_id
   `
 
   return rows.map((r, i) => ({

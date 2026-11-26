@@ -163,7 +163,9 @@ export async function listFriends(fastify: FastifyInstance, userId: string): Pro
     SELECT
       f.id AS friendship_id,
       p.id, p.username, p.full_name, p.avatar_url,
-      s.current_streak
+      -- S1: sequência parada (último dia antes de ontem em Brasília) vale 0.
+      CASE WHEN s.last_active_date < (now() AT TIME ZONE 'America/Sao_Paulo')::date - 1
+        THEN 0 ELSE s.current_streak END AS current_streak
     FROM friendships f
     JOIN profiles p ON p.id = CASE WHEN f.requester_id = ${userId} THEN f.addressee_id ELSE f.requester_id END
     LEFT JOIN streaks s ON s.user_id = p.id

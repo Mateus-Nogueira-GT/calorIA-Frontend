@@ -53,7 +53,9 @@ export async function getUserProfile(fastify: FastifyInstance, userId: string): 
       p.coach_gender,
       p.dietary_restrictions,
       p.allergies,
-      s.current_streak,
+      -- S1: sequência parada (último dia antes de ontem em Brasília) vale 0.
+      CASE WHEN s.last_active_date < (now() AT TIME ZONE 'America/Sao_Paulo')::date - 1
+        THEN 0 ELSE s.current_streak END AS current_streak,
       p.created_at::TEXT AS created_at,
       p.updated_at::TEXT AS updated_at
     FROM profiles p
