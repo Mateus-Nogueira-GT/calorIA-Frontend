@@ -20,7 +20,7 @@
    Tornar os campos cosméticos tolerantes.
 4. [x] **R4 (C5).** Teste no `store.test.ts` do scanner com duas chamadas de `confirm()`. Fazer a promise
    única, desabilitar a lista enquanto salva e cobrir isso no teste da `ScanResultScreen`.
-5. **R5 (C6).** Teste: depois de `chooseAlternative`, o `confirm` sai sem dúvida no payload. Confirmar em
+5. [x] **R5 (C6).** Teste: depois de `chooseAlternative`, o `confirm` sai sem dúvida no payload. Confirmar em
    `backend/src/modules/chat/chat-context.ts` qual forma o backend lê como "sem dúvida".
 6. **R6 (C7).** Teste de backend: a proposta `complete_plan_meal` tem `date`. Teste de app: o tap envia
    `card.date`. Teste do rótulo do `ActionProposalCard`. Ajustar o schema compartilhado do cartão nos dois

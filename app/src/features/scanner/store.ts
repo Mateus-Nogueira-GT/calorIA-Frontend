@@ -141,7 +141,7 @@ export const useScannerStore = create<ScannerState>((set, get) => ({
                 ...patch,
                 // Mexer num valor = o usuário assumiu os números do nome atual.
                 ...(VALUE_KEYS.some((k) => k in patch)
-                  ? { valuesFrom: (patch.name ?? item.name).trim() }
+                  ? { valuesFrom: (patch.name ?? item.name).trim(), reviewed: true }
                   : {}),
               },
         ),
@@ -177,6 +177,7 @@ export const useScannerStore = create<ScannerState>((set, get) => ({
           fat: alt.fat * ratio,
           fiber: scale(alt.fiber),
           valuesFrom: alt.name,
+          reviewed: true,
           alternatives: item.alternatives?.map((a, i) => (i === index ? previous : a)),
         };
       }),
@@ -258,7 +259,8 @@ export const useScannerStore = create<ScannerState>((set, get) => ({
                 fat: roundScanAmount(i.fat),
                 fiber: i.fiber == null ? null : roundScanAmount(i.fiber),
                 ...(i.weightGrams != null ? { weightGrams: i.weightGrams } : {}),
-                ...(i.fromScan ? { scan: scanDoubt(i) } : {}),
+                // C6: revisão do usuário resolve a dúvida (como no PATCH do diário).
+                ...(i.fromScan && !i.reviewed ? { scan: scanDoubt(i) } : {}),
               },
               owner,
             )

@@ -471,4 +471,26 @@ describe('dúvida de alimento na revisão (05/11, S2/S3)', () => {
     });
     expect(payloads[1]).not.toHaveProperty('scan');
   });
+
+  it('C6: depois de escolher uma alternativa, a dúvida não vai para o diário', async () => {
+    foodLogService.addMeal.mockResolvedValue({ id: 'm1' });
+    useScannerStore.getState().chooseAlternative('p1', 0);
+    await useScannerStore.getState().confirm();
+    const payload = foodLogService.addMeal.mock.calls[0][0];
+    expect(payload).toMatchObject({ name: 'Salmão grelhado', calories: 376 });
+    expect(payload).not.toHaveProperty('scan');
+  });
+
+  it('C6: editar um valor resolve a dúvida; mudar só o nome ou o peso não', async () => {
+    foodLogService.addMeal.mockResolvedValue({ id: 'm1' });
+    useScannerStore.getState().updateItem('p1', { name: 'Carne suína' });
+    useScannerStore.getState().updateItem('p1', { weightGrams: 90 });
+    await useScannerStore.getState().confirm();
+    expect(foodLogService.addMeal.mock.calls[0][0]).toHaveProperty('scan');
+
+    await useScannerStore.getState().analyze('data:image/jpeg;base64,AAA');
+    useScannerStore.getState().updateItem('p1', { protein: 40 });
+    await useScannerStore.getState().confirm();
+    expect(foodLogService.addMeal.mock.calls[1][0]).not.toHaveProperty('scan');
+  });
 });
