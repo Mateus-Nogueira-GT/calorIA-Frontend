@@ -135,6 +135,19 @@ export function parseInput(raw: unknown): CollectedUserData | null {
 
 // ─── Criação do job ───────────────────────────────────────────────────────────
 
+/** Índice único parcial da migration 031: um job pending/running por usuário. */
+const ONE_ACTIVE_JOB_INDEX = 'diet_jobs_one_active_per_user'
+
+/**
+ * R7 (26/11): o insert (ou a reabertura) perdeu a corrida para outro job ativo
+ * do mesmo usuário. Só o índice da 031 conta; outro 23505 continua sendo erro.
+ */
+export function isActiveJobConflict(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false
+  const e = err as { code?: unknown; constraint_name?: unknown }
+  return e.code === '23505' && e.constraint_name === ONE_ACTIVE_JOB_INDEX
+}
+
 /**
  * Job de geração em andamento (pending/running) mais recente do usuário, ou
  * null. Usado por createDietJob (não abrir duas gerações) e pelo chat (C1:
@@ -190,7 +203,21 @@ export async function createDietJob(
   }
 
   const ids = { jobId: randomUUID(), dietId: randomUUID() }
-  await fastify.db.begin((sql) => insertDietJob(sql, userId, conversationId, userData, ids))
+  try {
+    await fastify.db.begin((sql) => insertDietJob(sql, userId, conversationId, userData, ids))
+  } catch (err) {
+    // R7: duas chamadas simultâneas passam juntas pela checagem acima; o índice
+    // da 031 barra a segunda (a transação desfaz a draft dela) e ela devolve o
+    // job de quem ganhou.
+    if (!isActiveJobConflict(err)) throw err
+    const vencedor = await getPendingJob(fastify, userId)
+    if (!vencedor) throw err
+    fastify.log.info(
+      { userId, jobId: vencedor.id },
+      'Geração de dieta criada em paralelo — reaproveitando o job',
+    )
+    return { jobId: vencedor.id, dietId: vencedor.diet_id }
+  }
   return ids
 }
 
@@ -430,19 +457,26 @@ export async function retryJob(
   // Guard `AND status = 'failed'`: dois retries simultâneos (boot + aba Dieta)
   // ou um step entre a leitura e o UPDATE não podem reabrir de novo nem
   // devolver "running" sem ter reaberto nada.
-  const reopened = await fastify.db.begin(async (sql) => {
-    const rows = await sql`
-      UPDATE diet_jobs SET status = 'running', error = NULL, updated_at = NOW()
-      WHERE id = ${jobId} AND status = 'failed'
-      RETURNING id
-    `
-    if (rows.length === 0) return false
-    await sql`
-      UPDATE diets SET status = 'draft', updated_at = NOW()
-      WHERE id = ${job.diet_id} AND status = 'failed'
-    `
-    return true
-  })
+  // R7: com outro job ativo do usuário, o índice da 031 recusa a reabertura;
+  // devolve o estado real (failed) em vez de 500.
+  const reopened = await fastify.db
+    .begin(async (sql) => {
+      const rows = await sql`
+        UPDATE diet_jobs SET status = 'running', error = NULL, updated_at = NOW()
+        WHERE id = ${jobId} AND status = 'failed'
+        RETURNING id
+      `
+      if (rows.length === 0) return false
+      await sql`
+        UPDATE diets SET status = 'draft', updated_at = NOW()
+        WHERE id = ${job.diet_id} AND status = 'failed'
+      `
+      return true
+    })
+    .catch((err: unknown) => {
+      if (isActiveJobConflict(err)) return false
+      throw err
+    })
 
   // Perdeu a corrida: devolve o estado real em vez de afirmar "running".
   if (!reopened) return toStatus(await loadJob(fastify, userId, jobId))

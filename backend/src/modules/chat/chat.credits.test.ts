@@ -265,6 +265,27 @@ describe('AI wallet integration boundary', () => {
       expect(wrote(transaction.calls, 'INSERT INTO diet_jobs')).toBe(false)
     })
 
+    it('R7: o índice da 031 barrando o job na liquidação vira 409 CONVERSATION_BUSY', async () => {
+      env.CREDITS_ENFORCEMENT_ENABLED = true
+      const source = fakeFastify([], { chatCreate: async () => toolCompletion(dados) })
+      const conflict = Object.assign(new Error('duplicate key'), {
+        code: '23505',
+        constraint_name: 'diet_jobs_one_active_per_user',
+      })
+      const transaction = fakeFastify([
+        ['INSERT INTO chat_history', [{ id: CONV }]],
+        ['INSERT INTO diet_jobs', conflict],
+      ])
+      vi.mocked(runCreditOperation).mockImplementation(async (_f, _i, infer, persist) => {
+        const result = await infer()
+        await persist?.(transaction.fastify.db, result)
+        return { result, receipt }
+      })
+      await expect(
+        sendChatMessage(source.fastify, USER, { message: 'sim', conversation_id: CONV }, KEY),
+      ).rejects.toMatchObject({ statusCode: 409, code: 'CONVERSATION_BUSY' })
+    })
+
     it('geração já em andamento é reaproveitada, sem job novo na liquidação', async () => {
       env.CREDITS_ENFORCEMENT_ENABLED = true
       const source = fakeFastify(
