@@ -187,6 +187,18 @@ function shift(date: string, days: number): string {
       expect(joined).toMatchObject({ joinedByMe: true, finished: false })
     })
 
+    it('00:30Z de hoje com fim ontem (UTC): em SP ainda é o último dia', async () => {
+      // Ancorado no relógio real: o CURRENT_DATE/UTC antigo já dava "encerrado".
+      const today = utcTodayString()
+      await db`UPDATE challenges SET starts_at = ${shift(today, -8)}, ends_at = ${shift(today, -1)} WHERE id = ${challengeId}`
+
+      const [mine] = await at(`${today}T00:30:00Z`, (f) => listMyChallenges(f, userA))
+      expect(mine).toMatchObject({ endDate: shift(today, -1), finished: false })
+      await expect(
+        at(`${today}T00:30:00Z`, (f) => joinChallenge(f, userB, challengeId)),
+      ).resolves.toMatchObject({ joinedByMe: true })
+    })
+
     it('03/12 03:30Z (00:30 de 03/12 em SP): terminou e recusa entrada', async () => {
       const [mine] = await at('2026-12-03T03:30:00Z', (f) => listMyChallenges(f, userA))
       expect(mine).toMatchObject({ finished: true })
