@@ -299,6 +299,43 @@ describe('coachService.sendMessage — chave de tentativa (pente fino 25/11)', (
     expect(bodyOf(1).input_mode).toBe('voice');
   });
 
+  it('R3 (26/11): pendência de voz não é herdada por um envio digitado com o mesmo texto', async () => {
+    const conv = '66666666-6666-4666-8666-666666666666';
+    api.post.mockRejectedValueOnce(networkError());
+    await expect(coachService.sendMessage('sim', conv, voice())).rejects.toThrow();
+    api.post.mockResolvedValueOnce(ok(conv));
+    await coachService.sendMessage('sim', conv);
+    expect(bodyOf(0).input_mode).toBe('voice');
+    expect(keyOf(1)).not.toBe(keyOf(0));
+    expect(bodyOf(1)).not.toHaveProperty('input_mode');
+  });
+
+  it('R3: pendência digitada não é herdada por um envio de voz com o mesmo texto', async () => {
+    const conv = '77777777-7777-4777-8777-777777777777';
+    api.post.mockRejectedValueOnce(networkError());
+    await expect(coachService.sendMessage('sim', conv)).rejects.toThrow();
+    api.post.mockResolvedValueOnce(ok(conv));
+    await coachService.sendMessage('sim', conv, voice());
+    expect(keyOf(1)).not.toBe(keyOf(0));
+    expect(bodyOf(1).input_mode).toBe('voice');
+  });
+
+  it('R3: mesmo modo ainda reaproveita a chave; o retry digitado mantém texto', async () => {
+    const conv = '88888888-8888-4888-8888-888888888888';
+    api.post.mockRejectedValueOnce(networkError());
+    await expect(coachService.sendMessage('sim', conv, voice())).rejects.toThrow();
+    api.post.mockRejectedValueOnce(networkError());
+    await expect(coachService.sendMessage('sim', conv, voice())).rejects.toThrow();
+    expect(keyOf(1)).toBe(keyOf(0));
+    const other = '99999999-9999-4999-8999-999999999999';
+    api.post.mockRejectedValueOnce(networkError());
+    await expect(coachService.sendMessage('não', other)).rejects.toThrow();
+    api.post.mockResolvedValueOnce(ok(other));
+    await coachService.sendMessage('não', other, undefined, { retry: true });
+    expect(keyOf(3)).toBe(keyOf(2));
+    expect(bodyOf(3)).not.toHaveProperty('input_mode');
+  });
+
   it('R2: 409 IDEMPOTENCY_CONFLICT libera a chave para o próximo envio', async () => {
     const conv = '55555555-5555-4555-8555-555555555555';
     api.post.mockRejectedValueOnce({

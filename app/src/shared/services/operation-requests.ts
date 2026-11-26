@@ -106,14 +106,20 @@ export async function beginRequest(
     // R1 (25/11): a pendência serve ao retry, mas não a um envio novo depois
     // de outra mensagem entregue ou fora da janela curta.
     const retry = options?.retry === true;
+    // R3 (26/11): o modo (voz/texto) faz parte da assinatura do chat; sem
+    // inputMode gravado = texto. O retry recupera a própria pendência com o
+    // modo dela, e por isso não filtra pelo modo de quem chama.
+    const mode = context?.inputMode;
+    const matches = (item: PendingRequest) =>
+      reusable(memory, item, retry) && (retry || type !== 'chat' || item.inputMode === mode);
     const inMemory = memory.active.get(slot);
     const previous =
-      inMemory && reusable(memory, inMemory, retry)
+      inMemory && matches(inMemory)
         ? inMemory
         : list
             .filter((item) => item.type === type && item.signature === sig)
             .reverse()
-            .find((item) => reusable(memory, item, retry));
+            .find(matches);
     if (previous) {
       memory.active.set(slot, previous);
       return previous;
