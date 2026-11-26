@@ -12,7 +12,12 @@ import { env } from '../../shared/env.js'
 import { AppError } from '../../shared/errors.js'
 import { assessSafety, describeInvalidFields } from '../../shared/guardrails/index.js'
 import { type CreditTransaction, runCreditOperation } from '../credits/credits.service.js'
-import { createDietJob, getPendingJob, insertDietJob } from '../diets/jobs.service.js'
+import {
+  createDietJob,
+  getPendingJob,
+  insertDietJob,
+  isActiveJobConflict,
+} from '../diets/jobs.service.js'
 import {
   type ActionFeature,
   type ActionResult,
@@ -851,6 +856,9 @@ async function handleDietGeneration(
             if (!reused) await insertDietJob(sql, userId, conversationId, userData, job)
             await updateProfileFromDietData(sql, userId, userData)
           } catch (err) {
+            // R7: o índice da 031 fecha a corrida que o SELECT acima deixa aberta.
+            if (isActiveJobConflict(err))
+              throw new AppError(409, 'CONVERSATION_BUSY', 'Sua dieta já está sendo gerada.')
             fastify.log.error({ err }, 'Erro ao criar job de geração de dieta')
             throw new AppError(
               500,

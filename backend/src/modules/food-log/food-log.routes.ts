@@ -64,8 +64,8 @@ const foodLogRoutes: FastifyPluginAsyncZod = async (fastify) => {
     },
     async (request, reply) => {
       const { sub: userId } = request.user as JwtPayload
-      const { from, to } = request.query
-      return reply.send(await getSummary(fastify, userId, from, to))
+      const { from, to, tzOffsetMinutes } = request.query
+      return reply.send(await getSummary(fastify, userId, from, to, { tzOffsetMinutes }))
     },
   )
 
@@ -79,14 +79,27 @@ const foodLogRoutes: FastifyPluginAsyncZod = async (fastify) => {
       schema: {
         tags: ['FoodLog'],
         summary: 'Registrar refeição no diário livre',
+        description:
+          'Idempotency-Key (opcional): a mesma chave do mesmo usuário devolve a refeição já criada.',
         security: [{ bearerAuth: [] }],
         body: addMealBodySchema,
-        response: { 201: mealSchema, 401: errorSchema, 422: errorSchema },
+        response: {
+          201: mealSchema,
+          400: errorSchema.describe('INVALID_DATE | INVALID_IDEMPOTENCY_KEY'),
+          401: errorSchema,
+          422: errorSchema,
+        },
       },
     },
     async (request, reply) => {
       const { sub: userId } = request.user as JwtPayload
-      const meal = await addMeal(fastify, userId, request.body)
+      const header = request.headers['idempotency-key']
+      const meal = await addMeal(
+        fastify,
+        userId,
+        request.body,
+        typeof header === 'string' ? header : undefined,
+      )
       return reply.status(201).send(meal)
     },
   )

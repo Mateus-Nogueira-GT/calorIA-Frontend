@@ -626,8 +626,8 @@ describe('dias anteriores no contexto (05/11, M6)', () => {
       ...emptyData,
       date: '2026-11-05',
       recentDays: [
-        { date: '2026-10-30', calories: 1850, protein: 95, carbs: 0, fat: 0 },
-        { date: '2026-11-04', calories: 2010, protein: 120, carbs: 0, fat: 0 },
+        { date: '2026-10-30', calories: 1850, protein: 95, carbs: 0, fat: 0, fiber: 0 },
+        { date: '2026-11-04', calories: 2010, protein: 120, carbs: 0, fat: 0, fiber: 0 },
       ],
     })
     expect(out).toContain(
@@ -655,6 +655,8 @@ describe('dias anteriores no contexto (05/11, M6)', () => {
     ])
     const q = ok.calls.find((c) => c.sql.includes('GROUP BY meal_date'))
     expect(q?.params).toEqual(expect.arrayContaining(['2026-10-30', '2026-11-04']))
+    // Só o diário livre (includePlanMeals: false): a linha diz "só diário".
+    expect(q?.params).toContain(false)
 
     const broken = fakeFastify([['GROUP BY meal_date', new Error('db')]])
     const ctx2 = await fetchUserContext(broken.fastify, 'u1', { date: '2026-11-05' })
