@@ -19,4 +19,4 @@
 5. [x] R8: `PendingOperations`, ramo de foto. Commit.
 6. [x] R9: limites únicos de corpo no backend, com teste vitest. Commit.
 7. [x] R10: idade em UTC, com teste usando fake time. Commit.
-8. [ ] Fechamento: no backend, `npm run typecheck && npm test`; no app, `npx tsc --noEmit && npx jest`.
+8. [x] Fechamento: no backend, `npm run typecheck && npm test`; no app, `npx tsc --noEmit && npx jest`.
