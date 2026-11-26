@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest'
+import { updateProfileBodySchema } from '../modules/users/users.schemas.js'
+import { BODY_LIMITS } from './body-limits.js'
 import { COLLECTED_BOUNDS, collectedUserDataSchema } from './diet-ai-schema.js'
 
 const valido = {
@@ -24,7 +26,7 @@ describe('collectedUserDataSchema — bounds de plausibilidade (S1)', () => {
   it.each([
     ['weight_kg', 29.9],
     ['weight_kg', 300.1],
-    ['height_cm', 119],
+    ['height_cm', 99],
     ['height_cm', 251],
     ['age', 9],
     ['age', 101],
@@ -38,7 +40,7 @@ describe('collectedUserDataSchema — bounds de plausibilidade (S1)', () => {
   it('aceita as bordas inclusivas', () => {
     expect(collectedUserDataSchema.safeParse({ ...valido, weight_kg: 30 }).success).toBe(true)
     expect(collectedUserDataSchema.safeParse({ ...valido, weight_kg: 300 }).success).toBe(true)
-    expect(collectedUserDataSchema.safeParse({ ...valido, height_cm: 120 }).success).toBe(true)
+    expect(collectedUserDataSchema.safeParse({ ...valido, height_cm: 100 }).success).toBe(true)
     expect(collectedUserDataSchema.safeParse({ ...valido, height_cm: 250 }).success).toBe(true)
     expect(collectedUserDataSchema.safeParse({ ...valido, age: 10 }).success).toBe(true)
     expect(collectedUserDataSchema.safeParse({ ...valido, age: 100 }).success).toBe(true)
@@ -71,7 +73,7 @@ describe('collectedUserDataSchema — bounds de plausibilidade (S1)', () => {
 
   it('exporta os bounds para reuso (prompt, mensagens de erro)', () => {
     expect(COLLECTED_BOUNDS.weightKg).toEqual([30, 300])
-    expect(COLLECTED_BOUNDS.heightCm).toEqual([120, 250])
+    expect(COLLECTED_BOUNDS.heightCm).toEqual([100, 250])
     expect(COLLECTED_BOUNDS.age).toEqual([10, 100])
   })
 })
@@ -85,5 +87,22 @@ describe('collectedUserDataSchema — goal health do cadastro (F2)', () => {
 
   it('continua rejeitando objetivo desconhecido', () => {
     expect(collectedUserDataSchema.safeParse({ ...valido, goal: 'voar' }).success).toBe(false)
+  })
+})
+
+describe('collectedUserDataSchema — mesmos limites de corpo do perfil (R9)', () => {
+  it('aceita altura 115 cm, que o perfil aceita', () => {
+    expect(updateProfileBodySchema.safeParse({ height_cm: 115 }).success).toBe(true)
+    expect(collectedUserDataSchema.safeParse({ ...valido, height_cm: 115 }).success).toBe(true)
+  })
+
+  it.each([
+    ['height_cm', BODY_LIMITS.heightCm.min - 1],
+    ['height_cm', BODY_LIMITS.heightCm.max + 1],
+    ['weight_kg', BODY_LIMITS.weightKg.min - 0.1],
+    ['weight_kg', BODY_LIMITS.weightKg.max + 0.1],
+  ])('recusa %s = %s, como o perfil', (campo, valor) => {
+    expect(updateProfileBodySchema.safeParse({ [campo]: valor }).success).toBe(false)
+    expect(collectedUserDataSchema.safeParse({ ...valido, [campo]: valor }).success).toBe(false)
   })
 })
