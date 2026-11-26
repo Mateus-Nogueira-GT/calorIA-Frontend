@@ -286,9 +286,27 @@ export async function appleLogin(
 }
 
 /**
- * Logout — stub seguro. O cliente já limpa o token local; sempre retorna 200.
+ * Logout. O cliente limpa o token local; aqui revogamos a sessão no Supabase
+ * (A6 do pente fino), para o refresh token deixar de renovar. Best-effort:
+ * falha só gera log e a resposta é sempre 200.
+ *
+ * Escopo 'local': o default do signOut é 'global', que derrubaria os outros
+ * aparelhos do usuário. O access token segue válido até o `exp` (verificação
+ * local por JWKS); o que morre é o refresh.
  */
-export async function logout(): Promise<{ success: boolean }> {
+export async function logout(
+  fastify: FastifyInstance,
+  authorization: string | undefined,
+): Promise<{ success: boolean }> {
+  const jwt = /^Bearer (.+)$/i.exec(authorization ?? '')?.[1]?.trim()
+  if (jwt) {
+    try {
+      const { error } = await fastify.supabase.auth.admin.signOut(jwt, 'local')
+      if (error) fastify.log.warn({ err: error }, 'Falha ao revogar a sessão no logout')
+    } catch (err) {
+      fastify.log.warn({ err }, 'Falha ao revogar a sessão no logout')
+    }
+  }
   return { success: true }
 }
 
