@@ -224,3 +224,43 @@ describe('refresh limitado (429)', () => {
     expect(useAuthStore.getState().refreshToken).toBe('old-refresh');
   });
 });
+
+describe('401 de rota /auth/*', () => {
+  const oldApiAdapter = api.defaults.adapter;
+  const oldAxiosAdapter = axios.defaults.adapter;
+  afterEach(() => {
+    api.defaults.adapter = oldApiAdapter;
+    axios.defaults.adapter = oldAxiosAdapter;
+  });
+
+  it('A8: 401 INVALID_RESET_TOKEN em /auth/reset-password mantém a sessão e não tenta refresh', async () => {
+    const seen: string[] = [];
+    const adapter = routeAdapter({ '/auth/reset-password': 401 }, seen);
+    api.defaults.adapter = adapter;
+    axios.defaults.adapter = adapter;
+    useAuthStore.getState().clearToken();
+    useAuthStore.getState().setToken('old', USER, 'old-refresh');
+
+    const result = await api
+      .post('/auth/reset-password', { access_token: 'x', new_password: '12345678' })
+      .catch((error: unknown) => error);
+
+    expect(result).toMatchObject({ response: { status: 401 } });
+    expect(seen.some((url) => url.endsWith('/auth/refresh'))).toBe(false);
+    expect(useAuthStore.getState().token).toBe('old');
+  });
+
+  it('401 de rota comum continua tentando refresh', async () => {
+    const seen: string[] = [];
+    const adapter = routeAdapter({ '/users/me': 401, '/auth/refresh': 401 }, seen);
+    api.defaults.adapter = adapter;
+    axios.defaults.adapter = adapter;
+    useAuthStore.getState().clearToken();
+    useAuthStore.getState().setToken('old', USER, 'old-refresh');
+
+    await api.get('/users/me').catch(() => undefined);
+
+    expect(seen.some((url) => url.endsWith('/auth/refresh'))).toBe(true);
+    expect(useAuthStore.getState().token).toBeNull();
+  });
+});

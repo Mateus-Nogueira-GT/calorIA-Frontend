@@ -130,6 +130,12 @@ async function refreshAccessToken(): Promise<RefreshResult> {
   }
 }
 
+function isAuthRoute(url: string | undefined): boolean {
+  if (!url) return false;
+  const path = url.replace(/^https?:\/\/[^/]+/, '').split('?')[0];
+  return path.startsWith('/auth/') && path !== '/auth/refresh';
+}
+
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
@@ -146,6 +152,13 @@ api.interceptors.response.use(
           config._caloriaSessionGeneration !== useAuthStore.getState().sessionGeneration))
     ) {
       return Promise.reject(new axios.CanceledError());
+    }
+    // A8: em /auth/* o 401 é resposta da própria rota (ex: INVALID_RESET_TOKEN
+    // no reset de senha), não token de sessão expirado. Refresh ou clearToken
+    // aqui derrubavam a sessão de quem estava logado. /auth/refresh não passa
+    // por esta instância (usa axios direto, com regra própria).
+    if (error.response?.status === 401 && isAuthRoute(config?.url)) {
+      return Promise.reject(error);
     }
     if (error.response?.status === 401 && config && !config._retry) {
       config._retry = true;
