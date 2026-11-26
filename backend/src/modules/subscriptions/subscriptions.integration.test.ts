@@ -7,6 +7,7 @@ import { env } from '../../shared/env.js'
 import { runCreditOperation, wallet } from '../credits/credits.service.js'
 import type { AsaasClient } from './asaas.client.js'
 import { type AsaasEvent, handleAsaasEvent } from './asaas-webhook.service.js'
+import { checkoutPurchase } from './credit-purchases.service.js'
 import { cancelMySubscription, checkout } from './subscriptions.service.js'
 
 const url = process.env.TEST_DATABASE_URL
@@ -19,6 +20,7 @@ export const SUBSCRIPTION_MIGRATIONS = [
   '20261023120000_credit_grants_unlimited.sql',
   '026_subscriptions.sql',
   '027_credit_purchases.sql',
+  '028_credit_purchases_inflight_index.sql',
 ]
 
 /** Recria os schemas do banco descartável e aplica as migrações de crédito e assinatura. */
@@ -425,6 +427,40 @@ export async function resetSubscriptionSchema(db: postgres.Sql) {
       'ignored',
     )
     expect(await balance()).toBeUndefined()
+  })
+
+  const purchaseAsaas = (): AsaasClient => ({
+    createCustomer: async () => ({ id: 'cus_1' }),
+    createSubscription: async () => ({ id: 'sub_x' }),
+    createPayment: async () => ({ id: 'pay_nova', status: 'PENDING', invoiceUrl: 'https://asaas/i/n' }),
+    listSubscriptionPayments: async () => [],
+    deleteSubscription: async () => {},
+  })
+
+  it('compra presa sem id do Asaas: o evento grava o id e fecha; o pacote volta a ser comprável', async () => {
+    await db`UPDATE credit_purchases SET status='paid' WHERE id=${purchaseId}`
+    await db`INSERT INTO payment_customers(user_id,asaas_customer_id) VALUES(${user},'cus_1')`
+    const [stuck] =
+      await db`INSERT INTO credit_purchases(user_id,package_id,credits,price_cents,created_at)
+      SELECT ${user}, package_id, 10, 6000, now() - interval '3 days' FROM credit_purchases
+      WHERE id=${purchaseId} RETURNING id`
+    expect(
+      await handleAsaasEvent(f, ev('PAYMENT_OVERDUE', 'evt_stuck', 'pay_stuck', stuck.id)),
+    ).toBe('purchase_closed')
+    const [row] = await db`SELECT status, asaas_payment_id FROM credit_purchases WHERE id=${stuck.id}`
+    expect(row).toEqual({ status: 'expired', asaas_payment_id: 'pay_stuck' })
+    const r = await checkoutPurchase(f, purchaseAsaas(), user, { package_code: 'p10' })
+    expect(r.purchase_id).not.toBe(stuck.id)
+  })
+
+  it('migração: compra sem id que já não está pending não barra uma compra nova', async () => {
+    await db`UPDATE credit_purchases SET status='paid' WHERE id=${purchaseId}`
+    await db`INSERT INTO payment_customers(user_id,asaas_customer_id) VALUES(${user},'cus_1')`
+    await db`INSERT INTO credit_purchases(user_id,package_id,credits,price_cents,status)
+      SELECT ${user}, package_id, 10, 6000, 'expired' FROM credit_purchases WHERE id=${purchaseId}`
+    const r = await checkoutPurchase(f, purchaseAsaas(), user, { package_code: 'p10' })
+    const [row] = await db`SELECT asaas_payment_id FROM credit_purchases WHERE id=${r.purchase_id}`
+    expect(row.asaas_payment_id).toBe('pay_nova')
   })
 
   it('migração: pacote abaixo de R$ 5 é recusado; uma compra em criação por pacote', async () => {

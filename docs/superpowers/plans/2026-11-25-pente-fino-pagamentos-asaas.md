@@ -40,10 +40,10 @@
       atualizar nada, cancela a assinatura remota e lança 409.
 
 ### Task 5 — R2 (P2): índice da recarga
-- [ ] Migration `028_credit_purchases_inflight_index.sql`, acrescentada ao harness.
-- [ ] Teste de integração: compra presa com id nulo + OVERDUE fica `expired` com o id gravado, e o
+- [x] Migration `028_credit_purchases_inflight_index.sql`, acrescentada ao harness.
+- [x] Teste de integração: compra presa com id nulo + OVERDUE fica `expired` com o id gravado, e o
       checkout novo passa.
-- [ ] `handlePurchaseEvent` grava `asaas_payment_id` em todo evento casado por `externalReference`.
+- [x] `handlePurchaseEvent` grava `asaas_payment_id` em todo evento casado por `externalReference`.
 
 ### Task 6 — fechamento
 - [ ] `npm run typecheck`, `npm test` e a suíte de integração com `TEST_DATABASE_URL`.

@@ -291,11 +291,18 @@ async function handlePurchaseEvent(
   let [purchase] = await tx<PurchaseRow[]>`
     SELECT id, user_id, status, credits, credited_units FROM credit_purchases
     WHERE asaas_payment_id = ${p.id} FOR UPDATE`
-  if (!purchase && p.externalReference && UUID.test(p.externalReference))
-    [purchase] = await tx<PurchaseRow[]>`
+  if (!purchase && p.externalReference && UUID.test(p.externalReference)) {
+    ;[purchase] = await tx<PurchaseRow[]>`
       SELECT id, user_id, status, credits, credited_units FROM credit_purchases
       WHERE id = ${p.externalReference} AND (asaas_payment_id IS NULL OR asaas_payment_id = ${p.id})
       FOR UPDATE`
+    // Grava o id em qualquer evento: compra sem id (checkout caiu no meio)
+    // fica ligada ao pagamento e deixa de contar como "em criação".
+    if (purchase)
+      await tx`
+        UPDATE credit_purchases SET asaas_payment_id = ${p.id}, updated_at = now()
+        WHERE id = ${purchase.id} AND asaas_payment_id IS NULL`
+  }
   if (!purchase) return 'ignored'
 
   if (PAID.has(event)) {
