@@ -65,6 +65,28 @@ describe('deleteUserAccount (AP1)', () => {
   })
 })
 
+describe('deleteUserAccount idempotente (A3 do pente fino)', () => {
+  // O app reenvia a exclusão quando o 1º DELETE estoura o timeout do cliente
+  // depois de o Supabase já ter apagado o usuário. O 2º não pode virar 502.
+  it.each([
+    ['status 404', { status: 404, message: 'User not found' }],
+    ['code user_not_found', { status: 400, code: 'user_not_found', message: 'User not found' }],
+  ])('deleteUser com usuário inexistente (%s) resolve sem erro', async (_n, error) => {
+    const { fastify, deleteUser } = fakeFastify(false)
+    deleteUser.mockResolvedValueOnce({ error })
+    await expect(deleteUserAccount(fastify as never, 'u1')).resolves.toBeUndefined()
+  })
+
+  it('outras falhas do deleteUser continuam 502 DELETE_FAILED', async () => {
+    const { fastify, deleteUser } = fakeFastify(false)
+    deleteUser.mockResolvedValueOnce({ error: { status: 500, message: 'db down' } })
+    await expect(deleteUserAccount(fastify as never, 'u1')).rejects.toMatchObject({
+      statusCode: 502,
+      code: 'DELETE_FAILED',
+    })
+  })
+})
+
 describe('deleteUserAccount com assinatura (spec 2026-11-09)', () => {
   const original = { enabled: env.SUBSCRIPTIONS_ENABLED, key: env.ASAAS_API_KEY }
   afterEach(() => {

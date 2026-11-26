@@ -261,6 +261,14 @@ export async function deleteUserAccount(fastify: FastifyInstance, userId: string
 
   const { error } = await fastify.supabase.auth.admin.deleteUser(userId)
 
+  // A3 do pente fino: o retry do app chega depois de o 1º DELETE já ter
+  // apagado o usuário. "Não existe" é o estado pedido, então é sucesso.
+  const { status, code } = (error ?? {}) as { status?: number; code?: string }
+  if (error && (status === 404 || code === 'user_not_found')) {
+    fastify.log.info({ userId }, 'Conta já excluída (exclusão repetida)')
+    return
+  }
+
   if (error) {
     fastify.log.error({ err: error, userId }, 'Falha ao excluir conta')
     throw new AppError(502, 'DELETE_FAILED', 'Não foi possível excluir a conta. Tente novamente.')

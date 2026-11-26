@@ -50,5 +50,7 @@ export const profileService = {
    * Exclui a conta permanentemente. Irreversível: o backend remove o usuário e,
    * por cascata, todos os dados. Não há logout depois — a sessão morre junto.
    */
-  deleteAccount: () => api.delete<void>('/users/me').then(() => undefined),
+  // A3: a exclusão apaga Storage, Asaas e auth.users no mesmo request; nos 10s
+  // do API_TIMEOUT o app via erro com a conta já apagada.
+  deleteAccount: () => api.delete<void>('/users/me', { timeout: 60000 }).then(() => undefined),
 };
