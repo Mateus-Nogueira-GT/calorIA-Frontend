@@ -38,6 +38,9 @@ import { isAllowedIssuer, supabaseIssuer } from './shared/auth-issuer.js'
 import { env } from './shared/env.js'
 import { AppError } from './shared/errors.js'
 
+const invalidToken = () =>
+  new AppError(401, 'UNAUTHORIZED', 'Token inválido ou ausente. Faça login novamente.')
+
 export async function buildApp() {
   const app = Fastify({
     // Atrás do proxy da Vercel, request.ip sem trustProxy é o IP interno do
@@ -101,10 +104,16 @@ export async function buildApp() {
         header: { kid: string; alg: string }
         payload: { iss: string }
       }
-      if (!isAllowedIssuer(payload.iss, env.SUPABASE_URL)) {
-        throw new Error('Issuer do token não corresponde ao Supabase configurado')
+      // Token recusado é 401 (AppError): um Error solto daqui não passa pelo
+      // wrapper do @fastify/jwt e virava 500/503 nas rotas sem try/catch.
+      if (!isAllowedIssuer(payload.iss, env.SUPABASE_URL)) throw invalidToken()
+      try {
+        return await getJwks.getPublicKey({ kid: header.kid, domain: issuer, alg: header.alg })
+      } catch (err) {
+        const code = (err as { code?: string }).code
+        if (code === 'JWK_NOT_FOUND' || code === 'DOMAIN_NOT_ALLOWED') throw invalidToken()
+        throw err
       }
-      return getJwks.getPublicKey({ kid: header.kid, domain: issuer, alg: header.alg })
     },
     verify: {
       algorithms: ['ES256'],

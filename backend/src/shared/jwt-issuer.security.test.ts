@@ -137,6 +137,24 @@ describe('A1: issuer e audiência do JWT', () => {
     expect(r.statusCode).toBe(401)
   })
 
+  // Rotas com jwtVerify() sem try/catch (admin, créditos, recarga): o erro do
+  // issuer precisa chegar como 401, e não como 500/503.
+  it.each([
+    ['/admin/overview', 'iss do avatar', () => `${base}${avatarPath}#`],
+    ['/credits/me', 'iss do avatar', () => `${base}${avatarPath}#`],
+    ['/credit-invites/redeem', 'iss do avatar', () => `${base}${avatarPath}#`],
+    ['/admin/overview', 'kid fora da JWKS', () => `${base}/auth/v1`],
+  ])('rota real %s com %s → 401', async (url, _caso, iss) => {
+    const token = signJwt(attacker, { iss: iss(), aud: 'authenticated' })
+    const r = await app.inject({
+      method: url.endsWith('/redeem') ? 'POST' : 'GET',
+      url,
+      headers: { authorization: `Bearer ${token}` },
+      ...(url.endsWith('/redeem') ? { payload: { token: 'x'.repeat(43) } } : {}),
+    })
+    expect(r.statusCode).toBe(401)
+  })
+
   it('a JWKS do avatar nunca é buscada', () => {
     expect(hits.some((h) => h.startsWith('/storage/') || h.startsWith('/qualquer'))).toBe(false)
   })
