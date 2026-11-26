@@ -273,6 +273,47 @@ describe('runDietGeneration — falhas', () => {
     expect(ds().stepJob).toHaveBeenCalledTimes(1);
   });
 
+  it('R7: "ocupado" (200 sem avanço) por 30 chamadas não falha o banner', async () => {
+    ds().stepJob.mockResolvedValue(job()); // outro step ainda gerando no servidor
+    void useCoachStore.getState().runDietGeneration('j1');
+    await jest.advanceTimersByTimeAsync(0);
+    for (let i = 0; i < 31 && ds().stepJob.mock.calls.length < 31; i++)
+      await jest.advanceTimersByTimeAsync(5000);
+    expect(ds().stepJob.mock.calls.length).toBeGreaterThanOrEqual(31);
+    expect(useCoachStore.getState().dietJob?.status).toBe('running');
+    useCoachStore.getState().resetDietGeneration(); // encerra o loop ainda vivo
+    await jest.advanceTimersByTimeAsync(5000);
+  });
+
+  it('R7: o loop ocupado termina quando o orçamento de tempo acaba', async () => {
+    ds().stepJob.mockResolvedValue(job());
+    const loop = useCoachStore.getState().runDietGeneration('j1');
+    await jest.advanceTimersByTimeAsync(10 * 60 * 1000 + 5000);
+    await loop;
+    expect(useCoachStore.getState().dietJob).toMatchObject({
+      status: 'failed',
+      errorMessage: GENERIC,
+    });
+    const calls = ds().stepJob.mock.calls.length;
+    await jest.advanceTimersByTimeAsync(60000);
+    expect(ds().stepJob).toHaveBeenCalledTimes(calls);
+  });
+
+  it('R7: progresso no meio renova o orçamento de ocupado', async () => {
+    let n = 0;
+    // 100 chamadas ocupado (~500 s), avança um dia, mais 100 ocupado, depois conclui.
+    ds().stepJob.mockImplementation(async () => {
+      n++;
+      if (n <= 100) return job();
+      if (n <= 200) return job({ daysCompleted: 1 });
+      return job({ status: 'completed', daysCompleted: 7 });
+    });
+    const loop = useCoachStore.getState().runDietGeneration('j1');
+    await jest.advanceTimersByTimeAsync(205 * 5000);
+    await loop;
+    expect(useCoachStore.getState().dietJob?.status).toBe('completed');
+  });
+
   it('5xx/rede repetidos sem progresso falham após 3 rodadas (não 30)', async () => {
     ds().stepJob.mockRejectedValue(netErr());
     ds().getJob.mockResolvedValue(job({ daysCompleted: 0 }));
