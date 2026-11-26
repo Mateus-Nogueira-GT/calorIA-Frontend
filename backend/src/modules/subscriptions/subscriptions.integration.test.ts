@@ -300,7 +300,11 @@ export async function resetSubscriptionSchema(db: postgres.Sql) {
   } as unknown as FastifyInstance
   const user = randomUUID()
   let purchaseId = ''
-  beforeAll(() => resetSubscriptionSchema(db))
+  const purchasesFlag = env.CREDIT_PURCHASES_ENABLED
+  beforeAll(async () => {
+    env.CREDIT_PURCHASES_ENABLED = true
+    await resetSubscriptionSchema(db)
+  })
   beforeEach(async () => {
     await db`TRUNCATE credit_purchases,credit_packages,payment_webhook_events,payment_customers,credit_ledger,credit_wallets,profiles,auth.users CASCADE`
     await db`INSERT INTO auth.users(id) VALUES(${user})`
@@ -312,6 +316,7 @@ export async function resetSubscriptionSchema(db: postgres.Sql) {
     purchaseId = c.id
   })
   afterAll(async () => {
+    env.CREDIT_PURCHASES_ENABLED = purchasesFlag
     await db.end()
   })
   const ev = (

@@ -15,9 +15,9 @@
 ## Tasks
 
 ### Task 1 — R5 (P6): ignorar cobrança avulsa com a recarga desligada
-- [ ] Teste em `asaas-webhook` (unit/routes test que já mocka `env`): evento `PAYMENT_CONFIRMED` sem
+- [x] Teste em `asaas-webhook` (unit/routes test que já mocka `env`): evento `PAYMENT_CONFIRMED` sem
       `subscription`, com `CREDIT_PURCHASES_ENABLED=false`, devolve `'ignored'`.
-- [ ] Guard em `handleAsaasEvent` antes de `handlePurchaseEvent`.
+- [x] Guard em `handleAsaasEvent` antes de `handlePurchaseEvent`.
 
 ### Task 2 — R4 (P5): evento genérico não grava status terminal
 - [ ] Teste de integração: CONFIRMED → UPDATED(status REFUNDED) → REFUNDED. Saldo e `paid_until`

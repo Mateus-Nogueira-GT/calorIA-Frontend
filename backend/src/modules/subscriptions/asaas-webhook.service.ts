@@ -1,6 +1,7 @@
 import { createHash, timingSafeEqual } from 'node:crypto'
 import type { FastifyInstance } from 'fastify'
 import type postgres from 'postgres'
+import { env } from '../../shared/env.js'
 import { CREDIT_POLICY } from '../credits/credit-policy.js'
 import { ensureWallet } from '../credits/credits.service.js'
 import type { Cycle } from './subscriptions.schemas.js'
@@ -214,8 +215,12 @@ export async function handleAsaasEvent(
 
     const p = ev.payment
     if (!p?.id || !ev.event.startsWith('PAYMENT_')) return 'ignored'
-    // Cobrança avulsa (sem assinatura): recarga de créditos.
-    if (!p.subscription) return handlePurchaseEvent(tx, ev.event, p)
+    // Cobrança avulsa (sem assinatura): recarga de créditos. Com a recarga
+    // desligada a tabela pode nem existir (027 não aplicada): só registra.
+    if (!p.subscription) {
+      if (!env.CREDIT_PURCHASES_ENABLED) return 'ignored'
+      return handlePurchaseEvent(tx, ev.event, p)
+    }
     const [sub] = await tx<SubRow[]>`
       SELECT id, user_id, status, cycle, credits_per_cycle, paid_until FROM subscriptions
       WHERE asaas_subscription_id = ${p.subscription} FOR UPDATE`
