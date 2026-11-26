@@ -171,4 +171,44 @@ describe('useChallengesStore', () => {
 
     expect(useChallengesStore.getState().challenges[0]!.myLastCheckIn).toBe(todayString());
   });
+
+  it('load mantém o desafio de convite ainda não aceito (S5)', async () => {
+    const invited = challenge('c9', { joinedByMe: false });
+    challengesService.resolveInvite.mockResolvedValue(invited);
+    // GET /challenges só lista desafios dos quais sou membro.
+    challengesService.getChallenges.mockResolvedValue([challenge('c1', { joinedByMe: true })]);
+
+    await useChallengesStore.getState().resolveInvite('ABC123');
+    await useChallengesStore.getState().load();
+
+    const list = useChallengesStore.getState().challenges;
+    expect(list.map((c) => c.id)).toEqual(['c9', 'c1']);
+    expect(list[0].joinedByMe).toBe(false);
+  });
+
+  it('convite resolvido durante o load também sobrevive', async () => {
+    let resolveList!: (v: Challenge[]) => void;
+    challengesService.getChallenges.mockReturnValue(
+      new Promise<Challenge[]>((r) => {
+        resolveList = r;
+      }),
+    );
+    challengesService.resolveInvite.mockResolvedValue(challenge('c9'));
+
+    const loading = useChallengesStore.getState().load();
+    await useChallengesStore.getState().resolveInvite('ABC123');
+    resolveList([]);
+    await loading;
+
+    expect(useChallengesStore.getState().challenges.map((c) => c.id)).toEqual(['c9']);
+  });
+
+  it('load descarta desafio já aceito que o servidor não devolve mais', async () => {
+    useChallengesStore.setState({ challenges: [challenge('c1', { joinedByMe: true })] });
+    challengesService.getChallenges.mockResolvedValue([]);
+
+    await useChallengesStore.getState().load();
+
+    expect(useChallengesStore.getState().challenges).toEqual([]);
+  });
 });

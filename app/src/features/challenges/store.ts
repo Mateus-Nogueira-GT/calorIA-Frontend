@@ -43,7 +43,14 @@ export const useChallengesStore = create<ChallengesState>((set, get) => ({
     set({ isLoading: true });
     try {
       const challenges = await challengesService.getChallenges();
-      set({ challenges, isLoading: false });
+      // S5: GET /challenges só lista desafios dos quais sou membro. Substituir a
+      // lista apagava o desafio vindo de convite (ainda não aceito) e o card
+      // "Participar" sumia. Merge no momento da resposta: mantém os convites.
+      set((s) => {
+        const fetched = new Set(challenges.map((c) => c.id));
+        const pendingInvites = s.challenges.filter((c) => !c.joinedByMe && !fetched.has(c.id));
+        return { challenges: [...pendingInvites, ...challenges], isLoading: false };
+      });
     } catch (e) {
       set({ isLoading: false });
       throw e;
