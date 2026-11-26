@@ -164,6 +164,9 @@ describe('proposeCompletePlanMeal (A3)', () => {
     })
     // O schema da resposta não pode descartar a data.
     expect(chatResponseSchema.shape.action_proposal.parse(r.proposal)).toEqual(r.proposal)
+    // Resposta gravada antes da data (repetição pela chave de idempotência) continua válida.
+    const { date: _date, ...stored } = r.proposal as Record<string, unknown>
+    expect(chatResponseSchema.shape.action_proposal.safeParse(stored).success).toBe(true)
   })
 
   it('já concluída → sem proposta; ref inválida → indica a tela Hoje', () => {
