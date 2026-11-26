@@ -16,7 +16,7 @@
    Corrigir `scaleScanPortion`.
 2. [x] **R2 (C2).** Teste em `features/coach/store.actions.test.ts`, com `addMeal` pendente e troca de sessão.
    Capturar o dono, passá-lo ao `addMeal` e proteger as gravações no store.
-3. **R3 (C3).** Testes em `backend/src/modules/chat/action-proposals*.test.ts` para os três tipos de cartão.
+3. [x] **R3 (C3).** Testes em `backend/src/modules/chat/action-proposals*.test.ts` para os três tipos de cartão.
    Tornar os campos cosméticos tolerantes.
 4. **R4 (C5).** Teste no `store.test.ts` do scanner com duas chamadas de `confirm()`. Fazer a promise
    única, desabilitar a lista enquanto salva e cobrir isso no teste da `ScanResultScreen`.

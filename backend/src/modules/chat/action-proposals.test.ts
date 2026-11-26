@@ -171,6 +171,68 @@ describe('proposeCompletePlanMeal (A3)', () => {
   })
 })
 
+describe('C3: campo cosmético fora do limite não derruba o cartão', () => {
+  const longMessage = 'a'.repeat(401)
+  const meal = {
+    name: 'x'.repeat(121),
+    weight_grams: 100,
+    calories: 155,
+    protein: 13,
+    carbs: 1,
+    fat: 11,
+    fiber: 0,
+    meal_type: 'breakfast',
+    date: 'today',
+  }
+
+  it('refeição: nome de 121 caracteres é cortado; mensagem longa ou de outro tipo é descartada', () => {
+    for (const message_to_user of [longMessage, 42]) {
+      const r = proposeLogMeal({ ...meal, message_to_user }, '2026-11-05')
+      expect(r.proposal).toMatchObject({ kind: 'log_meal', name: 'x'.repeat(120) })
+      expect(r.message).toMatch(/^Para registrar no café da manhã/)
+    }
+  })
+
+  it('peso: mensagem longa ou de outro tipo é descartada', async () => {
+    for (const message_to_user of [longMessage, { texto: 'oi' }]) {
+      const { fastify } = fakeFastify([['FROM weight_entries', []]])
+      const r = await proposeLogWeight(
+        fastify,
+        USER,
+        { weight_kg: 78, date: 'today', message_to_user },
+        '2026-11-05',
+      )
+      expect(r.proposal).toMatchObject({ kind: 'log_weight', weightKg: 78 })
+      expect(r.message).toMatch(/^Para registrar na Evolução/)
+    }
+  })
+
+  it('refeição do plano: mensagem longa ou de outro tipo é descartada', () => {
+    const plan = {
+      meals: [
+        {
+          id: 'abcdef12-0000-0000-0000-000000000001',
+          title: 'Almoço',
+          calories: 650,
+          completedToday: false,
+        },
+      ],
+    } as unknown as TodayPlan
+    for (const message_to_user of [longMessage, null]) {
+      const r = proposeCompletePlanMeal({ plan_meal_ref: 'abcdef', message_to_user }, plan)
+      expect(r.proposal).toMatchObject({ kind: 'complete_plan_meal', title: 'Almoço' })
+      expect(r.message).toMatch(/^Para marcar "Almoço"/)
+    }
+  })
+
+  it('número, tipo de refeição e referência inválidos continuam sem proposta', () => {
+    expect(proposeLogMeal({ ...meal, calories: 'muito' }, '2026-11-05').proposal).toBeNull()
+    expect(proposeLogMeal({ ...meal, meal_type: 'ceia' }, '2026-11-05').proposal).toBeNull()
+    expect(proposeLogMeal({ ...meal, name: '   ' }, '2026-11-05').proposal).toBeNull()
+    expect(proposeCompletePlanMeal({ plan_meal_ref: 42 }, null).proposal).toBeNull()
+  })
+})
+
 describe('sendChatMessage com as marcas de ação', () => {
   const names = (params: Record<string, unknown>) =>
     (params.tools as { function: { name: string } }[]).map((t) => t.function.name)
