@@ -46,5 +46,5 @@
 - [x] `handlePurchaseEvent` grava `asaas_payment_id` em todo evento casado por `externalReference`.
 
 ### Task 6 — fechamento
-- [ ] `npm run typecheck`, `npm test` e a suíte de integração com `TEST_DATABASE_URL`.
-- [ ] Atualizar o ledger e fazer um commit por task, ou um único commit se ficar pequeno.
+- [x] `npm run typecheck`, `npm test` e a suíte de integração com `TEST_DATABASE_URL`.
+- [x] Atualizar o ledger e fazer um commit por task, ou um único commit se ficar pequeno.
