@@ -12,14 +12,14 @@
 
 ## Tasks
 
-1. [ ] R1a: teste de forja (3 variantes de `iss` → 401; legítimo → 200; `aud` errada → 401) e
+1. [x] R1a: teste de forja (3 variantes de `iss` → 401; legítimo → 200; `aud` errada → 401) e
        `auth-issuer.test.ts` atualizado. Ver falhar.
-2. [ ] R1b: issuer exato, JWKS de domínio fixo com `issuersWhitelist`, `allowedIss` e `allowedAud`.
+2. [x] R1b: issuer exato, JWKS de domínio fixo com `issuersWhitelist`, `allowedIss` e `allowedAud`.
        Conferir os testes que montam tokens (grep `iss`, `aud`, `sign(`) e ajustar as fixtures. Ver passar.
-3. [ ] R1c: magic bytes no avatar, com testes (PNG/JPEG/WebP ok; JSON/SVG → 422). Commit R1.
-4. [ ] R2: 429 no backend e no app (refresh). Commit.
-5. [ ] R3: exclusão idempotente e timeout de 60 s. Commit.
-6. [ ] R4: 401 em `/auth/*` não derruba a sessão. Commit.
-7. [ ] R5: e-mail vazio no login social. Commit.
-8. [ ] R6: logout revoga a sessão. Commit.
-9. [ ] Fechamento: `npm run typecheck && npm test` no backend e `npx tsc --noEmit && npx jest` no app.
+3. [x] R1c: magic bytes no avatar, com testes (PNG/JPEG/WebP ok; JSON/SVG → 422). Commit R1.
+4. [x] R2: 429 no backend e no app (refresh). Commit.
+5. [x] R3: exclusão idempotente e timeout de 60 s. Commit.
+6. [x] R4: 401 em `/auth/*` não derruba a sessão. Commit.
+7. [x] R5: e-mail vazio no login social. Commit.
+8. [x] R6: logout revoga a sessão. Commit.
+9. [x] Fechamento: `npm run typecheck && npm test` no backend e `npx tsc --noEmit && npx jest` no app.
