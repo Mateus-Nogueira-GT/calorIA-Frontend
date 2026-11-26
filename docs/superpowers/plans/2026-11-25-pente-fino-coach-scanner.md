@@ -27,5 +27,5 @@
    lados.
 7. [x] **R7 (C8).** Teste em `scanner` (vitest), com o resultado do modelo mockado: 3 alternativas, uma de
    nome vazio. Ajustar o schema de leitura.
-8. **Fechamento.** Rodar `npm run typecheck && npm test` no backend e `npx tsc --noEmit && npx jest` no app.
+8. [x] **Fechamento.** Rodar `npm run typecheck && npm test` no backend e `npx tsc --noEmit && npx jest` no app.
    Fazer commit por task ou por grupo.
