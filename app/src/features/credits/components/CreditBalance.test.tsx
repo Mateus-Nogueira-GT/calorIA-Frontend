@@ -1,5 +1,4 @@
 import React from 'react';
-import { AppState } from 'react-native';
 import { act, render } from '@testing-library/react-native';
 import { CreditBalance } from './CreditBalance';
 import { useCreditsStore } from '../store';
@@ -81,38 +80,4 @@ it('conta ilimitada: mostra "Créditos ilimitados" e esconde a linha de preços'
   await act(async () => {});
   expect(screen.getByText('Créditos ilimitados')).toBeTruthy();
   expect(screen.queryByText(/Foto: 3 créditos/)).toBeNull();
-});
-
-describe('R5: volta ao app', () => {
-  let appStateCb: ((s: string) => void) | null = null;
-  beforeEach(() => {
-    appStateCb = null;
-    jest.spyOn(AppState, 'addEventListener').mockImplementation((_e, cb) => {
-      appStateCb = cb as (s: string) => void;
-      return { remove: jest.fn() } as never;
-    });
-  });
-  afterEach(() => jest.restoreAllMocks());
-
-  it('background → active recarrega a carteira', async () => {
-    read.mockResolvedValue(wallet(true));
-    render(<CreditBalance onPress={() => {}} />);
-    await act(async () => {});
-    expect(read).toHaveBeenCalledTimes(1);
-    await act(async () => {
-      appStateCb?.('background');
-      appStateCb?.('active');
-    });
-    expect(read).toHaveBeenCalledTimes(2);
-  });
-
-  it('créditos desligados: voltar ao app não consulta de novo', async () => {
-    read.mockResolvedValue(wallet(false));
-    render(<CreditBalance onPress={() => {}} />);
-    await act(async () => {});
-    await act(async () => {
-      appStateCb?.('active');
-    });
-    expect(read).toHaveBeenCalledTimes(1);
-  });
 });

@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { AppState, Pressable, StyleSheet } from 'react-native';
+import { Pressable, StyleSheet } from 'react-native';
 import { Text } from '@shared/components';
 import { formatCredits } from '@shared/services/credits.service';
 import { colors, spacing } from '@theme';
@@ -10,14 +10,6 @@ export function CreditBalance({ onPress }: { onPress: () => void }): React.JSX.E
   useEffect(() => {
     void load();
   }, [load]);
-  // Voltou ao app (por exemplo, depois de pagar no navegador): o saldo pode ter mudado.
-  useEffect(() => {
-    if (!featureVisible) return;
-    const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'active') void load();
-    });
-    return () => sub.remove();
-  }, [featureVisible, load]);
   // Existing releases stay unchanged while backend enforcement is disabled —
   // including when the wallet request fails (no "Saldo indisponível" for an
   // account that has never had credits enabled).

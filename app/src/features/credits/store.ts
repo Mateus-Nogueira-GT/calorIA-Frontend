@@ -1,3 +1,4 @@
+import { AppState, type AppStateStatus } from 'react-native';
 import { create } from 'zustand';
 import { creditsService, Wallet, subscribeCreditChange } from '@shared/services/credits.service';
 import { useAuthStore } from '@features/auth/store';
@@ -55,3 +56,14 @@ useAuthStore.subscribe((state, previous) => {
 subscribeCreditChange(() => {
   void useCreditsStore.getState().load();
 });
+
+/**
+ * Voltou ao app (por exemplo, depois de pagar no navegador): o saldo pode ter
+ * mudado. Um listener só, no store, para as várias telas com o saldo. O load()
+ * já confere a sessão.
+ */
+export function refreshWalletOnForeground(state: AppStateStatus): void {
+  if (state === 'active' && useCreditsStore.getState().featureVisible)
+    void useCreditsStore.getState().load();
+}
+AppState.addEventListener('change', refreshWalletOnForeground);
