@@ -16,6 +16,7 @@ import {
   bindRequestToOwner,
   captureSessionOwner,
   isCurrentOwner,
+  type SessionOwner,
 } from '@shared/services/session-owner';
 import {
   clearSpeechCache,
@@ -45,25 +46,33 @@ async function refreshCorrectedDay(date: string): Promise<void> {
   }
 }
 
-/** Grava a ação do cartão e atualiza a tela correspondente. */
-async function runAction(card: ActionProposal): Promise<void> {
+/**
+ * Grava a ação do cartão e atualiza a tela correspondente. C2 (pente fino
+ * 25/11): a resposta pode chegar depois de logout/login; nada dela toca as
+ * telas da conta seguinte (mesmo padrão do D01 no scanner).
+ */
+async function runAction(card: ActionProposal, owner: SessionOwner): Promise<void> {
   if (card.kind === 'log_meal') {
-    const meal = await foodLogService.addMeal({
-      name: card.name,
-      calories: card.calories,
-      protein: card.protein,
-      carbs: card.carbs,
-      fat: card.fat,
-      fiber: card.fiber,
-      weightGrams: card.weightGrams,
-      mealType: card.mealType,
-      date: card.date,
-    });
-    useFoodLogStore.getState().addMeal(card.date, meal);
+    const meal = await foodLogService.addMeal(
+      {
+        name: card.name,
+        calories: card.calories,
+        protein: card.protein,
+        carbs: card.carbs,
+        fat: card.fat,
+        fiber: card.fiber,
+        weightGrams: card.weightGrams,
+        mealType: card.mealType,
+        date: card.date,
+      },
+      owner,
+    );
+    if (isCurrentOwner(owner)) useFoodLogStore.getState().addMeal(card.date, meal);
     return;
   }
   if (card.kind === 'log_weight') {
     await weightService.addEntry(card.weightKg, card.date);
+    if (!isCurrentOwner(owner)) return;
     void useWeightStore
       .getState()
       .load()
@@ -73,6 +82,7 @@ async function runAction(card: ActionProposal): Promise<void> {
     return;
   }
   await dietService.toggleMeal(card.mealId, { completed: true });
+  if (!isCurrentOwner(owner)) return;
   void useDietStore
     .getState()
     .loadCurrent()
@@ -300,13 +310,14 @@ export const useCoachStore = create<CoachState>()(
             ),
           }));
         setStatus('saving');
+        const owner = captureSessionOwner();
         try {
-          await runAction(card);
+          await runAction(card, owner);
         } catch {
-          setStatus('error');
+          if (isCurrentOwner(owner)) setStatus('error');
           return;
         }
-        setStatus('saved');
+        if (isCurrentOwner(owner)) setStatus('saved');
       },
 
       dismissAction: (messageId) =>

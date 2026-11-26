@@ -14,7 +14,7 @@
 
 1. [x] **R1 (C1).** Teste em `scan-portion.test.ts` e em `features/scanner/store.test.ts`, com 6000 → 600 g.
    Corrigir `scaleScanPortion`.
-2. **R2 (C2).** Teste em `features/coach/store.actions.test.ts`, com `addMeal` pendente e troca de sessão.
+2. [x] **R2 (C2).** Teste em `features/coach/store.actions.test.ts`, com `addMeal` pendente e troca de sessão.
    Capturar o dono, passá-lo ao `addMeal` e proteger as gravações no store.
 3. **R3 (C3).** Testes em `backend/src/modules/chat/action-proposals*.test.ts` para os três tipos de cartão.
    Tornar os campos cosméticos tolerantes.
