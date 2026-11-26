@@ -733,4 +733,177 @@ export async function resetSubscriptionSchema(db: postgres.Sql) {
     const [prev] = await db`SELECT status FROM subscriptions WHERE id=${old.id}`
     expect(prev.status).toBe('canceled')
   })
+
+  /**
+   * Asaas de assinatura com estado, por externalReference. `mode`: 'ok';
+   * 'created_then_timeout' (cria e a resposta se perde); 'timeout' (nada
+   * criado); 'lookup_fails' (a busca por referência falha).
+   */
+  function statefulSubAsaas() {
+    const subs = new Map<string, { id: string; externalReference: string }>()
+    const state = {
+      mode: 'ok' as 'ok' | 'created_then_timeout' | 'timeout' | 'lookup_fails',
+      creates: 0,
+      deleted: [] as string[],
+    }
+    const client: AsaasClient = {
+      ...gatedAsaas().client,
+      createSubscription: async (i) => {
+        state.creates++
+        if (state.mode === 'timeout') throw asaasError(true)
+        const sub = { id: `sub_${state.creates}`, externalReference: i.externalReference }
+        subs.set(i.externalReference, sub)
+        if (state.mode === 'created_then_timeout') throw asaasError(true)
+        return sub
+      },
+      listSubscriptionPayments: async (id) => [
+        {
+          id: `pay_${id}`,
+          status: 'PENDING',
+          dueDate: '2026-11-26',
+          invoiceUrl: `https://asaas/i/${id}`,
+        },
+      ],
+      deleteSubscription: async (id) => {
+        state.deleted.push(id)
+      },
+      findSubscriptionByExternalReference: async (ref) => {
+        if (state.mode === 'lookup_fails') throw asaasError(true, 503)
+        return subs.get(ref) ?? null
+      },
+      getSubscription: async (id) => {
+        const sub = [...subs.values()].find((x) => x.id === id)
+        if (!sub) throw asaasError(false, 404)
+        return sub
+      },
+    }
+    return { client, state }
+  }
+
+  it('R4: dois toques com a assinatura já criada no Asaas: o segundo recebe a mesma assinatura', async () => {
+    const a = gatedAsaas()
+    const refs = new Map<string, string>()
+    const client: AsaasClient = {
+      ...a.client,
+      createSubscription: async (i) => {
+        refs.set(i.externalReference, `sub_${a.created.length + 1}`)
+        return a.client.createSubscription(i)
+      },
+      findSubscriptionByExternalReference: async (ref) =>
+        refs.has(ref) ? { id: refs.get(ref) as string } : null,
+    }
+    const first = checkout(f, client, user, BODY)
+    await a.inside
+    const second = await checkout(f, client, user, BODY)
+    a.release()
+    const r = await first
+    expect(second.subscription_id).toBe(r.subscription_id)
+    expect(a.created).toEqual(['sub_1'])
+    expect(a.deleted).toEqual([])
+    expect(await open()).toEqual([
+      { id: r.subscription_id, status: 'pending', asaas_subscription_id: 'sub_1' },
+    ])
+  })
+
+  it('R4: timeout depois de criar → checkout novo reconcilia: nenhuma segunda criação, mesma fatura', async () => {
+    const a = statefulSubAsaas()
+    a.state.mode = 'created_then_timeout'
+    await expect(checkout(f, a.client, user, BODY)).rejects.toMatchObject({ statusCode: 502 })
+    const [kept] = await open()
+    expect(kept).toMatchObject({ status: 'pending', asaas_subscription_id: null })
+    a.state.mode = 'ok'
+    const r = await checkout(f, a.client, user, BODY)
+    expect(r).toEqual({
+      subscription_id: kept.id,
+      status: 'pending',
+      invoice_url: 'https://asaas/i/sub_1',
+    })
+    expect(a.state.creates).toBe(1)
+    expect(a.state.deleted).toEqual([])
+    expect(await open()).toEqual([
+      { id: kept.id, status: 'pending', asaas_subscription_id: 'sub_1' },
+    ])
+  })
+
+  it('R4: timeout depois de criar, checkout de outro plano: cancela a achada no Asaas e cria a nova', async () => {
+    await db`INSERT INTO subscription_plans(code,name,price_cents,cycle,credits_per_cycle) VALUES('max','Max',4990,'MONTHLY',300)`
+    const a = statefulSubAsaas()
+    a.state.mode = 'created_then_timeout'
+    await expect(checkout(f, a.client, user, BODY)).rejects.toThrow()
+    const [kept] = await open()
+    a.state.mode = 'ok'
+    const r = await checkout(f, a.client, user, { ...BODY, plan_code: 'max' })
+    expect(r.subscription_id).not.toBe(kept.id)
+    expect(a.state.deleted).toEqual(['sub_1'])
+    const [prev] =
+      await db`SELECT status, asaas_subscription_id FROM subscriptions WHERE id=${kept.id}`
+    expect(prev).toEqual({ status: 'canceled', asaas_subscription_id: 'sub_1' })
+    expect(await open()).toEqual([
+      { id: r.subscription_id, status: 'pending', asaas_subscription_id: 'sub_2' },
+    ])
+  })
+
+  it('R4: timeout sem criar → recente dá 409; antiga é cancelada localmente e o checkout segue', async () => {
+    const a = statefulSubAsaas()
+    a.state.mode = 'timeout'
+    await expect(checkout(f, a.client, user, BODY)).rejects.toMatchObject({ statusCode: 502 })
+    const [kept] = await open()
+    a.state.mode = 'ok'
+    await expect(checkout(f, a.client, user, BODY)).rejects.toMatchObject({
+      statusCode: 409,
+      code: 'CHECKOUT_IN_PROGRESS',
+    })
+    await db`UPDATE subscriptions SET created_at = now() - interval '11 minutes' WHERE id=${kept.id}`
+    const r = await checkout(f, a.client, user, BODY)
+    expect(r.subscription_id).not.toBe(kept.id)
+    expect(a.state.deleted).toEqual([])
+    const [prev] = await db`SELECT status FROM subscriptions WHERE id=${kept.id}`
+    expect(prev.status).toBe('canceled')
+  })
+
+  it('R4: a busca no Asaas falhando → 409, mesmo com a linha antiga; nada é criado nem cancelado', async () => {
+    const a = statefulSubAsaas()
+    a.state.mode = 'timeout'
+    await expect(checkout(f, a.client, user, BODY)).rejects.toThrow()
+    const [kept] = await open()
+    await db`UPDATE subscriptions SET created_at = now() - interval '11 minutes' WHERE id=${kept.id}`
+    a.state.mode = 'lookup_fails'
+    await expect(checkout(f, a.client, user, BODY)).rejects.toMatchObject({
+      statusCode: 409,
+      code: 'CHECKOUT_IN_PROGRESS',
+    })
+    expect(a.state.creates).toBe(1)
+    expect(await open()).toEqual([{ id: kept.id, status: 'pending', asaas_subscription_id: null }])
+  })
+
+  it('R4: webhook de assinatura órfã (timeout depois de criar) casa pela referência e credita', async () => {
+    const a = statefulSubAsaas()
+    a.state.mode = 'created_then_timeout'
+    await expect(checkout(f, a.client, user, BODY)).rejects.toThrow()
+    const [kept] = await open()
+    const ev: AsaasEvent = {
+      id: 'evt_orfa',
+      event: 'PAYMENT_CONFIRMED',
+      payment: { id: 'pay_orfa', subscription: 'sub_1', value: 29.9, dueDate: '2026-11-26' },
+    }
+    // Sem o cliente (comportamento antigo) o evento seria ignorado.
+    expect(await handleAsaasEvent(f, ev, a.client)).toBe('paid')
+    const [row] =
+      await db`SELECT status, asaas_subscription_id FROM subscriptions WHERE id=${kept.id}`
+    expect(row).toEqual({ status: 'active', asaas_subscription_id: 'sub_1' })
+    const [w] = await db`SELECT balance_units FROM credit_wallets WHERE user_id=${user}`
+    expect(w.balance_units).toBe(75 + 500)
+    // Assinatura de outro sistema (404 no Asaas): só registra.
+    expect(
+      await handleAsaasEvent(
+        f,
+        {
+          ...ev,
+          id: 'evt_outra',
+          payment: { ...ev.payment, id: 'pay_x', subscription: 'sub_999' },
+        } as AsaasEvent,
+        a.client,
+      ),
+    ).toBe('ignored')
+  })
 })

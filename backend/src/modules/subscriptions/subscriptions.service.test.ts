@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { fakeFastify } from '../../shared/testing/fake-fastify.js'
-import type { AsaasClient } from './asaas.client.js'
+import { type AsaasClient, asaasError } from './asaas.client.js'
 import { isValidCnpj, isValidCpf, normalizeCpfCnpj } from './cpf-cnpj.js'
 import {
   cancelMySubscription,
@@ -222,30 +222,98 @@ describe('checkout', () => {
     expect(asaas.calls.some((c) => c.startsWith('customer:'))).toBe(false)
   })
 
-  it('pendente sem id do Asaas e recente → 409, sem cancelar nem criar nada', async () => {
+  // Lote 7 (R4) substitui a regra do lote 1 ("pending sem id recente → 409 sem
+  // consultar nada"): a linha sem id é reconciliada no Asaas antes de decidir.
+  const noId = (over: Record<string, unknown> = {}) => ({
+    id: LOCAL,
+    plan_id: PLAN.id,
+    status: 'pending',
+    asaas_subscription_id: null,
+    entitled: false,
+    stale: false,
+    ...over,
+  })
+
+  it('pendente sem id, não achada no Asaas e recente → 409, sem cancelar nem criar nada', async () => {
     const asaas = fakeAsaas()
     const { fastify, calls } = fakeFastify([
       ['FROM subscription_plans WHERE code', [PLAN]],
-      [
-        'FROM subscriptions',
-        [
-          {
-            id: 'outro_checkout',
-            plan_id: PLAN.id,
-            status: 'pending',
-            asaas_subscription_id: null,
-            entitled: false,
-            stale: false,
-          },
-        ],
-      ],
+      ['FROM subscriptions', [noId()]],
     ])
     await expect(checkout(fastify, asaas.client, USER, BODY)).rejects.toMatchObject({
       statusCode: 409,
       code: 'CHECKOUT_IN_PROGRESS',
     })
-    expect(asaas.calls).toEqual([])
+    expect(asaas.calls).toEqual([`find:${LOCAL}`])
     expect(calls.some((c) => c.sql.includes("SET status = 'canceled'"))).toBe(false)
+  })
+
+  it('pendente sem id achada no Asaas, mesmo plano: grava o id e devolve a fatura dela', async () => {
+    const asaas = fakeAsaas({
+      findSubscriptionByExternalReference: async (ref) => {
+        asaas.calls.push(`find:${ref}`)
+        return { id: 'sub_achada' }
+      },
+    })
+    const { fastify, calls } = fakeFastify([
+      ['FROM subscription_plans WHERE code', [PLAN]],
+      ['FROM subscriptions', [noId({ stale: true })]],
+    ])
+    const r = await checkout(fastify, asaas.client, USER, BODY)
+    expect(r).toEqual({
+      subscription_id: LOCAL,
+      status: 'pending',
+      invoice_url: 'https://asaas/i/1',
+    })
+    expect(asaas.calls).toEqual([`find:${LOCAL}`, 'payments'])
+    const bind = calls.find((c) => c.sql.includes('SET asaas_subscription_id'))
+    expect(bind?.params).toEqual(['sub_achada', LOCAL])
+    expect(bind?.sql).toContain('asaas_subscription_id IS NULL')
+    expect(calls.some((c) => c.sql.includes('INSERT INTO subscriptions'))).toBe(false)
+  })
+
+  it('pendente sem id achada no Asaas, outro plano: cancela no Asaas e cria a nova', async () => {
+    const asaas = fakeAsaas({
+      findSubscriptionByExternalReference: async (ref) => {
+        asaas.calls.push(`find:${ref}`)
+        return { id: 'sub_achada' }
+      },
+    })
+    const NOVA = '55555555-5555-5555-5555-555555555555'
+    const { fastify } = fakeFastify([
+      ['FROM subscription_plans WHERE code', [PLAN]],
+      ['FROM subscriptions', [noId({ plan_id: 'outro' })]],
+      ['SELECT asaas_customer_id', [{ asaas_customer_id: 'cus_1' }]],
+      ['INSERT INTO subscriptions', [{ id: NOVA }]],
+      ['SET asaas_subscription_id', [{ id: NOVA }]],
+    ])
+    const r = await checkout(fastify, asaas.client, USER, BODY)
+    expect(r.subscription_id).toBe(NOVA)
+    expect(asaas.calls.slice(0, 3)).toEqual([
+      `find:${LOCAL}`,
+      'delete:sub_achada',
+      `subscription:29.9:MONTHLY:UNDEFINED:${NOVA}`,
+    ])
+  })
+
+  it('pendente sem id e a busca no Asaas falha → 409, mesmo antiga', async () => {
+    const asaas = fakeAsaas({
+      findSubscriptionByExternalReference: async () => {
+        throw asaasError(true)
+      },
+    })
+    const { fastify, calls } = fakeFastify([
+      ['FROM subscription_plans WHERE code', [PLAN]],
+      ['FROM subscriptions', [noId({ stale: true })]],
+    ])
+    await expect(checkout(fastify, asaas.client, USER, BODY)).rejects.toMatchObject({
+      statusCode: 409,
+      code: 'CHECKOUT_IN_PROGRESS',
+    })
+    expect(calls.some((c) => /SET status = 'canceled'|INSERT INTO subscriptions/.test(c.sql))).toBe(
+      false,
+    )
+    expect(asaas.calls).toEqual([])
   })
 
   it('checkout simultâneo → 409; falha no Asaas apaga a linha local', async () => {
@@ -260,9 +328,10 @@ describe('checkout', () => {
       code: 'CHECKOUT_IN_PROGRESS',
     })
 
-    const falha = fakeAsaas({
+    // Lote 7 (R4): só a recusa definitiva (4xx) apaga a linha local.
+    const recusa = fakeAsaas({
       createSubscription: async () => {
-        throw new Error('asaas fora')
+        throw asaasError(false, 400)
       },
     })
     const { fastify, calls } = fakeFastify([
@@ -270,8 +339,27 @@ describe('checkout', () => {
       ['SELECT asaas_customer_id', [{ asaas_customer_id: 'cus_1' }]],
       ['INSERT INTO subscriptions', [{ id: LOCAL }]],
     ])
-    await expect(checkout(fastify, falha.client, USER, BODY)).rejects.toThrow('asaas fora')
+    await expect(checkout(fastify, recusa.client, USER, BODY)).rejects.toMatchObject({
+      statusCode: 502,
+    })
     expect(calls.some((c) => c.sql.includes('DELETE FROM subscriptions'))).toBe(true)
+  })
+
+  it('erro ambíguo em createSubscription (timeout, 5xx, desconhecido) mantém a linha', async () => {
+    for (const erro of [asaasError(true), asaasError(true, 500), new Error('asaas fora')]) {
+      const falha = fakeAsaas({
+        createSubscription: async () => {
+          throw erro
+        },
+      })
+      const { fastify, calls } = fakeFastify([
+        ['FROM subscription_plans WHERE code', [PLAN]],
+        ['SELECT asaas_customer_id', [{ asaas_customer_id: 'cus_1' }]],
+        ['INSERT INTO subscriptions', [{ id: LOCAL }]],
+      ])
+      await expect(checkout(fastify, falha.client, USER, BODY)).rejects.toBe(erro)
+      expect(calls.some((c) => c.sql.includes('DELETE FROM subscriptions'))).toBe(false)
+    }
   })
 })
 
