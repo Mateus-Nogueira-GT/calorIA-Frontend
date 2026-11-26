@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Keyboard, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, typography, spacing } from '@theme';
 import { Button, ErrorState, screenShellStyle } from '@shared/components';
@@ -28,6 +28,7 @@ export function ScanResultScreen({ navigation }: Props): React.JSX.Element {
   };
 
   const onConfirm = async () => {
+    Keyboard.dismiss();
     setSaving(true);
     try {
       await confirm();

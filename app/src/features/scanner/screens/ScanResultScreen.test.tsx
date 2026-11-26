@@ -3,6 +3,7 @@ import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import { ScanResultScreen } from './ScanResultScreen';
 import { useScannerStore } from '../store';
 import { ScannerGuestContext } from '../mode';
+import { Keyboard } from 'react-native';
 
 jest.mock('@shared/services/scanner.service', () => ({
   scannerService: { analyzePhoto: jest.fn() },
@@ -99,8 +100,11 @@ describe('ScanResultScreen', () => {
         route={{ key: 'k', name: 'ScanResult' } as never}
       />,
     );
+    const dismiss = jest.spyOn(Keyboard, 'dismiss');
     fireEvent.press(getByText('Confirmar e adicionar ao diário'));
     await waitFor(() => expect(confirm).toHaveBeenCalled());
+    // Campo em foco também não recebe digitação durante o salvamento.
+    expect(dismiss).toHaveBeenCalled();
     fireEvent.press(getByLabelText('Trocar para Feijão'));
     fireEvent.press(getByText('＋ Adicionar item'));
     expect(useScannerStore.getState().items).toMatchObject([{ id: '1', name: 'Arroz' }]);
