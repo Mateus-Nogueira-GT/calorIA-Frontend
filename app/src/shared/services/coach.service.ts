@@ -1,7 +1,12 @@
 import axios, { type AxiosRequestConfig } from 'axios';
 import api from './api';
 import { notifyCreditChange } from './credits.service';
-import { beginRequest, finishRequest, isDefinitiveRejection } from './operation-requests';
+import {
+  acknowledgeRequest,
+  beginRequest,
+  finishRequest,
+  isDefinitiveRejection,
+} from './operation-requests';
 import { bindRequestToOwner, captureSessionOwner, isCurrentOwner } from './session-owner';
 import { todayString, tzOffsetMinutes } from '@shared/utils/date';
 
@@ -120,16 +125,25 @@ export const coachService = {
     content: string,
     conversationId: string | null,
     voice?: VoiceRequestContext,
+    /** retry: o "Tentar novamente" recupera a mesma tentativa, mesmo antiga. */
+    options?: { retry?: boolean },
   ) => {
     if (voice && (!voice.isValid() || voice.signal.aborted)) {
       return Promise.reject(new axios.CanceledError());
     }
     const owner = captureSessionOwner();
     const userId = owner.userId;
-    const request = await beginRequest('chat', JSON.stringify([conversationId, content]), {
-      date: todayString(),
-      tzOffsetMinutes: tzOffsetMinutes(),
-    });
+    const request = await beginRequest(
+      'chat',
+      JSON.stringify([conversationId, content]),
+      {
+        date: todayString(),
+        tzOffsetMinutes: tzOffsetMinutes(),
+        ...(voice ? { inputMode: 'voice' as const } : {}),
+        scope: conversationId,
+      },
+      options,
+    );
     if (!isCurrentOwner(owner) || (voice && (!voice.isValid() || voice.signal.aborted)))
       throw new axios.CanceledError();
     const cancelPending = () => {
@@ -164,7 +178,8 @@ export const coachService = {
             date: request.date,
             tzOffsetMinutes: request.tzOffsetMinutes,
             // Veio de áudio: o Coach escreve para ser ouvido (a resposta é falada).
-            ...(voice ? { input_mode: 'voice' as const } : {}),
+            // Vem da pendência, como date: o retry reenvia o mesmo payload (R2).
+            ...(request.inputMode ? { input_mode: request.inputMode } : {}),
             // Cartões que o app sabe mostrar (05/11).
             client_features: CLIENT_FEATURES,
           },
@@ -179,7 +194,7 @@ export const coachService = {
           notifyCreditChange();
           return {
             conversationId: r.data.conversation_id,
-            acknowledge: () => finishRequest(request, userId),
+            acknowledge: () => acknowledgeRequest(request, userId),
             message: {
               id: `${r.data.conversation_id}-${Date.now()}`,
               role: 'coach' as const,

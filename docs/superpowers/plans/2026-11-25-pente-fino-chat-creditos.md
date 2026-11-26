@@ -13,7 +13,7 @@
 
 ## Tasks
 
-1. [ ] R1 e R2: `operation-requests.ts`, `coach.service.ts` e `retryLastAction` no store do coach, com
+1. [x] R1 e R2: `operation-requests.ts`, `coach.service.ts` e `retryLastAction` no store do coach, com
        testes de app. Commit.
 2. [ ] R3: operação de custo zero para conta ilimitada, com integração Postgres e unit. Commit.
 3. [ ] R4 e R5: `handleDietGeneration` persiste na liquidação e o parse fica protegido, com testes

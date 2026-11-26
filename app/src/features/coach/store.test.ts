@@ -80,6 +80,16 @@ describe('useCoachStore', () => {
     expect(result.current.lastFailedAction).toBe('send');
   });
 
+  it('"Tentar novamente" pede à camada de serviço a mesma tentativa (retry)', async () => {
+    const { coachService } = jest.requireMock('@shared/services/coach.service');
+    coachService.sendMessage.mockRejectedValueOnce(new Error('rede'));
+    const { result } = renderHook(() => useCoachStore());
+    await act(() => result.current.sendMessage('sim'));
+    coachService.sendMessage.mockClear();
+    await act(() => result.current.retryLastAction());
+    expect(coachService.sendMessage).toHaveBeenCalledWith('sim', null, undefined, { retry: true });
+  });
+
   it('429 AI_QUOTA_EXCEEDED mostra a mensagem de limite diário, não a genérica', async () => {
     const { coachService } = jest.requireMock('@shared/services/coach.service');
     const quota = Object.assign(new Error('429'), {

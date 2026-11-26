@@ -466,7 +466,9 @@ export const useCoachStore = create<CoachState>()(
               conversationId: nextConversationId,
               message,
               acknowledge,
-            } = await coachService.sendMessage(lastUserMessage.content, conversationId);
+            } = await coachService.sendMessage(lastUserMessage.content, conversationId, undefined, {
+              retry: true,
+            });
             if (!isCurrent()) return;
             set((state) => ({
               conversationId: nextConversationId,

@@ -224,3 +224,89 @@ it('mapeia action_proposal (05/11, ações com cartão)', async () => {
   const r = await coachService.sendMessage('meu peso é 78', null);
   expect(r.message.actionProposal).toEqual(action);
 });
+
+describe('coachService.sendMessage — chave de tentativa (pente fino 25/11)', () => {
+  const ok = (conversationId: string) => ({
+    data: {
+      conversation_id: conversationId,
+      message: { role: 'assistant', content: 'ok', created_at: '2026-11-25T00:00:00Z' },
+      diet_generated: false,
+      diet_id: null,
+      diet_job_id: null,
+    },
+  });
+  const networkError = () => Object.assign(new Error('Network Error'), { isAxiosError: true });
+  const messageCalls = () =>
+    api.post.mock.calls.filter(([url]: [string]) => url === '/chat/message');
+  const keyOf = (i: number) => messageCalls()[i][2].headers['Idempotency-Key'];
+  const bodyOf = (i: number) => messageCalls()[i][1];
+  const voice = () => ({ signal: new AbortController().signal, isValid: () => true });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    api.post.mockReset();
+  });
+
+  it('R1: "sim" que falhou não reaproveita a chave depois de outra mensagem entregue', async () => {
+    const conv = '11111111-1111-4111-8111-111111111111';
+    api.post.mockRejectedValueOnce(networkError());
+    await expect(coachService.sendMessage('sim', conv)).rejects.toThrow();
+    api.post.mockResolvedValueOnce(ok(conv));
+    await (await coachService.sendMessage('quero almoçar', conv)).acknowledge();
+    api.post.mockResolvedValueOnce(ok(conv));
+    await coachService.sendMessage('sim', conv);
+    expect(keyOf(2)).not.toBe(keyOf(0));
+  });
+
+  it('R1: retry imediato, sem nada entre as tentativas, mantém a chave', async () => {
+    const conv = '33333333-3333-4333-8333-333333333333';
+    api.post.mockRejectedValueOnce(networkError());
+    await expect(coachService.sendMessage('sim', conv)).rejects.toThrow();
+    api.post.mockResolvedValueOnce(ok(conv));
+    await coachService.sendMessage('sim', conv);
+    expect(keyOf(1)).toBe(keyOf(0));
+  });
+
+  it('R1: pendência mais velha que a janela não é reaproveitada por um envio novo', async () => {
+    const conv = '44444444-4444-4444-8444-444444444444';
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate', 'queueMicrotask'] });
+    try {
+      api.post.mockRejectedValueOnce(networkError());
+      await expect(coachService.sendMessage('sim', conv)).rejects.toThrow();
+      jest.setSystemTime(Date.now() + 11 * 60 * 1000);
+      // Retry explícito ("Tentar novamente") ainda recupera a mesma tentativa.
+      api.post.mockRejectedValueOnce(networkError());
+      await expect(
+        coachService.sendMessage('sim', conv, undefined, { retry: true }),
+      ).rejects.toThrow();
+      api.post.mockResolvedValueOnce(ok(conv));
+      await coachService.sendMessage('sim', conv);
+      expect(keyOf(1)).toBe(keyOf(0));
+      expect(keyOf(2)).not.toBe(keyOf(0));
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('R2: retry de mensagem de voz reenvia input_mode voice com a mesma chave', async () => {
+    const conv = '22222222-2222-4222-8222-222222222222';
+    api.post.mockRejectedValueOnce(Object.assign(new Error('timeout'), { code: 'ECONNABORTED' }));
+    await expect(coachService.sendMessage('comi um ovo', conv, voice())).rejects.toThrow();
+    api.post.mockResolvedValueOnce(ok(conv));
+    await coachService.sendMessage('comi um ovo', conv, undefined, { retry: true });
+    expect(keyOf(1)).toBe(keyOf(0));
+    expect(bodyOf(0).input_mode).toBe('voice');
+    expect(bodyOf(1).input_mode).toBe('voice');
+  });
+
+  it('R2: 409 IDEMPOTENCY_CONFLICT libera a chave para o próximo envio', async () => {
+    const conv = '55555555-5555-4555-8555-555555555555';
+    api.post.mockRejectedValueOnce({
+      response: { status: 409, data: { error: 'IDEMPOTENCY_CONFLICT' } },
+    });
+    await expect(coachService.sendMessage('oi', conv)).rejects.toBeDefined();
+    api.post.mockResolvedValueOnce(ok(conv));
+    await coachService.sendMessage('oi', conv);
+    expect(keyOf(1)).not.toBe(keyOf(0));
+  });
+});
