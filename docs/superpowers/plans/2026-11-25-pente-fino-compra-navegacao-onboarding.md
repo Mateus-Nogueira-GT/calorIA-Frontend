@@ -15,7 +15,7 @@
 1. [x] R1, R2, R3 e R4 na `BuyCreditsScreen`: testes primeiro (fake timers, AppState mockado, promises controladas) e depois a correção. Um commit.
 2. [x] R5: recarregar a carteira no AppState `active`. Commit.
 3. [x] R6: `initialRouteName` da Community, com teste de `getStateFromPath` e um teste de integração do tab. Commit.
-4. [ ] R7: guarda de sessão nas notificações. Commit.
+4. [x] R7: guarda de sessão nas notificações. Commit.
 5. [ ] R8: `PendingOperations`, ramo de foto. Commit.
 6. [ ] R9: limites únicos de corpo no backend, com teste vitest. Commit.
 7. [ ] R10: idade em UTC, com teste usando fake time. Commit.
