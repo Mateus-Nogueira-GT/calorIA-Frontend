@@ -8,7 +8,7 @@ interface CreditsState {
   loading: boolean;
   error: string | null;
   /**
-   * Créditos ou convites já vieram ativos nesta sessão. Sobrevive a uma falha
+   * Créditos, convites ou recarga já vieram ativos nesta sessão. Sobrevive a uma falha
    * de consulta (o saldo vira null, sem inventar zero), para o app saber se o
    * aviso "Saldo indisponível" faz sentido para esta conta.
    */
@@ -41,7 +41,11 @@ export const useCreditsStore = create<CreditsState>((set) => ({
         set({
           wallet,
           loading: false,
-          featureVisible: wallet.enforcement_enabled || wallet.invites_enabled,
+          // A recarga ligada também mostra o saldo (P8): quem vende créditos mostra o que foi comprado.
+          featureVisible:
+            wallet.enforcement_enabled ||
+            wallet.invites_enabled ||
+            wallet.purchases_enabled === true,
         });
     } catch {
       if (isCurrent())

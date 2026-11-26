@@ -4,6 +4,7 @@ import type postgres from 'postgres'
 import { env } from '../../shared/env.js'
 import { CREDIT_POLICY } from '../credits/credit-policy.js'
 import { ensureWallet } from '../credits/credits.service.js'
+import { type AsaasClient, isDefinitiveProviderError } from './asaas.client.js'
 import type { Cycle } from './subscriptions.schemas.js'
 
 type Tx = postgres.Sql | postgres.TransactionSql
@@ -197,15 +198,56 @@ async function markReversed(
   await tx`UPDATE subscription_payments SET reversed_units = ${take} WHERE asaas_payment_id = ${p.id}`
 }
 
+const ASAAS_ID = /^[A-Za-z0-9_]{1,64}$/
+
+/**
+ * Assinatura que o checkout criou mas cujo id se perdeu (timeout depois de
+ * criar): o pagamento chega com um `subscription` que não casa com nenhuma
+ * linha. Busca a assinatura no Asaas e, se o externalReference dela for uma
+ * linha local pending sem id, grava o id. Fora da transação do evento (sem
+ * segurar a transação durante o HTTP); a gravação é idempotente. Erro ambíguo
+ * na busca lança, para a rota devolver 500 e o Asaas reenviar o evento.
+ */
+async function bindOrphanSubscription(
+  f: FastifyInstance,
+  asaas: AsaasClient,
+  asaasSubscriptionId: string,
+): Promise<void> {
+  if (!ASAAS_ID.test(asaasSubscriptionId)) return
+  const known = await f.db`
+    SELECT 1 AS known FROM subscriptions WHERE asaas_subscription_id = ${asaasSubscriptionId}`
+  if (known.length) return
+  let remote: { externalReference?: string | null }
+  try {
+    remote = await asaas.getSubscription(asaasSubscriptionId)
+  } catch (err) {
+    if (isDefinitiveProviderError(err)) return
+    throw err
+  }
+  const ref = remote?.externalReference
+  if (!ref || !UUID.test(ref)) return
+  const bound = await f.db`
+    UPDATE subscriptions SET asaas_subscription_id = ${asaasSubscriptionId}, updated_at = now()
+    WHERE id = ${ref} AND asaas_subscription_id IS NULL AND status = 'pending'
+    RETURNING id`
+  if (bound.length)
+    f.log.info({ subscription_reconciled: { id: ref } }, 'subscription_orphan_bound')
+}
+
 /**
  * Processa um evento do Asaas numa transação: o registro do evento e o seu
  * efeito entram juntos. Repetição (entrega "at least once") não tem efeito.
- * Eventos que não são de assinatura do CalorIA são só registrados.
+ * Eventos que não são de assinatura do CalorIA são só registrados. Com o
+ * cliente do Asaas, um pagamento de assinatura desconhecida tenta antes achar a
+ * linha local órfã (bindOrphanSubscription).
  */
 export async function handleAsaasEvent(
   f: FastifyInstance,
   ev: AsaasEvent,
+  asaas?: AsaasClient,
 ): Promise<WebhookOutcome> {
+  const orphan = ev.event.startsWith('PAYMENT_') ? ev.payment?.subscription : null
+  if (asaas && orphan) await bindOrphanSubscription(f, asaas, orphan)
   return f.db.begin(async (tx) => {
     const resource = ev.payment?.id ?? ev.subscription?.id ?? null
     const fresh = await tx`

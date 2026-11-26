@@ -33,11 +33,11 @@ Três workers trabalham em paralelo. Cada um tem um worktree próprio, criado a 
 
 ## W2
 
-1. [ ] R4, client: separar erro ambíguo de definitivo e criar os métodos de busca por `externalReference`. Testes.
-2. [ ] R4, recarga: reconciliação no checkout seguinte. Testes de integração.
-3. [ ] R4, assinatura: reconciliação que substitui a regra do lote 1, mais o webhook de assinatura órfã. Testes de integração e unit.
-4. [ ] R5: ler a visibilidade no app, depois fazer a carteira real com a recarga ligada. Testes.
-5. [ ] Rodar typecheck, as suítes e as integrações de subscriptions/credits.
+1. [x] R4, client: separar erro ambíguo de definitivo e criar os métodos de busca por `externalReference`. Testes.
+2. [x] R4, recarga: reconciliação no checkout seguinte. Testes de integração.
+3. [x] R4, assinatura: reconciliação que substitui a regra do lote 1, mais o webhook de assinatura órfã. Testes de integração e unit.
+4. [x] R5: ler a visibilidade no app, depois fazer a carteira real com a recarga ligada. Testes.
+5. [x] Rodar typecheck, as suítes e as integrações de subscriptions/credits.
 
 ## W3
 

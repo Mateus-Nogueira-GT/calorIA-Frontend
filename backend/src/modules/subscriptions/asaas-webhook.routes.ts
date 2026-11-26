@@ -2,7 +2,7 @@ import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { z } from 'zod'
 import { env } from '../../shared/env.js'
 import { type AsaasEvent, handleAsaasEvent, webhookTokenMatches } from './asaas-webhook.service.js'
-import { assertPaymentsEnabled } from './subscriptions.config.js'
+import { asaasFromEnv, assertPaymentsEnabled } from './subscriptions.config.js'
 
 const eventSchema = z
   .object({
@@ -50,7 +50,9 @@ const routes: FastifyPluginAsyncZod = async (f) => {
     }
     const ev = req.body as AsaasEvent
     try {
-      const outcome = await handleAsaasEvent(f, ev)
+      // Sem chave do Asaas não há como achar assinatura órfã, mas o webhook segue.
+      const asaas = env.ASAAS_API_KEY ? asaasFromEnv(f) : undefined
+      const outcome = await handleAsaasEvent(f, ev, asaas)
       f.log.info({ asaas_webhook: { id: ev.id, event: ev.event, outcome } }, 'asaas_webhook')
       return { received: true }
     } catch (err) {
