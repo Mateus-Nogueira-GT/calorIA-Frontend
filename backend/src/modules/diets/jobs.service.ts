@@ -15,6 +15,7 @@ import { AppError } from '../../shared/errors.js'
 import { mealTypesFor, reconcileDay } from '../../shared/guardrails/day.js'
 import { type DayGuardrailResult, applyDayGuardrails } from '../../shared/guardrails/index.js'
 import { DIET_COMPLETED_MARKER } from '../chat/history-markers.js'
+import type { CreditTransaction } from '../credits/credits.service.js'
 import { createSystemPost } from '../feed/feed.service.js'
 import { hasFiberColumns } from './fiber-columns.js'
 
@@ -188,33 +189,44 @@ export async function createDietJob(
     return { jobId: emAndamento.id, dietId: emAndamento.diet_id }
   }
 
+  const ids = { jobId: randomUUID(), dietId: randomUUID() }
+  await fastify.db.begin((sql) => insertDietJob(sql, userId, conversationId, userData, ids))
+  return ids
+}
+
+/**
+ * Grava o cabeçalho da dieta (draft) e o job com ids já escolhidos. O chat
+ * cobrado chama direto, dentro da transação de liquidação (R4, 25/11): se a
+ * liquidação falhar, nada fica gravado.
+ */
+export async function insertDietJob(
+  sql: CreditTransaction,
+  userId: string,
+  conversationId: string,
+  userData: CollectedUserData,
+  ids: { jobId: string; dietId: string },
+): Promise<void> {
   const t = computeTargets(userData)
-  const dietId = randomUUID()
-  const jobId = randomUUID()
+  const { dietId, jobId } = ids
   const inputJson = JSON.stringify(userData)
-
-  await fastify.db.begin(async (sql) => {
-    await sql`
-      INSERT INTO diets (
-        id, user_id, conversation_id, name, description,
-        user_weight_kg, user_height_cm, user_age, user_gender, user_goal, user_activity_level,
-        tdee_calories, target_calories, target_protein_g, target_carbs_g, target_fat_g,
-        status, ai_model
-      ) VALUES (
-        ${dietId}, ${userId}, ${conversationId}, 'Plano personalizado', 'Gerado pelo Coach IA',
-        ${userData.weight_kg}, ${userData.height_cm}, ${userData.age},
-        ${userData.gender}, ${userData.goal}, ${userData.activity_level},
-        ${t.tdee}, ${t.targetCalories}, ${t.protein}, ${t.carbs}, ${t.fat},
-        'draft', ${env.OPENAI_DIET_MODEL}
-      )
-    `
-    await sql`
-      INSERT INTO diet_jobs (id, user_id, conversation_id, diet_id, status, input, total_days, days_completed)
-      VALUES (${jobId}, ${userId}, ${conversationId}, ${dietId}, 'pending', ${inputJson}::jsonb, ${TOTAL_DAYS}, 0)
-    `
-  })
-
-  return { jobId, dietId }
+  await sql`
+    INSERT INTO diets (
+      id, user_id, conversation_id, name, description,
+      user_weight_kg, user_height_cm, user_age, user_gender, user_goal, user_activity_level,
+      tdee_calories, target_calories, target_protein_g, target_carbs_g, target_fat_g,
+      status, ai_model
+    ) VALUES (
+      ${dietId}, ${userId}, ${conversationId}, 'Plano personalizado', 'Gerado pelo Coach IA',
+      ${userData.weight_kg}, ${userData.height_cm}, ${userData.age},
+      ${userData.gender}, ${userData.goal}, ${userData.activity_level},
+      ${t.tdee}, ${t.targetCalories}, ${t.protein}, ${t.carbs}, ${t.fat},
+      'draft', ${env.OPENAI_DIET_MODEL}
+    )
+  `
+  await sql`
+    INSERT INTO diet_jobs (id, user_id, conversation_id, diet_id, status, input, total_days, days_completed)
+    VALUES (${jobId}, ${userId}, ${conversationId}, ${dietId}, 'pending', ${inputJson}::jsonb, ${TOTAL_DAYS}, 0)
+  `
 }
 
 // ─── Geração de 1 dia (1 chamada GPT-5, cabe no limite serverless) ───────────
@@ -829,6 +841,33 @@ function isTimeoutError(err: unknown): boolean {
 }
 
 /**
+ * Marca a conversa como concluída e anexa o marcador de dieta pronta.
+ * Concatena via JSONB (não lê+regrava o array): o job roda concorrente com o
+ * chat do usuário, e um read-modify-write aqui derrubaria mensagens enviadas
+ * enquanto o último dia gerava. O valor antigo pode ser uma string jsonb
+ * (`${texto}::jsonb` do postgres.js): é desembrulhado, e o marcador vai como
+ * `::text::jsonb` para entrar como elemento do array (R8, 25/11).
+ */
+export async function appendDietCompletedMarker(
+  sql: CreditTransaction,
+  conversationId: string,
+  dietId: string,
+): Promise<void> {
+  const marker = JSON.stringify([{ role: 'assistant', content: DIET_COMPLETED_MARKER }])
+  await sql`
+    UPDATE chat_history
+    SET status = 'completed', diet_id = ${dietId},
+        messages = CASE jsonb_typeof(messages)
+                     WHEN 'array' THEN messages
+                     WHEN 'string' THEN (messages #>> '{}')::jsonb
+                     ELSE '[]'::jsonb
+                   END || ${marker}::text::jsonb,
+        updated_at = NOW()
+    WHERE id = ${conversationId}
+  `
+}
+
+/**
  * Conclui o job: transação curta que completa o job, arquiva a dieta ativa
  * anterior e promove a draft — depois o marcador no chat e o post no feed.
  *
@@ -859,17 +898,7 @@ async function finalizeJob(fastify: FastifyInstance, userId: string, job: JobRow
   if (!finished) return
   if (job.conversation_id) {
     try {
-      // Concatena via JSONB (não lê+regrava o array): o job roda concorrente
-      // com o chat do usuário, e um read-modify-write aqui derrubaria
-      // mensagens enviadas enquanto o último dia gerava.
-      const marker = JSON.stringify([{ role: 'assistant', content: DIET_COMPLETED_MARKER }])
-      await fastify.db`
-        UPDATE chat_history
-        SET status = 'completed', diet_id = ${job.diet_id},
-            messages = messages || ${marker}::jsonb,
-            updated_at = NOW()
-        WHERE id = ${job.conversation_id}
-      `
+      await appendDietCompletedMarker(fastify.db, job.conversation_id, job.diet_id)
     } catch (err) {
       fastify.log.warn(err, 'Falha ao marcar chat_history como completed')
     }

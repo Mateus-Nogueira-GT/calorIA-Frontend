@@ -113,6 +113,10 @@ const MAX_NO_PROGRESS_ROUNDS = 3;
 const MAX_NETWORK_MISSES = 4;
 const BUSY_WAIT_MS = 5000;
 const MAX_STEPS = 30;
+// R7 (25/11): "ocupado" (200 sem avanço: outro step segura o lock) não conta
+// em MAX_STEPS; o limite é de tempo sem avanço. O lock do servidor dura até
+// 300 s e um dia leva até 240 s (2 tentativas de 120 s, jobs.service.ts).
+const BUSY_BUDGET_MS = 10 * 60 * 1000;
 
 /**
  * Erro de /step que não adianta repetir → mensagem para o usuário; null quando
@@ -481,7 +485,9 @@ export const useCoachStore = create<CoachState>()(
               conversationId: nextConversationId,
               message,
               acknowledge,
-            } = await coachService.sendMessage(lastUserMessage.content, conversationId);
+            } = await coachService.sendMessage(lastUserMessage.content, conversationId, undefined, {
+              retry: true,
+            });
             if (!isCurrent()) return;
             set((state) => ({
               conversationId: nextConversationId,
@@ -758,6 +764,7 @@ async function driveDietJob(jobId: string): Promise<void> {
 
   let networkMisses = 0;
   let noProgressRounds = 0;
+  let busySince: number | null = null;
   // STALE (app suspenso >10 min no meio da geração) é reaberto uma vez por
   // execução do loop; um segundo STALE na mesma execução vira falha visível.
   let staleReopened = false;
@@ -802,8 +809,15 @@ async function driveDietJob(jobId: string): Promise<void> {
       if (s.status === 'failed') return; // mensagem do servidor já aplicada
       // OP1: 200 sem avanço = outro step em voo no servidor. Espera antes
       // de pedir de novo, em vez de bater no rate limit.
-      if (s.daysCompleted > before) noProgressRounds = 0;
-      else await sleep(BUSY_WAIT_MS);
+      if (s.daysCompleted > before) {
+        noProgressRounds = 0;
+        busySince = null;
+      } else {
+        busySince ??= Date.now();
+        if (Date.now() - busySince >= BUSY_BUDGET_MS) break;
+        await sleep(BUSY_WAIT_MS);
+        i--; // R7: ocupado não consome um passo
+      }
       continue;
     } catch (e) {
       if (stale()) return;
@@ -849,8 +863,10 @@ async function driveDietJob(jobId: string): Promise<void> {
     }
     // Reaberto do STALE: volta ao step sem contar como rodada sem avanço.
     if (reopened) continue;
-    if (progressed) noProgressRounds = 0;
-    else if (++noProgressRounds >= MAX_NO_PROGRESS_ROUNDS) {
+    if (progressed) {
+      noProgressRounds = 0;
+      busySince = null;
+    } else if (++noProgressRounds >= MAX_NO_PROGRESS_ROUNDS) {
       return failDietJob(DIET_GENERIC_MESSAGE);
     }
   }

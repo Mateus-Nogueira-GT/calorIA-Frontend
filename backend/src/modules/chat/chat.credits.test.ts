@@ -63,6 +63,30 @@ describe('AI wallet integration boundary', () => {
     expect(result.credit_receipt).toEqual(receipt)
   })
 
+  it('settlement appends only the new turn to the stored history (R8, 25/11)', async () => {
+    env.CREDITS_ENFORCEMENT_ENABLED = true
+    const stored = [
+      { role: 'user', content: 'antiga' },
+      { role: 'assistant', content: 'resposta antiga' },
+    ]
+    const source = fakeFastify([['SELECT messages, updated_at', [{ messages: stored }]]], {
+      chatCreate: async () => textCompletion('Olá!'),
+    })
+    const transaction = fakeFastify([['INSERT INTO chat_history', [{ id: CONV }]]])
+    vi.mocked(runCreditOperation).mockImplementation(async (_fastify, _input, infer, persist) => {
+      const result = await infer()
+      await persist?.(transaction.fastify.db, result)
+      return { result, receipt }
+    })
+    await sendChatMessage(source.fastify, USER, { message: 'oi', conversation_id: CONV }, KEY)
+    const insert = transaction.calls.find((c) => c.sql.includes('INSERT INTO chat_history'))
+    expect(insert?.sql).toContain('|| EXCLUDED.messages')
+    const turn = JSON.parse(
+      String(insert?.params.find((p) => typeof p === 'string' && p.startsWith('['))),
+    ) as { content: string }[]
+    expect(turn.map((m) => m.content)).toEqual(['oi', 'Olá!'])
+  })
+
   it('reservation rejection never calls the provider or persists a message', async () => {
     const source = fakeFastify()
     vi.mocked(runCreditOperation).mockRejectedValue(
@@ -158,5 +182,151 @@ describe('AI wallet integration boundary', () => {
       const outcome = await run().catch((e: unknown) => e)
       expect(outcome).not.toMatchObject({ code: 'CREDIT_POLICY_UNAVAILABLE' })
     }
+  })
+
+  describe('geração de dieta só persiste na liquidação (R4/R5, 25/11)', () => {
+    const dados = {
+      weight_kg: 70,
+      height_cm: 175,
+      age: 30,
+      gender: 'female',
+      goal: 'lose_weight',
+      activity_level: 'moderate',
+      meals_per_day: 4,
+      dietary_restrictions: [],
+      allergies: [],
+      food_preferences: null,
+      message_to_user: 'Vou montar!',
+      health_conditions: [],
+    }
+    const wrote = (calls: { sql: string }[], sql: string) => calls.some((c) => c.sql.includes(sql))
+
+    it('liquidação que expira não deixa job, perfil nem histórico gravados', async () => {
+      env.CREDITS_ENFORCEMENT_ENABLED = true
+      const source = fakeFastify([], { chatCreate: async () => toolCompletion(dados) })
+      vi.mocked(runCreditOperation).mockImplementation(async (_f, _i, infer) => {
+        await infer()
+        throw new AppError(409, 'OPERATION_EXPIRED', 'Esta tentativa expirou sem cobrança.')
+      })
+      await expect(
+        sendChatMessage(source.fastify, USER, { message: 'sim', conversation_id: CONV }, KEY),
+      ).rejects.toMatchObject({ code: 'OPERATION_EXPIRED' })
+      expect(wrote(source.calls, 'INSERT INTO diet_jobs')).toBe(false)
+      expect(wrote(source.calls, 'INSERT INTO diets')).toBe(false)
+      expect(wrote(source.calls, 'UPDATE profiles')).toBe(false)
+      expect(wrote(source.calls, 'INSERT INTO chat_history')).toBe(false)
+    })
+
+    it('na liquidação grava job, perfil e histórico (generating) com o job da resposta', async () => {
+      env.CREDITS_ENFORCEMENT_ENABLED = true
+      const source = fakeFastify([], { chatCreate: async () => toolCompletion(dados) })
+      const transaction = fakeFastify([['INSERT INTO chat_history', [{ id: CONV }]]])
+      vi.mocked(runCreditOperation).mockImplementation(async (_f, _i, infer, persist) => {
+        const result = await infer()
+        await persist?.(transaction.fastify.db, result)
+        return { result, receipt }
+      })
+      const out = await sendChatMessage(
+        source.fastify,
+        USER,
+        { message: 'sim', conversation_id: CONV },
+        KEY,
+      )
+      expect(out.diet_job_id).toEqual(expect.any(String))
+      for (const sql of ['INSERT INTO diet_jobs', 'INSERT INTO diets', 'UPDATE profiles'])
+        expect(wrote(source.calls, sql)).toBe(false)
+      const job = transaction.calls.find((c) => c.sql.includes('INSERT INTO diet_jobs'))
+      expect(job?.params[0]).toBe(out.diet_job_id)
+      expect(wrote(transaction.calls, 'INSERT INTO diets')).toBe(true)
+      expect(wrote(transaction.calls, 'UPDATE profiles')).toBe(true)
+      const history = transaction.calls.find((c) => c.sql.includes('INSERT INTO chat_history'))
+      expect(history?.params).toContain('generating')
+      // diets.conversation_id referencia chat_history: a conversa nova nasce antes.
+      const at = (sql: string) => transaction.calls.findIndex((c) => c.sql.includes(sql))
+      expect(at('INSERT INTO chat_history')).toBeLessThan(at('INSERT INTO diets'))
+    })
+
+    it('job em andamento descoberto na liquidação recusa sem gravar o turno', async () => {
+      env.CREDITS_ENFORCEMENT_ENABLED = true
+      const source = fakeFastify([], { chatCreate: async () => toolCompletion(dados) })
+      const transaction = fakeFastify([
+        ["status IN ('pending', 'running')", [{ id: 'outro-job' }]],
+        ['INSERT INTO chat_history', [{ id: CONV }]],
+      ])
+      vi.mocked(runCreditOperation).mockImplementation(async (_f, _i, infer, persist) => {
+        const result = await infer()
+        await persist?.(transaction.fastify.db, result)
+        return { result, receipt }
+      })
+      await expect(
+        sendChatMessage(source.fastify, USER, { message: 'sim', conversation_id: CONV }, KEY),
+      ).rejects.toBeInstanceOf(AppError)
+      // O turno gravado antes na mesma transação é desfeito pelo rollback.
+      expect(wrote(transaction.calls, 'INSERT INTO diet_jobs')).toBe(false)
+    })
+
+    it('geração já em andamento é reaproveitada, sem job novo na liquidação', async () => {
+      env.CREDITS_ENFORCEMENT_ENABLED = true
+      const source = fakeFastify(
+        [["status IN ('pending', 'running')", [{ id: 'job-em-voo', diet_id: 'dieta-em-voo' }]]],
+        { chatCreate: async () => toolCompletion(dados) },
+      )
+      const transaction = fakeFastify([['INSERT INTO chat_history', [{ id: CONV }]]])
+      vi.mocked(runCreditOperation).mockImplementation(async (_f, _i, infer, persist) => {
+        const result = await infer()
+        await persist?.(transaction.fastify.db, result)
+        return { result, receipt }
+      })
+      const out = await sendChatMessage(
+        source.fastify,
+        USER,
+        { message: 'sim', conversation_id: CONV },
+        KEY,
+      )
+      expect(out.diet_job_id).toBe('job-em-voo')
+      expect(wrote(transaction.calls, 'INSERT INTO diet_jobs')).toBe(false)
+      expect(wrote(transaction.calls, 'INSERT INTO chat_history')).toBe(true)
+    })
+
+    it('recusa de segurança e dado inválido também só gravam na liquidação', async () => {
+      env.CREDITS_ENFORCEMENT_ENABLED = true
+      for (const args of [
+        { ...dados, health_conditions: ['gestante'] },
+        { ...dados, height_cm: 1.75 },
+      ]) {
+        const source = fakeFastify([], { chatCreate: async () => toolCompletion(args) })
+        vi.mocked(runCreditOperation).mockImplementation(async (_f, _i, infer) => {
+          await infer()
+          throw new AppError(409, 'OPERATION_EXPIRED', 'Esta tentativa expirou sem cobrança.')
+        })
+        await expect(
+          sendChatMessage(source.fastify, USER, { message: 'sim', conversation_id: CONV }, KEY),
+        ).rejects.toMatchObject({ code: 'OPERATION_EXPIRED' })
+        expect(wrote(source.calls, 'INSERT INTO chat_history')).toBe(false)
+      }
+    })
+
+    it.each([true, false])(
+      'argumento truncado de collect_diet_data vira erro de IA (cobrança=%s)',
+      async (enforced) => {
+        env.CREDITS_ENFORCEMENT_ENABLED = enforced
+        const bad = toolCompletion({})
+        bad.choices[0].message.tool_calls[0].function.arguments = '{"weight_kg": 70, "height'
+        const source = fakeFastify([], { chatCreate: async () => bad })
+        vi.mocked(runCreditOperation).mockImplementation(async (_f, _i, infer) => ({
+          result: await infer(),
+          receipt: null,
+        }))
+        const out = await sendChatMessage(
+          source.fastify,
+          USER,
+          { message: 'sim', conversation_id: CONV },
+          KEY,
+        ).catch((e: unknown) => e)
+        expect(out).toBeInstanceOf(AppError)
+        expect(out).toMatchObject({ code: 'AI_TRUNCATED' })
+        expect(wrote(source.calls, 'INSERT INTO chat_history')).toBe(false)
+      },
+    )
   })
 })

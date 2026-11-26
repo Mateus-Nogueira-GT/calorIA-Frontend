@@ -11,7 +11,20 @@ export interface PendingRequest {
   created_at: string;
   date?: string;
   tzOffsetMinutes?: number;
+  /** Entra no hash do payload no servidor: o retry precisa reenviar igual. */
+  inputMode?: 'voice';
+  /** Conversa do chat (não é texto de mensagem): limita o `acknowledgeRequest`. */
+  scope?: string | null;
+  /** Outra mensagem da conversa foi entregue depois: só fica para recuperação. */
+  superseded?: boolean;
 }
+
+/**
+ * Pendência mais velha que isto não é reaproveitada por um envio novo com o
+ * mesmo texto (só pelo retry explícito). O lease do servidor é de 5 min
+ * (credits.service.ts); a janela fica acima dele.
+ */
+export const REUSE_WINDOW_MS = 10 * 60 * 1000;
 
 /** A local matching hint only; the server validates the full payload with SHA-256. */
 function signature(payload: string): string {
@@ -26,6 +39,7 @@ function signature(payload: string): string {
 const storageKey = (userId: string) => `caloria:pending-operations:${userId}`;
 const active = new Map<string, PendingRequest>();
 const completed = new Set<string>();
+const superseded = new Set<string>();
 const writes = new Map<string, Promise<unknown>>();
 
 /**
@@ -45,10 +59,24 @@ async function serialized<T>(owner: string, action: () => Promise<T>): Promise<T
   }
 }
 
+function reusable(item: PendingRequest, retry: boolean): boolean {
+  if (completed.has(item.key) || superseded.has(item.key) || item.superseded) return false;
+  // A janela é só do chat (R1); foto ambígua mantém a chave para o replay.
+  if (retry || item.type !== 'chat') return true;
+  const age = Date.now() - Date.parse(item.created_at);
+  return Number.isFinite(age) && age < REUSE_WINDOW_MS;
+}
+
 export async function beginRequest(
   type: PendingRequest['type'],
   payload: string,
-  context?: { date: string; tzOffsetMinutes: number },
+  context?: {
+    date: string;
+    tzOffsetMinutes: number;
+    inputMode?: 'voice';
+    scope?: string | null;
+  },
+  options?: { retry?: boolean },
 ): Promise<PendingRequest> {
   const owner = captureSessionOwner();
   const userId = owner.userId;
@@ -57,9 +85,18 @@ export async function beginRequest(
   return serialized(userId ?? 'guest', async () => {
     const list = userId ? await pendingRequests(userId) : [];
     if (!isCurrentOwner(owner)) throw new axios.CanceledError();
+    // R1 (25/11): a pendência serve ao retry, mas não a um envio novo depois
+    // de outra mensagem entregue ou fora da janela curta.
+    const retry = options?.retry === true;
+    const inMemory = active.get(slot);
     const previous =
-      active.get(slot) ?? list.find((item) => item.type === type && item.signature === sig);
-    if (previous && !completed.has(previous.key)) {
+      inMemory && reusable(inMemory, retry)
+        ? inMemory
+        : list
+            .filter((item) => item.type === type && item.signature === sig)
+            .reverse()
+            .find((item) => reusable(item, retry));
+    if (previous) {
       active.set(slot, previous);
       return previous;
     }
@@ -106,6 +143,9 @@ export async function pendingRequests(userId: string): Promise<PendingRequest[]>
       typeof r.created_at === 'string' &&
       (r.date === undefined || typeof r.date === 'string') &&
       (r.tzOffsetMinutes === undefined || typeof r.tzOffsetMinutes === 'number') &&
+      (r.inputMode === undefined || r.inputMode === 'voice') &&
+      (r.scope === undefined || r.scope === null || typeof r.scope === 'string') &&
+      (r.superseded === undefined || typeof r.superseded === 'boolean') &&
       !completed.has(r.key),
     ),
   );
@@ -129,6 +169,46 @@ export async function finishRequest(request: PendingRequest, userId?: string): P
     });
   } catch {
     /* The receipt/result, rather than local cleanup, determines success. */
+  }
+}
+
+/**
+ * Entrega reconhecida de uma mensagem de chat: além de aposentar a chave, as
+ * pendências anteriores da mesma conversa deixam de ser reaproveitadas por um
+ * envio novo com o mesmo texto (R1, 25/11). Elas continuam listadas para a
+ * recuperação em Créditos.
+ */
+export async function acknowledgeRequest(request: PendingRequest, userId?: string): Promise<void> {
+  // Aposenta a chave já (parte síncrona do finishRequest), antes de qualquer await.
+  const finished = finishRequest(request, userId);
+  if (request.type !== 'chat') return finished;
+  const scope = request.scope ?? null;
+  // Empate de horário conta como anterior: só tira a pendência do reuso.
+  const earlier = (item: PendingRequest) =>
+    item.type === 'chat' &&
+    item.key !== request.key &&
+    (item.scope ?? null) === scope &&
+    item.created_at <= request.created_at;
+  for (const [slot, item] of active)
+    if (earlier(item)) {
+      superseded.add(item.key);
+      active.delete(slot);
+    }
+  await finished;
+  if (!userId) return;
+  try {
+    await serialized(userId, async () => {
+      const list = await pendingRequests(userId);
+      if (!list.some((item) => earlier(item) && !item.superseded)) return;
+      const next = list.map((item) => {
+        if (!earlier(item) || item.superseded) return item;
+        superseded.add(item.key);
+        return { ...item, superseded: true };
+      });
+      await kvStorage.setItem(storageKey(userId), JSON.stringify(next));
+    });
+  } catch {
+    /* Best effort, como finishRequest: o servidor ainda protege a chave. */
   }
 }
 
@@ -159,9 +239,13 @@ export function isDefinitiveRejection(error: unknown): boolean {
   // A fenced, terminal operation needs a fresh key when the user explicitly retries.
   if (
     response?.status === 409 &&
-    ['OPERATION_FAILED', 'OPERATION_EXPIRED', 'OPERATION_CANCELLED'].includes(
-      response.data?.error ?? '',
-    )
+    // IDEMPOTENCY_CONFLICT: a chave pertence a outro payload; reusar daria 409 sempre.
+    [
+      'OPERATION_FAILED',
+      'OPERATION_EXPIRED',
+      'OPERATION_CANCELLED',
+      'IDEMPOTENCY_CONFLICT',
+    ].includes(response.data?.error ?? '')
   )
     return true;
   const status = response?.status;

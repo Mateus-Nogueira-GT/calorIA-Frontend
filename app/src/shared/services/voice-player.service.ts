@@ -6,6 +6,8 @@ export const isSpeechSupported = true;
 
 let current: { player: AudioPlayer; subscription: { remove: () => void } } | null = null;
 let sequence = 0;
+/** Muda a cada stopSpeech: reprodução que esperava o modo de áudio desiste (R6). */
+let playback = 0;
 
 export type SpeechMimeType = 'audio/wav' | 'audio/mpeg';
 
@@ -45,6 +47,7 @@ export function clearSpeechCache(): void {
 
 /** Para e libera o player atual, se houver. Seguro chamar a qualquer momento. */
 export function stopSpeech(): void {
+  playback++;
   const active = current;
   current = null;
   if (!active) return;
@@ -69,7 +72,10 @@ export function stopSpeech(): void {
  */
 export async function playSpeech(uri: string, onEnd: () => void): Promise<void> {
   stopSpeech();
+  const token = playback;
   await setAudioModeAsync({ playsInSilentMode: true, allowsRecording: false });
+  // Parada ou outra reprodução durante o await: não cria nem toca este player.
+  if (token !== playback) return;
   const player = createAudioPlayer(uri);
   const subscription = player.addListener('playbackStatusUpdate', (status) => {
     if (!status.didJustFinish || current?.player !== player) return;
