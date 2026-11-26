@@ -6,6 +6,7 @@ import {
   PostAchievement,
 } from '@shared/services/feed.service';
 import { showAlert } from '@shared/utils/show-alert';
+import { captureSessionOwner, isCurrentOwner } from '@shared/services/session-owner';
 
 interface FeedState {
   posts: Post[];
@@ -48,12 +49,17 @@ const likesInFlight = new Set<string>();
 export const useFeedStore = create<FeedState>((set, get) => ({
   ...initialState,
 
+  // S10: a resposta que chega depois de trocar de conta é da conta anterior —
+  // o logout já limpou o store, e ela não pode repopular o feed da seguinte.
   loadInitial: async () => {
+    const owner = captureSessionOwner();
     set({ isLoadingInitial: true });
     try {
       const page = await feedService.getFeed();
+      if (!isCurrentOwner(owner)) return;
       set({ posts: page.posts, nextCursor: page.nextCursor, isLoadingInitial: false });
     } catch (e) {
+      if (!isCurrentOwner(owner)) return;
       set({ isLoadingInitial: false });
       throw e;
     }
@@ -62,26 +68,30 @@ export const useFeedStore = create<FeedState>((set, get) => ({
   loadMore: async () => {
     const { nextCursor, isLoadingMore } = get();
     if (nextCursor === null || isLoadingMore) return;
+    const owner = captureSessionOwner();
     set({ isLoadingMore: true });
     try {
       const page = await feedService.getFeed(nextCursor);
+      if (!isCurrentOwner(owner)) return;
       set((s) => ({
         posts: [...s.posts, ...page.posts],
         nextCursor: page.nextCursor,
         isLoadingMore: false,
       }));
     } catch {
-      set({ isLoadingMore: false });
+      if (isCurrentOwner(owner)) set({ isLoadingMore: false });
     }
   },
 
   refresh: async () => {
+    const owner = captureSessionOwner();
     set({ isRefreshing: true });
     try {
       const page = await feedService.getFeed();
+      if (!isCurrentOwner(owner)) return;
       set({ posts: page.posts, nextCursor: page.nextCursor, isRefreshing: false });
     } catch {
-      set({ isRefreshing: false });
+      if (isCurrentOwner(owner)) set({ isRefreshing: false });
     }
   },
 

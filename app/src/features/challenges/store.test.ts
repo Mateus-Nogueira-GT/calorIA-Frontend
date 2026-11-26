@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
 import { act, renderHook } from '@testing-library/react-native';
 import { useChallengesStore } from './store';
+import { useAuthStore } from '@features/auth/store';
 import { todayString } from '@shared/utils/date';
 import type { Challenge, LeaderboardEntry } from '@shared/services/challenges.service';
 
@@ -210,5 +211,25 @@ describe('useChallengesStore', () => {
     await useChallengesStore.getState().load();
 
     expect(useChallengesStore.getState().challenges).toEqual([]);
+  });
+
+  it('load descarta a resposta que chega depois de trocar de conta (S10)', async () => {
+    useAuthStore.getState().clearToken();
+    useAuthStore.getState().setToken('token-a', { id: 'uA', name: 'A', email: 'a@exemplo.com' });
+    let resolveList!: (v: Challenge[]) => void;
+    challengesService.getChallenges.mockReturnValue(
+      new Promise<Challenge[]>((r) => {
+        resolveList = r;
+      }),
+    );
+
+    const loading = useChallengesStore.getState().load();
+    useAuthStore.getState().clearToken();
+    useAuthStore.getState().setToken('token-b', { id: 'uB', name: 'B', email: 'b@exemplo.com' });
+    resolveList([challenge('cA', { joinedByMe: true })]);
+    await loading;
+
+    expect(useChallengesStore.getState().challenges).toEqual([]);
+    expect(useChallengesStore.getState().isLoading).toBe(false);
   });
 });
