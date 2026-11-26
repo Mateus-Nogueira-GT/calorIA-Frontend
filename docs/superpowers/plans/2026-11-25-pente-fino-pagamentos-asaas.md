@@ -20,9 +20,9 @@
 - [x] Guard em `handleAsaasEvent` antes de `handlePurchaseEvent`.
 
 ### Task 2 — R4 (P5): evento genérico não grava status terminal
-- [ ] Teste de integração: CONFIRMED → UPDATED(status REFUNDED) → REFUNDED. Saldo e `paid_until`
+- [x] Teste de integração: CONFIRMED → UPDATED(status REFUNDED) → REFUNDED. Saldo e `paid_until`
       revertidos.
-- [ ] No ramo genérico, filtrar `p.status`. Se for terminal (pago ou estornado), gravar `PENDING` só para
+- [x] No ramo genérico, filtrar `p.status`. Se for terminal (pago ou estornado), gravar `PENDING` só para
       linha nova e manter o status existente nas outras.
 
 ### Task 3 — R3 (P3, P4): `past_due` só para quem pagou

@@ -45,6 +45,8 @@ const REVERSED = new Set([
   'PAYMENT_CHARGEBACK_REQUESTED',
 ])
 const REVERSED_STATUS = ['REFUNDED', 'PARTIALLY_REFUNDED', 'CHARGEBACK_REQUESTED']
+const PAID_STATUS = ['CONFIRMED', 'RECEIVED']
+const GENERIC = new Set(['PAYMENT_CREATED', 'PAYMENT_UPDATED', 'PAYMENT_DELETED', 'PAYMENT_RESTORED'])
 
 interface SubRow {
   id: string
@@ -82,6 +84,7 @@ async function upsertPaymentStatus(
   sub: SubRow,
   p: NonNullable<AsaasEvent['payment']>,
   status: string,
+  keepExisting = false,
 ) {
   await tx`
     INSERT INTO subscription_payments(asaas_payment_id, subscription_id, status, value_cents, due_date, invoice_url)
@@ -90,6 +93,7 @@ async function upsertPaymentStatus(
     ON CONFLICT (asaas_payment_id) DO UPDATE SET
       -- Fora de ordem: estorno nunca é desfeito e pagamento confirmado não volta a "em aberto".
       status = CASE
+        WHEN ${keepExisting}::boolean THEN subscription_payments.status
         WHEN subscription_payments.status = ANY(${REVERSED_STATUS}::text[]) THEN subscription_payments.status
         WHEN subscription_payments.status IN ('CONFIRMED','RECEIVED')
           AND EXCLUDED.status IN ('PENDING','OVERDUE') THEN subscription_payments.status
@@ -242,17 +246,17 @@ export async function handleAsaasEvent(
         WHERE id = ${sub.id} AND status IN ('pending','active')`
       return 'overdue'
     }
-    if (
-      ['PAYMENT_CREATED', 'PAYMENT_UPDATED', 'PAYMENT_DELETED', 'PAYMENT_RESTORED'].includes(
-        ev.event,
-      )
-    ) {
-      await upsertPaymentStatus(
-        tx,
-        sub,
-        p,
-        ev.event === 'PAYMENT_DELETED' ? 'DELETED' : (p.status ?? 'PENDING'),
-      )
+    if (GENERIC.has(ev.event)) {
+      if (ev.event === 'PAYMENT_DELETED') {
+        await upsertPaymentStatus(tx, sub, p, 'DELETED')
+        return 'payment_updated'
+      }
+      // Pago e estornado só pelos handlers dedicados (markPaid, markReversed):
+      // um evento genérico com esses status não pode adiantar o efeito. Linha
+      // nova fica PENDING; linha existente mantém o status.
+      const raw = p.status ?? 'PENDING'
+      const terminal = PAID_STATUS.includes(raw) || REVERSED_STATUS.includes(raw)
+      await upsertPaymentStatus(tx, sub, p, terminal ? 'PENDING' : raw, terminal)
       return 'payment_updated'
     }
     return 'ignored'

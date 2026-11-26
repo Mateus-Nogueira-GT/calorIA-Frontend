@@ -226,6 +226,37 @@ export async function resetSubscriptionSchema(db: postgres.Sql) {
     expect(await balance()).toBe(300)
   })
 
+  it('evento genérico com status de estorno não impede o estorno de valer', async () => {
+    await subscribe()
+    await handleAsaasEvent(f, payment('PAYMENT_CONFIRMED'))
+    expect(await balance()).toBe(75 + 500)
+    const refunded = (event: string) => {
+      const e = payment(event)
+      return { ...e, payment: { ...e.payment!, status: 'REFUNDED' } }
+    }
+    expect(await handleAsaasEvent(f, refunded('PAYMENT_UPDATED'))).toBe('payment_updated')
+    expect(await handleAsaasEvent(f, refunded('PAYMENT_REFUNDED'))).toBe('reversed')
+    expect(await balance()).toBe(75)
+    expect(new Date((await sub()).paid_until).getTime()).toBeLessThanOrEqual(Date.now())
+    const [p] = await db`SELECT status FROM subscription_payments WHERE asaas_payment_id='pay_1'`
+    expect(p.status).toBe('REFUNDED')
+  })
+
+  it('evento genérico com status pago não marca pagamento novo como pago', async () => {
+    await subscribe()
+    const e = payment('PAYMENT_UPDATED')
+    await handleAsaasEvent(f, { ...e, payment: { ...e.payment!, status: 'CONFIRMED' } })
+    const [p] = await db`SELECT status FROM subscription_payments WHERE asaas_payment_id='pay_1'`
+    expect(p.status).toBe('PENDING')
+    // Pagamento em atraso continua em atraso.
+    await handleAsaasEvent(f, payment('PAYMENT_OVERDUE'))
+    await handleAsaasEvent(f, { ...e, id: 'evt_upd2', payment: { ...e.payment!, status: 'RECEIVED' } })
+    const [q] = await db`SELECT status FROM subscription_payments WHERE asaas_payment_id='pay_1'`
+    expect(q.status).toBe('OVERDUE')
+    expect((await sub()).paid_until).toBeNull()
+    expect(await balance()).toBeUndefined()
+  })
+
   it('atraso, cancelamento e evento de fora do CalorIA', async () => {
     await subscribe({ status: 'active' })
     expect(await handleAsaasEvent(f, payment('PAYMENT_OVERDUE'))).toBe('overdue')
