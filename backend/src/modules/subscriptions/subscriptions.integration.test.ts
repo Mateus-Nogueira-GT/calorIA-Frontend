@@ -554,6 +554,12 @@ export async function resetSubscriptionSchema(db: postgres.Sql) {
         invoice_url: 'https://asaas/i/2',
       },
     ])
+    // A linha fechada não foi apagada: se a cobrança aparecer depois (busca que não
+    // a viu a tempo), o webhook ainda casa pela referência e credita.
+    expect(
+      await handleAsaasEvent(f, ev('PAYMENT_RECEIVED', 'evt_tarde', 'pay_tarde', kept.id)),
+    ).toBe('purchase_paid')
+    expect(await balance()).toBe(75 + 50)
   })
 
   it('R4: busca no Asaas falhando → 409 e a linha fica', async () => {

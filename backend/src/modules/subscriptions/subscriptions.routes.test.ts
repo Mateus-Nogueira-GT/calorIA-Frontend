@@ -1,7 +1,7 @@
 import jwt from '@fastify/jwt'
 import Fastify from 'fastify'
 import { serializerCompiler, validatorCompiler } from 'fastify-type-provider-zod'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { env } from '../../shared/env.js'
 import { AppError } from '../../shared/errors.js'
 import { fakeFastify } from '../../shared/testing/fake-fastify.js'
@@ -114,6 +114,8 @@ describe('webhook do Asaas', () => {
   it('token certo: grava o evento e responde 200; erro de banco → 500 para o Asaas reenviar', async () => {
     env.SUBSCRIPTIONS_ENABLED = true
     env.ASAAS_WEBHOOK_TOKEN = TOKEN
+    // Sem chave: nenhuma busca de assinatura órfã no Asaas.
+    env.ASAAS_API_KEY = undefined
     const ok = await app([['INSERT INTO payment_webhook_events', [{ event_id: 'evt_1' }]]])
     const r = await ok.f.inject({
       method: 'POST',
@@ -135,5 +137,33 @@ describe('webhook do Asaas', () => {
     })
     expect(e.statusCode).toBe(500)
     await broken.f.close()
+  })
+
+  it('R4: com a chave, assinatura desconhecida é buscada no Asaas; 404 só registra o evento', async () => {
+    env.SUBSCRIPTIONS_ENABLED = true
+    env.ASAAS_WEBHOOK_TOKEN = TOKEN
+    env.ASAAS_API_KEY = 'chave-teste'
+    const urls: string[] = []
+    vi.stubGlobal('fetch', async (url: string) => {
+      urls.push(String(url))
+      return new Response(JSON.stringify({ errors: [] }), { status: 404 })
+    })
+    try {
+      const { f, calls } = await app([
+        ['INSERT INTO payment_webhook_events', [{ event_id: 'evt_1' }]],
+      ])
+      const r = await f.inject({
+        method: 'POST',
+        url: '/webhooks/asaas',
+        payload: event,
+        headers: { 'asaas-access-token': TOKEN },
+      })
+      expect(r.statusCode).toBe(200)
+      expect(urls).toEqual(['https://api-sandbox.asaas.com/v3/subscriptions/sub_1'])
+      expect(calls.some((c) => c.sql.includes('INSERT INTO payment_webhook_events'))).toBe(true)
+      await f.close()
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 })
