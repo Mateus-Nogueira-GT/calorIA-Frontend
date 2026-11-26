@@ -217,6 +217,9 @@ describe('AI wallet integration boundary', () => {
       expect(wrote(transaction.calls, 'UPDATE profiles')).toBe(true)
       const history = transaction.calls.find((c) => c.sql.includes('INSERT INTO chat_history'))
       expect(history?.params).toContain('generating')
+      // diets.conversation_id referencia chat_history: a conversa nova nasce antes.
+      const at = (sql: string) => transaction.calls.findIndex((c) => c.sql.includes(sql))
+      expect(at('INSERT INTO chat_history')).toBeLessThan(at('INSERT INTO diets'))
     })
 
     it('job em andamento descoberto na liquidação recusa sem gravar o turno', async () => {
@@ -234,8 +237,8 @@ describe('AI wallet integration boundary', () => {
       await expect(
         sendChatMessage(source.fastify, USER, { message: 'sim', conversation_id: CONV }, KEY),
       ).rejects.toBeInstanceOf(AppError)
+      // O turno gravado antes na mesma transação é desfeito pelo rollback.
       expect(wrote(transaction.calls, 'INSERT INTO diet_jobs')).toBe(false)
-      expect(wrote(transaction.calls, 'INSERT INTO chat_history')).toBe(false)
     })
 
     it('geração já em andamento é reaproveitada, sem job novo na liquidação', async () => {

@@ -18,7 +18,7 @@
 2. [ ] R3: operação de custo zero para conta ilimitada, com integração Postgres e unit. Commit.
 3. [x] R4 e R5: `handleDietGeneration` persiste na liquidação e o parse fica protegido, com testes
        vitest. Commit.
-4. [ ] R8: `persistHistory` passa a anexar, com teste de integração Postgres e os testes unit de chat
+4. [x] R8: `persistHistory` passa a anexar, com teste de integração Postgres e os testes unit de chat
        ajustados. Commit.
 5. [ ] R6: token de sequência no voice-player, com teste. Commit.
 6. [ ] R7: orçamento do banner de dieta, com teste. Commit.

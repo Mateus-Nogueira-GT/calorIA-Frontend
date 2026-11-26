@@ -349,7 +349,8 @@ interface ChatHistoryMessage {
  * escritas que dependem dele (job de dieta e perfil, R4 de 25/11).
  */
 interface DeferredTurn {
-  history: ChatHistoryMessage[]
+  /** Só as mensagens novas deste turno; o persistHistory anexa (R8). */
+  turn: ChatHistoryMessage[]
   status: string
   extra?: (sql: CreditTransaction) => Promise<void>
 }
@@ -396,10 +397,11 @@ export async function sendChatMessage(
       ),
     async (tx) => {
       if (!deferred) return
-      const { history, status, extra } = deferred
+      const { turn, status, extra } = deferred
+      // Histórico primeiro: diets.conversation_id referencia chat_history(id).
       const write = async (sql: CreditTransaction) => {
+        await persistHistory(fastify, userId, conversationId, turn, status, sql)
         await extra?.(sql)
-        await persistHistory(fastify, userId, conversationId, history, status, sql)
       }
       // Conta ilimitada liquida sem transação (fastify.db): job e turno juntos.
       if (extra && tx === fastify.db) await fastify.db.begin(write)
@@ -434,10 +436,14 @@ async function sendChatMessageCore(
     conversationId,
   )
 
+  const prior = history.length
   history.push(said('user', data.message))
+  // R8 (25/11): grava só o turno novo; o array lido antes da IA pode estar velho
+  // (o finalizeJob anexa o marcador de dieta concluída enquanto a IA responde).
   const save: SaveTurn = async (status, extra) => {
-    if (deferHistory) deferHistory({ history, status, extra })
-    else await persistHistory(fastify, userId, conversationId, history, status)
+    const turn = history.slice(prior)
+    if (deferHistory) deferHistory({ turn, status, extra })
+    else await persistHistory(fastify, userId, conversationId, turn, status)
   }
 
   // Personaliza o tom do coach conforme a preferência do usuário.
@@ -969,22 +975,43 @@ async function loadHistory(
   }
 }
 
+/**
+ * Anexa o turno (`messages || turno`) em vez de regravar o array lido antes da
+ * IA, como o finalizeJob faz com o marcador (R8, 25/11). O teto de
+ * HISTORY_MAX_MESSAGES é aplicado no SQL, mantendo as mais recentes.
+ *
+ * `${texto}::jsonb` no postgres.js grava uma STRING jsonb (o parâmetro é
+ * serializado como JSON de novo): daí o normalizeHistory. O turno vai como
+ * `::text::jsonb` (array de verdade) e o valor antigo em string é desembrulhado
+ * antes de concatenar.
+ */
 async function persistHistory(
   fastify: FastifyInstance,
   userId: string,
   conversationId: string,
-  messages: ChatHistoryMessage[],
+  turn: ChatHistoryMessage[],
   status: string,
   transaction?: CreditTransaction,
 ): Promise<void> {
-  const messagesStr = JSON.stringify(capHistory(messages))
+  const messagesStr = JSON.stringify(capHistory(turn))
   try {
     const sql = transaction ?? fastify.db
     const rows = await sql`
       INSERT INTO chat_history (id, user_id, messages, status)
-      VALUES (${conversationId}, ${userId}, ${messagesStr}::jsonb, ${status})
+      VALUES (${conversationId}, ${userId}, ${messagesStr}::text::jsonb, ${status})
       ON CONFLICT (id) DO UPDATE
-        SET messages   = ${messagesStr}::jsonb,
+        SET messages   = (
+              SELECT COALESCE(jsonb_agg(e.value ORDER BY e.n), '[]'::jsonb)
+              FROM (
+                SELECT CASE jsonb_typeof(chat_history.messages)
+                         WHEN 'array' THEN chat_history.messages
+                         WHEN 'string' THEN (chat_history.messages #>> '{}')::jsonb
+                         ELSE '[]'::jsonb
+                       END || EXCLUDED.messages AS merged
+              ) AS h,
+              jsonb_array_elements(h.merged) WITH ORDINALITY AS e(value, n)
+              WHERE e.n > jsonb_array_length(h.merged) - ${HISTORY_MAX_MESSAGES}
+            ),
             status     = ${status},
             updated_at = NOW()
         WHERE chat_history.user_id = EXCLUDED.user_id
