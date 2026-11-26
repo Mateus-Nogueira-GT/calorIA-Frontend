@@ -47,3 +47,31 @@ As branches são independentes e podem gerar conflitos de merge entre si, princi
 Pendências de decisão do usuário: A4, A5, A7, P7, P8, S9, C4, F3, `createDietJob` e a corrida do pedido de amizade.
 
 Nada foi publicado: sem push, PR, OTA, migration remota ou flag.
+
+## Lote 7 — pendências (26/11/2026, a pedido do usuário: tudo menos F3)
+
+Branch: `fix/pente-fino-integrado`. Ela junta `fix/pente-fino-1` a `-6` e mais `fix/pente-fino-7-auth`, `-7-pagamentos` e `-7-dados`.
+
+Validação final na integrada:
+
+| Suíte | Resultado |
+|---|---|
+| Backend, unitários | 737 ✓ |
+| Integração Postgres (10 suítes) | 128 ✓ |
+| App | 937/937 ✓ |
+| `app/android` / `app/ios` | nada alterado |
+
+| Item | Resultado | Ativação |
+|---|---|---|
+| A4 confirmação de e-mail no cadastro | Feito, dark | `AUTH_REQUIRE_EMAIL_CONFIRMATION=false` por padrão. **Continua explorável até ligar.** Antes, publicar o OTA e conferir o Supabase ("Confirm email" ligado, SMTP, resend `signup`, URL na allow-list). |
+| A5 reset só com sessão de recuperação | Feito, em modo log | `AUTH_RESET_REQUIRE_RECOVERY=log`. **Continua explorável até `enforce`.** Antes, fazer um reset real e conferir o `amr` no log `reset_password_recovery_check`. O signOut das outras sessões depois do reset já vale. |
+| A7 rate limit por conta | Feito | Ativo. Fica aberto o store em memória por instância (infra). |
+| P7 timeout no Asaas | Feito | Reconciliação por `externalReference`; substitui a regra do lote 1. Fica aberto: assinatura cancelada só localmente que exista no Asaas continua cobrando. |
+| P8 saldo com a recarga ligada | Feito | Com a recarga ligada, a carteira real aparece (e cria o bônus de 75). Precisa de OTA. |
+| C4 `POST /food-log` idempotente | Feito (cartão do coach) | Migration 030. Scanner e registro manual ainda sem chave. |
+| Corrida no `createDietJob` | Feito | Migration 031 fecha os jobs ativos duplicados antes do índice e roda em conexão reservada. |
+| S9 gráfico semanal | Feito | Soma as refeições do plano pelo dia local de `completed_at`. |
+| Pedido de amizade simultâneo | Feito | 409 `REQUEST_PENDING` / `REQUEST_INCOMING`; o app ainda não oferece "aceitar". |
+| F3 | Não feito, por decisão do usuário | — |
+
+Migrations novas no total, nenhuma aplicada no remoto: 028, 029, 030 e 031.

@@ -49,6 +49,6 @@ Três workers trabalham em paralelo. Cada um tem um worktree próprio, criado a 
 
 ## Fechamento (orquestrador)
 
-- [ ] Mergear W1, W2 e W3 na `fix/pente-fino-integrado`.
-- [ ] Rodar as suítes completas e todas as integrações.
-- [ ] Atualizar o ledger.
+- [x] Mergear W1, W2 e W3 na `fix/pente-fino-integrado`.
+- [x] Rodar as suítes completas e todas as integrações.
+- [x] Atualizar o ledger.
