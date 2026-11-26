@@ -41,7 +41,7 @@ Três workers trabalham em paralelo. Cada um tem um worktree próprio, criado a 
 
 ## W3
 
-1. [ ] R6: migration 030, rota com chave opcional e chave do cartão no app. Testes de integração e de app.
+1. [x] R6: migration 030, rota com chave opcional e chave do cartão no app. Testes de integração e de app.
 2. [ ] R7: migration 031, com fechamento dos jobs duplicados, mais o `23505` no service. Testes de integração.
 3. [ ] R8: summary com as refeições do plano. Teste.
 4. [ ] R9: `23505` no pedido de amizade vira 409. Teste.

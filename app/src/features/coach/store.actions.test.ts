@@ -97,6 +97,7 @@ it('Adicionar ao Diário grava com data e tipo, e o registro entra no Diário', 
       date: '2026-11-05',
     },
     expect.objectContaining({ generation: expect.any(Number) }),
+    expect.stringMatching(/^[A-Za-z0-9_-]{16,128}$/),
   );
   expect(useFoodLogStore.getState().mealsByDate['2026-11-05']?.[0]?.id).toBe('m1');
   expect(card()?.status).toBe('saved');
@@ -153,6 +154,30 @@ it('falha ao gravar → erro, e dá para tentar de novo', async () => {
   foodLogService.addMeal.mockResolvedValue({ ...eggs, id: 'm1', loggedAt: 'x' });
   await useCoachStore.getState().applyAction('c1-1');
   expect(card()?.status).toBe('saved');
+});
+
+it('C4: o "Tente de novo" reenvia a mesma Idempotency-Key do cartão', async () => {
+  // Timeout com o servidor já tendo gravado: sem a mesma chave, o retry duplicava.
+  foodLogService.addMeal.mockRejectedValueOnce(new Error('timeout'));
+  await receive(eggs);
+  await useCoachStore.getState().applyAction('c1-1');
+  expect(card()?.status).toBe('error');
+  foodLogService.addMeal.mockResolvedValue({ ...eggs, id: 'm1', loggedAt: 'x' });
+  await useCoachStore.getState().applyAction('c1-1');
+  const [first, retry] = foodLogService.addMeal.mock.calls.map((c) => c[2]);
+  expect(typeof first).toBe('string');
+  expect(retry).toBe(first);
+});
+
+it('C4: cada cartão tem a sua chave', async () => {
+  foodLogService.addMeal.mockResolvedValue({ ...eggs, id: 'm1', loggedAt: 'x' });
+  await receive(eggs);
+  await useCoachStore.getState().applyAction('c1-1');
+  const firstKey = foodLogService.addMeal.mock.calls[0][2];
+  useCoachStore.setState({ messages: [] });
+  await receive(eggs);
+  await useCoachStore.getState().applyAction('c1-1');
+  expect(foodLogService.addMeal.mock.calls[1][2]).not.toBe(firstKey);
 });
 
 it('Agora não fecha o cartão', async () => {

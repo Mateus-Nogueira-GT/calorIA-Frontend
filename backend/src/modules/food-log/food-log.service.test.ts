@@ -3,6 +3,7 @@ import { fakeFastify } from '../../shared/testing/fake-fastify.js'
 import { MEAL_LIMITS, addMealBodySchema, updateMealBodySchema } from './food-log.schemas.js'
 import { addMeal, getSummary, listMeals, updateMeal } from './food-log.service.js'
 import { __resetMealFiberColumnsCache } from './meal-fiber-columns.js'
+import { __resetMealIdempotencyColumnCache } from './meal-idempotency-column.js'
 import { __resetMealScanColumnsCache } from './meal-scan-columns.js'
 
 const USER = '11111111-1111-1111-1111-111111111111'
@@ -20,6 +21,7 @@ const body = {
 beforeEach(() => {
   __resetMealFiberColumnsCache()
   __resetMealScanColumnsCache()
+  __resetMealIdempotencyColumnCache()
 })
 
 describe('listMeals — fibra', () => {
@@ -266,5 +268,86 @@ describe('dúvida do scanner gravada no registro (05/11, S3)', () => {
   it('PATCH não aceita scan: a edição troca o item e a dúvida some', () => {
     const parsed = updateMealBodySchema.parse({ ...body, scan })
     expect(parsed).not.toHaveProperty('scan')
+  })
+})
+
+describe('addMeal — Idempotency-Key (C4)', () => {
+  const KEY = 'card-0123456789abcdef'
+  const KEY_COL = "column_name = 'idempotency_key'"
+
+  it('com a migration 030: grava a chave e não duplica no conflito', async () => {
+    const { fastify, calls } = fakeFastify([
+      [KEY_COL, [{ present: true }]],
+      [COLS, [{ n: 2 }]],
+      ['INSERT INTO meals', [{ id: MEAL, logged_at: '2026-11-26 12:00:00+00' }]],
+    ])
+    await addMeal(fastify, USER, body, KEY)
+    const insert = calls.find((c) => c.sql.includes('INSERT INTO meals'))
+    expect(insert?.sql).toContain('idempotency_key')
+    expect(insert?.sql).toContain('ON CONFLICT')
+    expect(insert?.params).toContain(KEY)
+  })
+
+  it('chave repetida: devolve a refeição já gravada, sem inserir o item de novo', async () => {
+    const existing = {
+      id: MEAL,
+      name: 'Arroz',
+      meal_type: 'afternoon_snack',
+      total_calories: '200.00',
+      total_protein: '4.00',
+      total_carbs: '44.00',
+      total_fat: '1.00',
+      total_fiber: null,
+      logged_at: '2026-11-26 12:00:00+00',
+    }
+    const { fastify, calls } = fakeFastify([
+      [KEY_COL, [{ present: true }]],
+      [COLS, [{ n: 2 }]],
+      ['INSERT INTO meals', []],
+      ['idempotency_key = ', [existing]],
+    ])
+    const meal = await addMeal(fastify, USER, { ...body, mealType: 'snack' }, KEY)
+    expect(meal).toEqual({
+      id: MEAL,
+      name: 'Arroz',
+      calories: 200,
+      protein: 4,
+      carbs: 44,
+      fat: 1,
+      fiber: null,
+      loggedAt: '2026-11-26 12:00:00+00',
+      mealType: 'snack',
+    })
+    expect(calls.some((c) => c.sql.includes('INSERT INTO meal_items'))).toBe(false)
+    const lookup = calls.find((c) => c.sql.includes('idempotency_key = '))
+    expect(lookup?.params).toEqual(expect.arrayContaining([USER, KEY]))
+  })
+
+  it('sem a migration 030: ignora a chave e grava como antes', async () => {
+    const { fastify, calls } = fakeFastify([
+      [KEY_COL, [{ present: false }]],
+      [COLS, [{ n: 2 }]],
+      ['INSERT INTO meals', [{ id: MEAL, logged_at: '2026-11-26 12:00:00+00' }]],
+    ])
+    await addMeal(fastify, USER, body, KEY)
+    const insert = calls.find((c) => c.sql.includes('INSERT INTO meals'))
+    expect(insert?.sql).not.toContain('idempotency_key')
+  })
+
+  it('sem chave: nem consulta a coluna (cliente antigo, mesmas queries de hoje)', async () => {
+    const { fastify, calls } = fakeFastify([
+      [COLS, [{ n: 2 }]],
+      ['INSERT INTO meals', [{ id: MEAL, logged_at: '2026-11-26 12:00:00+00' }]],
+    ])
+    await addMeal(fastify, USER, body)
+    expect(calls.some((c) => c.sql.includes('idempotency_key'))).toBe(false)
+  })
+
+  it('chave malformada → 400 INVALID_IDEMPOTENCY_KEY', async () => {
+    const { fastify } = fakeFastify([])
+    await expect(addMeal(fastify, USER, body, 'curta')).rejects.toMatchObject({
+      statusCode: 400,
+      code: 'INVALID_IDEMPOTENCY_KEY',
+    })
   })
 })

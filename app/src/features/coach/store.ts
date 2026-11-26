@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { useAuthStore } from '@features/auth/store';
-import { creditErrorMessage } from '@shared/services/credits.service';
+import { creditErrorMessage, newOperationKey } from '@shared/services/credits.service';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import {
@@ -51,7 +51,11 @@ async function refreshCorrectedDay(date: string): Promise<void> {
  * 25/11): a resposta pode chegar depois de logout/login; nada dela toca as
  * telas da conta seguinte (mesmo padrão do D01 no scanner).
  */
-async function runAction(card: ActionProposal, owner: SessionOwner): Promise<void> {
+async function runAction(
+  card: ActionProposal,
+  owner: SessionOwner,
+  idempotencyKey?: string,
+): Promise<void> {
   if (card.kind === 'log_meal') {
     const meal = await foodLogService.addMeal(
       {
@@ -66,6 +70,7 @@ async function runAction(card: ActionProposal, owner: SessionOwner): Promise<voi
         date: card.date,
       },
       owner,
+      idempotencyKey,
     );
     if (isCurrentOwner(owner)) useFoodLogStore.getState().addMeal(card.date, meal);
     return;
@@ -179,8 +184,13 @@ export interface ProposalCard extends MealProposal {
   status: CardStatus;
 }
 
-/** Cartão de ação (registrar refeição, peso, marcar refeição do plano). */
-export type ActionCard = ActionProposal & { status: CardStatus };
+/**
+ * Cartão de ação (registrar refeição, peso, marcar refeição do plano).
+ * C4 (26/11): `idempotencyKey` nasce no primeiro toque de "Adicionar ao Diário"
+ * e é reusada no "Tente de novo": o servidor devolve a refeição já criada em
+ * vez de gravar outra quando a 1ª resposta se perdeu.
+ */
+export type ActionCard = ActionProposal & { status: CardStatus; idempotencyKey?: string };
 
 export interface StoreMessage {
   id: string;
@@ -317,10 +327,26 @@ export const useCoachStore = create<CoachState>()(
                 : m,
             ),
           }));
-        setStatus('saving');
+        const idempotencyKey =
+          card.kind === 'log_meal' ? (card.idempotencyKey ?? newOperationKey()) : undefined;
+        // Chave gravada no cartão junto com o 'saving', antes do pedido sair.
+        set((s) => ({
+          messages: s.messages.map((m) =>
+            m.id === messageId && m.actionProposal
+              ? {
+                  ...m,
+                  actionProposal: {
+                    ...m.actionProposal,
+                    status: 'saving',
+                    ...(idempotencyKey ? { idempotencyKey } : {}),
+                  },
+                }
+              : m,
+          ),
+        }));
         const owner = captureSessionOwner();
         try {
-          await runAction(card, owner);
+          await runAction(card, owner, idempotencyKey);
         } catch {
           if (isCurrentOwner(owner)) setStatus('error');
           return;
