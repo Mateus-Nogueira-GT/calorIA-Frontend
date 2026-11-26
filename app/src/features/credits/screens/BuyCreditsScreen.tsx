@@ -37,7 +37,14 @@ export function BuyCreditsScreen(): React.JSX.Element {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [purchase, setPurchase] = useState<{ id: string; invoiceUrl: string | null } | null>(null);
+  // Pacote da compra confirmada: o banner não pode ler o `selected`, que muda no próximo toque.
+  const [paidPackage, setPaidPackage] = useState<CreditPackage | null>(null);
   const tries = useRef(0);
+  // Cada compra tem a sua geração; um check() de compra antiga não mexe na tela.
+  const generation = useRef(0);
+  const checking = useRef<number | null>(null);
+  const buyLock = useRef(false);
+  const pendingPackage = useRef<CreditPackage | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mounted = useRef(true);
 
@@ -62,11 +69,17 @@ export function BuyCreditsScreen(): React.JSX.Element {
   };
 
   const check = useCallback(async (id: string) => {
+    const gen = generation.current;
+    // Uma cadeia por vez: se já há conferência desta compra em andamento, ela reagenda.
+    if (checking.current === gen) return;
+    checking.current = gen;
+    const current = () => mounted.current && gen === generation.current;
     try {
       const p = await purchasesService.get(id);
-      if (!mounted.current) return;
+      if (!current()) return;
       if (p.status === 'paid') {
         stopPolling();
+        setPaidPackage(pendingPackage.current);
         setPhase('paid');
         notifyCreditChange();
         return;
@@ -77,12 +90,23 @@ export function BuyCreditsScreen(): React.JSX.Element {
         setError('O pagamento não foi concluído. Você pode tentar de novo.');
         return;
       }
+      if (p.invoice_url) {
+        const url = p.invoice_url;
+        setPurchase((cur) =>
+          cur && cur.id === id && !cur.invoiceUrl ? { ...cur, invoiceUrl: url } : cur,
+        );
+      }
     } catch {
       /* Rede instável: tenta de novo no próximo ciclo. */
+    } finally {
+      if (checking.current === gen) checking.current = null;
     }
+    if (!current()) return;
     tries.current += 1;
-    if (mounted.current && tries.current < POLL_MAX_TRIES)
+    if (tries.current < POLL_MAX_TRIES) {
+      stopPolling();
       timer.current = setTimeout(() => void check(id), POLL_INTERVAL_MS);
+    }
   }, []);
 
   useEffect(() => {
@@ -99,7 +123,6 @@ export function BuyCreditsScreen(): React.JSX.Element {
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active' && purchase && phase === 'waiting') {
         stopPolling();
-        tries.current = 0;
         void check(purchase.id);
       }
     });
@@ -119,12 +142,15 @@ export function BuyCreditsScreen(): React.JSX.Element {
   };
 
   const buy = async (pkg: CreditPackage) => {
+    if (buyLock.current) return;
     setError(null);
     setSelected(pkg);
     if (needsDocument && phase !== 'document') {
       setPhase('document');
       return;
     }
+    if (phase === 'paid') setPhase('choose');
+    buyLock.current = true;
     setBusy(true);
     try {
       const r = await purchasesService.checkout({
@@ -133,6 +159,8 @@ export function BuyCreditsScreen(): React.JSX.Element {
       });
       if (!mounted.current) return;
       setNeedsDocument(false);
+      generation.current += 1;
+      pendingPackage.current = pkg;
       setPurchase({ id: r.purchase_id, invoiceUrl: r.invoice_url });
       setPhase('waiting');
       tries.current = 0;
@@ -142,6 +170,7 @@ export function BuyCreditsScreen(): React.JSX.Element {
     } catch (e) {
       if (mounted.current) setError(purchaseErrorMessage(e));
     } finally {
+      buyLock.current = false;
       if (mounted.current) setBusy(false);
     }
   };
@@ -157,10 +186,10 @@ export function BuyCreditsScreen(): React.JSX.Element {
       contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + spacing.xxl }]}
       keyboardShouldPersistTaps="handled"
     >
-      {phase === 'paid' && selected ? (
+      {phase === 'paid' && paidPackage ? (
         <View style={styles.block} accessibilityLiveRegion="polite">
           <Text variant="heading2">Pronto!</Text>
-          <Text>{selected.credits} créditos foram adicionados ao seu saldo.</Text>
+          <Text>{paidPackage.credits} créditos foram adicionados ao seu saldo.</Text>
         </View>
       ) : null}
 
@@ -179,7 +208,6 @@ export function BuyCreditsScreen(): React.JSX.Element {
             onPress={() => {
               if (!purchase) return;
               stopPolling();
-              tries.current = 0;
               void check(purchase.id);
             }}
           >
