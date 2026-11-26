@@ -1,5 +1,8 @@
+import { zodResponseFormat } from 'openai/helpers/zod.js'
+import { parseChatCompletion } from 'openai/lib/parser.js'
 import { describe, expect, it } from 'vitest'
 import { fakeFastify } from '../../shared/testing/fake-fastify.js'
+import { visionAnalysisSchema } from './scanner.schemas.js'
 import { analyzePhoto } from './scanner.service.js'
 
 const USER = '11111111-1111-1111-1111-111111111111'
@@ -330,5 +333,78 @@ describe('alternativas quando o alimento é ambíguo (05/11, S1)', () => {
     await analyzePhoto(fastify, IMG, USER)
     const write = calls.find((c) => c.sql.includes('INSERT INTO scan_cache'))
     expect(String(write?.params[1])).toContain('Salmão grelhado')
+  })
+})
+
+describe('alternativas fora do formato não derrubam a análise (C8)', () => {
+  const rice = {
+    name: 'Arroz branco',
+    weightGrams: 200,
+    calories: 260,
+    protein: 5,
+    carbs: 56,
+    fat: 1,
+    fiber: 2,
+    confidence: 0.45,
+  }
+  const alt = (name: string) => ({ name, calories: 250, protein: 6, carbs: 52, fat: 2, fiber: 4 })
+  const raw = {
+    is_food: true,
+    items: [{ ...rice, alternatives: [alt(''), alt('Arroz integral'), alt('Quinoa')] }],
+  }
+
+  it('com o resultado já lido: descarta a de nome vazio e fica com até 2', async () => {
+    const { fastify } = fakeFastify([], {
+      parse: async () => ({ choices: [{ message: { parsed: raw } }], usage: null }),
+    })
+    const r = await analyzePhoto(fastify, IMG, USER)
+    expect(r.items[0].alternatives?.map((a) => a.name)).toEqual(['Arroz integral', 'Quinoa'])
+  })
+
+  it('3 alternativas válidas: corta para 2; inválidas por tipo também saem', async () => {
+    const items = [
+      {
+        ...rice,
+        alternatives: [alt('A'), { ...alt('B'), calories: 'muito' }, alt('C'), alt('D')],
+      },
+    ]
+    const { fastify } = fakeFastify([], {
+      parse: async () => ({
+        choices: [{ message: { parsed: { is_food: true, items } } }],
+        usage: null,
+      }),
+    })
+    const r = await analyzePhoto(fastify, IMG, USER)
+    expect(r.items[0].alternatives?.map((a) => a.name)).toEqual(['A', 'C'])
+  })
+
+  it('pelo caminho do SDK: o JSON do modelo é lido pelo schema tolerante, e o schema enviado não muda', async () => {
+    const { fastify, openaiCalls } = fakeFastify([], {
+      // Mesmo código do SDK em completions.parse: aplica o response_format à resposta.
+      parse: async (params) =>
+        parseChatCompletion(
+          {
+            id: 'c',
+            object: 'chat.completion',
+            created: 0,
+            model: 'm',
+            choices: [
+              {
+                index: 0,
+                finish_reason: 'stop',
+                logprobs: null,
+                message: { role: 'assistant', content: JSON.stringify(raw), refusal: null },
+              },
+            ],
+          },
+          params as Parameters<typeof parseChatCompletion>[1],
+        ),
+    })
+    const r = await analyzePhoto(fastify, IMG, USER)
+    expect(r.items[0].alternatives?.map((a) => a.name)).toEqual(['Arroz integral', 'Quinoa'])
+    const sent = openaiCalls[0].params.response_format as Record<string, unknown>
+    expect(JSON.parse(JSON.stringify(sent))).toEqual(
+      JSON.parse(JSON.stringify(zodResponseFormat(visionAnalysisSchema, 'food_analysis'))),
+    )
   })
 })
