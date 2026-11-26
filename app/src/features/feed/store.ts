@@ -95,13 +95,18 @@ export const useFeedStore = create<FeedState>((set, get) => ({
     }
   },
 
+  // R5 (26/11): publicar, curtir e comentar também conferem a sessão depois do
+  // await — inclusive no rollback, que restauraria dados da conta anterior.
   createPost: async (content, achievement) => {
+    const owner = captureSessionOwner();
     set({ isCreating: true });
     try {
       const created = await feedService.createPost({ content, achievement });
+      if (!isCurrentOwner(owner)) return created;
       set((s) => ({ posts: [created, ...s.posts], isCreating: false }));
       return created;
     } catch (e) {
+      if (!isCurrentOwner(owner)) throw e;
       // M3: antes o catch da tela dizia "Alert já disparado no store", mas o
       // store só relançava — o usuário via o spinner parar e mais nada.
       set({ isCreating: false });
@@ -114,6 +119,7 @@ export const useFeedStore = create<FeedState>((set, get) => ({
     const target = get().posts.find((p) => p.id === postId);
     if (!target || likesInFlight.has(postId)) return;
     likesInFlight.add(postId);
+    const owner = captureSessionOwner();
     const snapshot = { likedByMe: target.likedByMe, likeCount: target.likeCount };
     const optimistic = {
       likedByMe: !snapshot.likedByMe,
@@ -126,12 +132,14 @@ export const useFeedStore = create<FeedState>((set, get) => ({
       const res = snapshot.likedByMe
         ? await feedService.unlike(postId)
         : await feedService.like(postId);
+      if (!isCurrentOwner(owner)) return;
       set((s) => ({
         posts: s.posts.map((p) =>
           p.id === postId ? { ...p, likeCount: res.likeCount, likedByMe: res.likedByMe } : p,
         ),
       }));
     } catch (e) {
+      if (!isCurrentOwner(owner)) return;
       set((s) => ({
         posts: s.posts.map((p) => (p.id === postId ? { ...p, ...snapshot } : p)),
       }));
@@ -143,17 +151,20 @@ export const useFeedStore = create<FeedState>((set, get) => ({
   },
 
   loadComments: async (postId) => {
+    const owner = captureSessionOwner();
     set((s) => ({
       loadingCommentsByPost: { ...s.loadingCommentsByPost, [postId]: true },
       commentsErrorByPost: { ...s.commentsErrorByPost, [postId]: false },
     }));
     try {
       const comments = await feedService.getComments(postId);
+      if (!isCurrentOwner(owner)) return;
       set((s) => ({
         commentsByPost: { ...s.commentsByPost, [postId]: comments },
         loadingCommentsByPost: { ...s.loadingCommentsByPost, [postId]: false },
       }));
     } catch {
+      if (!isCurrentOwner(owner)) return;
       // Sem esse estado a tela exibia "Seja o primeiro a comentar." num post
       // com 12 comentários — afirmação falsa e sem como recarregar.
       set((s) => ({
@@ -164,6 +175,7 @@ export const useFeedStore = create<FeedState>((set, get) => ({
   },
 
   addComment: async (postId, content) => {
+    const owner = captureSessionOwner();
     const tempId = `temp-${Date.now()}`;
     const target = get().posts.find((p) => p.id === postId);
     const optimistic: Comment = {
@@ -184,6 +196,7 @@ export const useFeedStore = create<FeedState>((set, get) => ({
     }));
     try {
       const saved = await feedService.addComment(postId, content);
+      if (!isCurrentOwner(owner)) return;
       set((s) => ({
         commentsByPost: {
           ...s.commentsByPost,
@@ -191,6 +204,7 @@ export const useFeedStore = create<FeedState>((set, get) => ({
         },
       }));
     } catch (e) {
+      if (!isCurrentOwner(owner)) return;
       set((s) => ({
         commentsByPost: {
           ...s.commentsByPost,

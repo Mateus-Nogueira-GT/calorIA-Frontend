@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { dietService, DietPlan, TodayStatus } from '@shared/services/diet.service';
 import { showAlert } from '@shared/utils/show-alert';
+import { captureSessionOwner, isCurrentOwner } from '@shared/services/session-owner';
 
 interface DietState {
   plan: DietPlan | null | undefined;
@@ -25,9 +26,12 @@ export const useDietStore = create<DietState>((set, get) => ({
   loadCurrent: async () => {
     // Sem `error`, uma falha deixava plan===undefined para sempre e a seção
     // ficava em esqueleto eterno: nada distinguia "carregando" de "falhou".
+    // R5 (26/11): resposta da conta anterior não repopula a dieta da seguinte.
+    const owner = captureSessionOwner();
     set({ isLoading: true, error: false });
     try {
       const fetched = await dietService.getToday();
+      if (!isCurrentOwner(owner)) return;
       // Um toggle em voo já aplicou o estado otimista; o GET pode ter sido
       // servido antes do toggle e apagaria a marcação. Preserva a dessa refeição.
       const { togglingMealId, plan: current } = get();
@@ -51,11 +55,14 @@ export const useDietStore = create<DietState>((set, get) => ({
       // Só quando não há plano: distingue "sem dieta" de "dia não gerado", para
       // não mostrar o vazio de onboarding a quem tem plano ativo incompleto.
       if (plan === null) {
-        set({ todayStatus: await dietService.getTodayStatus() });
+        const todayStatus = await dietService.getTodayStatus();
+        if (!isCurrentOwner(owner)) return;
+        set({ todayStatus });
       } else {
         set({ todayStatus: null });
       }
     } catch {
+      if (!isCurrentOwner(owner)) return;
       set({ isLoading: false, error: true });
     }
   },
@@ -67,6 +74,7 @@ export const useDietStore = create<DietState>((set, get) => ({
     if (!meal) return;
     // completedToday é o campo canônico (derivado por dia local no backend) —
     // completedAt cru pode ser de semanas atrás e não significa "feita hoje".
+    const owner = captureSessionOwner();
     const wasCompleted = meal.completedToday;
     const optimisticAt = wasCompleted ? null : new Date().toISOString();
     set({
@@ -80,6 +88,7 @@ export const useDietStore = create<DietState>((set, get) => ({
     });
     try {
       const { is_completed } = await dietService.toggleMeal(mealId);
+      if (!isCurrentOwner(owner)) return;
       set((s) => ({
         togglingMealId: null,
         plan: s.plan
@@ -98,6 +107,7 @@ export const useDietStore = create<DietState>((set, get) => ({
           : s.plan,
       }));
     } catch (e) {
+      if (!isCurrentOwner(owner)) return;
       set((s) => ({
         togglingMealId: null,
         plan: s.plan
@@ -116,5 +126,7 @@ export const useDietStore = create<DietState>((set, get) => ({
     }
   },
 
-  clear: () => set({ plan: undefined, isLoading: false, togglingMealId: null }),
+  // R5 (26/11): todayStatus e error também são da conta que saiu.
+  clear: () =>
+    set({ plan: undefined, isLoading: false, error: false, todayStatus: null, togglingMealId: null }),
 }));

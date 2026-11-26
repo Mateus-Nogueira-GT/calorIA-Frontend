@@ -19,6 +19,10 @@ jest.mock('@shared/services/friends.service', () => ({
     sendRequest: jest.fn(),
     respond: jest.fn(),
     removeFriend: jest.fn(),
+    list: jest.fn(),
+    requests: jest.fn(),
+    respondRequest: jest.fn(),
+    remove: jest.fn(),
   },
 }));
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -79,5 +83,92 @@ describe('useFriendsStore — busca', () => {
 
     expect(result.current.searchResults).toHaveLength(1);
     expect(result.current.isSearching).toBe(false);
+  });
+});
+
+describe('useFriendsStore — troca de conta com a requisição pendente (R5, 26/11)', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { useAuthStore } = require('@features/auth/store');
+  const signIn = (id: string) => {
+    useAuthStore.getState().clearToken();
+    useAuthStore.getState().setToken(`token-${id}`, { id, name: id, email: `${id}@exemplo.com` });
+  };
+  const deferred = <T,>() => {
+    let resolve!: (v: T) => void;
+    let reject!: (e: unknown) => void;
+    const promise = new Promise<T>((a, b) => {
+      resolve = a;
+      reject = b;
+    });
+    return { promise, resolve, reject };
+  };
+  const friend = { id: 'f1', username: 'ana', name: 'Ana', avatarUrl: null, friendshipId: 'fs1', currentStreak: 3 };
+  const request = { id: 'r1', status: 'pending', createdAt: '2026-11-26', user: user('f2', 'bia') };
+  const initial = () => {
+    const { friends, incoming, outgoing, searchResults, hasLoaded, isLoading, isSearching, error } =
+      useFriendsStore.getState();
+    return { friends, incoming, outgoing, searchResults, hasLoaded, isLoading, isSearching, error };
+  };
+  const cleared = {
+    friends: [],
+    incoming: [],
+    outgoing: [],
+    searchResults: [],
+    hasLoaded: false,
+    isLoading: false,
+    isSearching: false,
+    error: null,
+  };
+  beforeEach(() => {
+    signIn('uA');
+    jest.clearAllMocks();
+  });
+
+  it('load descarta os amigos da conta anterior', async () => {
+    const list = deferred<unknown[]>();
+    friendsService.list.mockReturnValue(list.promise);
+    friendsService.requests.mockResolvedValue({ incoming: [request], outgoing: [] });
+    const loading = useFriendsStore.getState().load();
+    signIn('uB');
+    list.resolve([friend]);
+    await loading;
+    expect(initial()).toEqual(cleared);
+  });
+
+  it('busca da conta anterior não aparece na próxima', async () => {
+    const found = deferred<UserSearchResult[]>();
+    friendsService.search.mockReturnValue(found.promise);
+    const searching = useFriendsStore.getState().search('ana');
+    signIn('uB');
+    found.resolve([user('1', 'ana')]);
+    await searching;
+    expect(initial()).toEqual(cleared);
+  });
+
+  it('pedido enviado pela conta anterior não marca o resultado da próxima nem recarrega', async () => {
+    const sent = deferred<void>();
+    friendsService.sendRequest.mockReturnValue(sent.promise);
+    const sending = useFriendsStore.getState().sendRequest('ana');
+    signIn('uB');
+    useFriendsStore.setState({ searchResults: [user('1', 'ana')] });
+    sent.resolve();
+    await sending;
+    expect(useFriendsStore.getState().searchResults[0].relationship).toBe('none');
+    expect(friendsService.list).not.toHaveBeenCalled();
+  });
+
+  it('rollback de respond e removeFriend não restaura dados da conta anterior', async () => {
+    useFriendsStore.setState({ incoming: [request as never], friends: [friend as never] });
+    const responded = deferred<void>();
+    friendsService.respondRequest.mockReturnValue(responded.promise);
+    const removed = deferred<void>();
+    friendsService.remove.mockReturnValue(removed.promise);
+    const responding = useFriendsStore.getState().respond('r1', 'accept');
+    const removing = useFriendsStore.getState().removeFriend('fs1');
+    signIn('uB');
+    responded.reject(new Error('cancelada'));
+    removed.reject(new Error('cancelada'));
+    await Promise.all([responding, removing]);
+    expect(initial()).toEqual(cleared);
   });
 });
