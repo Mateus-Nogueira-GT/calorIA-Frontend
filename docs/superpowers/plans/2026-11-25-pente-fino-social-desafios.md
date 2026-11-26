@@ -23,5 +23,5 @@
 6. [x] R4: totais do Diário, com teste do `FoodLogScreen`/`DayMacroSummary`.
 7. [x] R5: merge do `load()` dos desafios, com teste no store.
 8. [x] R8: guarda de sessão no feed (e, se couber, nos desafios), com teste no store.
-9. [ ] Fechamento: `npm run typecheck && npm test` no backend, as integrações com o banco local e
+9. [x] Fechamento: `npm run typecheck && npm test` no backend, as integrações com o banco local e
        `npx tsc --noEmit && npx jest` no app. Commits por task.
