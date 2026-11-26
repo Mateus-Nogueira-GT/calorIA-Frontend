@@ -85,8 +85,8 @@ async function upsertPaymentStatus(
   p: NonNullable<AsaasEvent['payment']>,
   status: string,
   keepExisting = false,
-) {
-  await tx`
+): Promise<string> {
+  const [row] = await tx<{ status: string }[]>`
     INSERT INTO subscription_payments(asaas_payment_id, subscription_id, status, value_cents, due_date, invoice_url)
     VALUES(${p.id}, ${sub.id}, ${status}, ${p.value == null ? null : Math.round(p.value * 100)},
       ${p.dueDate ?? null}, ${p.invoiceUrl ?? null})
@@ -100,7 +100,9 @@ async function upsertPaymentStatus(
         ELSE EXCLUDED.status END,
       invoice_url = COALESCE(EXCLUDED.invoice_url, subscription_payments.invoice_url),
       due_date = COALESCE(EXCLUDED.due_date, subscription_payments.due_date),
-      updated_at = now()`
+      updated_at = now()
+    RETURNING status`
+  return row.status
 }
 
 /**
@@ -240,10 +242,13 @@ export async function handleAsaasEvent(
       return 'reversed'
     }
     if (ev.event === 'PAYMENT_OVERDUE') {
-      await upsertPaymentStatus(tx, sub, p, status)
-      await tx`
-        UPDATE subscriptions SET status = 'past_due', updated_at = now()
-        WHERE id = ${sub.id} AND status IN ('pending','active')`
+      // Só quem já pagou fica em atraso: OVERDUE atrasado de um pagamento já
+      // confirmado não conta, e assinatura nunca paga continua pending.
+      const saved = await upsertPaymentStatus(tx, sub, p, status)
+      if (saved === 'OVERDUE')
+        await tx`
+          UPDATE subscriptions SET status = 'past_due', updated_at = now()
+          WHERE id = ${sub.id} AND status = 'active'`
       return 'overdue'
     }
     if (GENERIC.has(ev.event)) {

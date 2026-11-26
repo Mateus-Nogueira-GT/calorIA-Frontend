@@ -26,12 +26,12 @@
       linha nova e manter o status existente nas outras.
 
 ### Task 3 — R3 (P3, P4): `past_due` só para quem pagou
-- [ ] Testes de integração: OVERDUE atrasado depois do CONFIRMED mantém `active`; OVERDUE numa
+- [x] Testes de integração: OVERDUE atrasado depois do CONFIRMED mantém `active`; OVERDUE numa
       assinatura `pending` mantém `pending`.
-- [ ] Teste unit de `checkout`: open `{status:'past_due', entitled:false}` e sem pagamento confirmado
+- [x] Teste unit de `checkout`: open `{status:'past_due', entitled:false}` e sem pagamento confirmado
       segue o caminho de `pending`, sem 409.
-- [ ] Ajustar `upsertPaymentStatus` para devolver o status final e o UPDATE de `past_due`.
-- [ ] Ajustar o guard do `checkout`, consultando `subscription_payments` por CONFIRMED/RECEIVED.
+- [x] Ajustar `upsertPaymentStatus` para devolver o status final e o UPDATE de `past_due`.
+- [x] Ajustar o guard do `checkout`, consultando `subscription_payments` por CONFIRMED/RECEIVED.
 
 ### Task 4 — R1 (P1): checkout duplo
 - [ ] Teste de integração com fake do Asaas: A fica parado em `createSubscription`, B roda e A é liberado.

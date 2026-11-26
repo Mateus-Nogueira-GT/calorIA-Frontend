@@ -44,6 +44,13 @@ async function openSubscription(
   return row
 }
 
+async function everPaid(f: FastifyInstance, subscriptionId: string): Promise<boolean> {
+  const rows = await f.db`
+    SELECT 1 FROM subscription_payments
+    WHERE subscription_id = ${subscriptionId} AND status IN ('CONFIRMED','RECEIVED') LIMIT 1`
+  return rows.length > 0
+}
+
 /**
  * Grava as cobranças em aberto da assinatura (com o link da fatura) e devolve
  * o link da mais antiga. Best-effort: sem o link, o usuário ainda recebe a
@@ -102,7 +109,12 @@ export async function checkout(
 
   const open = await openSubscription(f, userId)
   if (open) {
-    if (open.status !== 'pending' || open.entitled)
+    // past_due sem direito e sem nenhum pagamento confirmado é fatura abandonada
+    // (linhas gravadas antes da correção do OVERDUE): segue como pending.
+    const unpaid =
+      open.status === 'pending' ||
+      (open.status === 'past_due' && !open.entitled && !(await everPaid(f, open.id)))
+    if (!unpaid || open.entitled)
       throw new AppError(409, 'ALREADY_SUBSCRIBED', 'Você já tem uma assinatura ativa.')
     if (open.plan_id === plan.id && open.asaas_subscription_id) {
       // Mesmo plano em aberto: devolve a mesma fatura, sem cobrança nova.

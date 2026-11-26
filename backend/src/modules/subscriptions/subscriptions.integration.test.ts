@@ -257,6 +257,23 @@ export async function resetSubscriptionSchema(db: postgres.Sql) {
     expect(await balance()).toBeUndefined()
   })
 
+  it('atraso atrasado depois da confirmação mantém a assinatura ativa', async () => {
+    await subscribe()
+    await handleAsaasEvent(f, payment('PAYMENT_CONFIRMED'))
+    expect(await handleAsaasEvent(f, payment('PAYMENT_OVERDUE'))).toBe('overdue')
+    expect((await sub()).status).toBe('active')
+    const [p] = await db`SELECT status FROM subscription_payments WHERE asaas_payment_id='pay_1'`
+    expect(p.status).toBe('CONFIRMED')
+  })
+
+  it('atraso numa assinatura nunca paga mantém pending', async () => {
+    await subscribe()
+    expect(await handleAsaasEvent(f, payment('PAYMENT_OVERDUE'))).toBe('overdue')
+    expect((await sub()).status).toBe('pending')
+    const [p] = await db`SELECT status FROM subscription_payments WHERE asaas_payment_id='pay_1'`
+    expect(p.status).toBe('OVERDUE')
+  })
+
   it('atraso, cancelamento e evento de fora do CalorIA', async () => {
     await subscribe({ status: 'active' })
     expect(await handleAsaasEvent(f, payment('PAYMENT_OVERDUE'))).toBe('overdue')

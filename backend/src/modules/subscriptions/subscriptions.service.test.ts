@@ -160,6 +160,33 @@ describe('checkout', () => {
     expect(asaas.calls).toEqual(['payments'])
   })
 
+  it('past_due que nunca foi paga segue como pending; já paga → 409', async () => {
+    const open = {
+      id: LOCAL,
+      plan_id: PLAN.id,
+      status: 'past_due',
+      asaas_subscription_id: 'sub_1',
+      entitled: false,
+    }
+    const nuncaPaga = fakeFastify([
+      ['FROM subscription_plans WHERE code', [PLAN]],
+      ['FROM subscriptions', [open]],
+    ])
+    const asaas = fakeAsaas()
+    const r = await checkout(nuncaPaga.fastify, asaas.client, USER, BODY)
+    expect(r).toMatchObject({ subscription_id: LOCAL, invoice_url: 'https://asaas/i/1' })
+    expect(asaas.calls).toEqual(['payments'])
+
+    const jaPaga = fakeFastify([
+      ['FROM subscription_plans WHERE code', [PLAN]],
+      ['FROM subscriptions', [open]],
+      ['FROM subscription_payments', [{ '?column?': 1 }]],
+    ])
+    await expect(checkout(jaPaga.fastify, fakeAsaas().client, USER, BODY)).rejects.toMatchObject({
+      code: 'ALREADY_SUBSCRIBED',
+    })
+  })
+
   it('pendente de outro plano é cancelada antes da nova', async () => {
     const asaas = fakeAsaas()
     const { fastify } = fakeFastify([
