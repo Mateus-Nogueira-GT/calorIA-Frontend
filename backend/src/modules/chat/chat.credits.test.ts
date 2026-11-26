@@ -63,6 +63,30 @@ describe('AI wallet integration boundary', () => {
     expect(result.credit_receipt).toEqual(receipt)
   })
 
+  it('settlement appends only the new turn to the stored history (R8, 25/11)', async () => {
+    env.CREDITS_ENFORCEMENT_ENABLED = true
+    const stored = [
+      { role: 'user', content: 'antiga' },
+      { role: 'assistant', content: 'resposta antiga' },
+    ]
+    const source = fakeFastify([['SELECT messages, updated_at', [{ messages: stored }]]], {
+      chatCreate: async () => textCompletion('Olá!'),
+    })
+    const transaction = fakeFastify([['INSERT INTO chat_history', [{ id: CONV }]]])
+    vi.mocked(runCreditOperation).mockImplementation(async (_fastify, _input, infer, persist) => {
+      const result = await infer()
+      await persist?.(transaction.fastify.db, result)
+      return { result, receipt }
+    })
+    await sendChatMessage(source.fastify, USER, { message: 'oi', conversation_id: CONV }, KEY)
+    const insert = transaction.calls.find((c) => c.sql.includes('INSERT INTO chat_history'))
+    expect(insert?.sql).toContain('|| EXCLUDED.messages')
+    const turn = JSON.parse(
+      String(insert?.params.find((p) => typeof p === 'string' && p.startsWith('['))),
+    ) as { content: string }[]
+    expect(turn.map((m) => m.content)).toEqual(['oi', 'Olá!'])
+  })
+
   it('reservation rejection never calls the provider or persists a message', async () => {
     const source = fakeFastify()
     vi.mocked(runCreditOperation).mockRejectedValue(
