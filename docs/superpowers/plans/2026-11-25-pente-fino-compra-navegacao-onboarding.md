@@ -16,7 +16,7 @@
 2. [x] R5: recarregar a carteira no AppState `active`. Commit.
 3. [x] R6: `initialRouteName` da Community, com teste de `getStateFromPath` e um teste de integração do tab. Commit.
 4. [x] R7: guarda de sessão nas notificações. Commit.
-5. [ ] R8: `PendingOperations`, ramo de foto. Commit.
+5. [x] R8: `PendingOperations`, ramo de foto. Commit.
 6. [ ] R9: limites únicos de corpo no backend, com teste vitest. Commit.
 7. [ ] R10: idade em UTC, com teste usando fake time. Commit.
 8. [ ] Fechamento: no backend, `npm run typecheck && npm test`; no app, `npx tsc --noEmit && npx jest`.
