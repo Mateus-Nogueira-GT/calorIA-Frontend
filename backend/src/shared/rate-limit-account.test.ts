@@ -33,6 +33,7 @@ const b64url = (value: object) => Buffer.from(JSON.stringify(value)).toString('b
 
 let server: http.Server
 let base = ''
+let jwksFetches = 0
 let app: FastifyInstance
 
 function token(key: ReturnType<typeof keyPair>, sub: string): string {
@@ -55,6 +56,7 @@ beforeAll(async () => {
   server = http.createServer((req, res) => {
     res.setHeader('content-type', 'application/json')
     if ((req.url ?? '').split('?')[0] === '/auth/v1/.well-known/jwks.json') {
+      jwksFetches++
       return res.end(JSON.stringify({ keys: [legit.jwk] }))
     }
     res.statusCode = 404
@@ -139,5 +141,22 @@ describe('A7: rate limit por conta depois do JWT verificado', () => {
     }
     expect(codes.slice(0, 10).every((c) => c !== 429)).toBe(true)
     expect(codes[10]).toBe(429)
+  })
+
+  it('kid aleatório não dispara uma busca de JWKS por requisição antes do rate limit', async () => {
+    // Antes do A7 o limite por IP barrava isso; o hook roda ANTES do limite.
+    const before = jwksFetches
+    for (let i = 0; i < 20; i++) {
+      const random = keyPair(`rand-${randomUUID()}`)
+      await app.inject({
+        method: 'GET',
+        url: '/health',
+        headers: {
+          authorization: `Bearer ${token(random, randomUUID())}`,
+          'x-forwarded-for': '10.9.9.9',
+        },
+      })
+    }
+    expect(jwksFetches - before).toBeLessThanOrEqual(1)
   })
 })

@@ -217,13 +217,21 @@ async function bindOrphanSubscription(
   const known = await f.db`
     SELECT 1 AS known FROM subscriptions WHERE asaas_subscription_id = ${asaasSubscriptionId}`
   if (known.length) return
-  let remote: { externalReference?: string | null }
+  // Sem nenhuma linha pending sem id não há órfã para ligar: evento de outro
+  // sistema na mesma conta do Asaas. Não consulta o Asaas (uma falha ambígua
+  // aqui viraria 500 e pausaria a fila, o mesmo problema do P6).
+  const candidate = await f.db`
+    SELECT 1 AS candidate FROM subscriptions
+    WHERE asaas_subscription_id IS NULL AND status = 'pending' LIMIT 1`
+  if (!candidate.length) return
+  let remote: { externalReference?: string | null; deleted?: boolean }
   try {
     remote = await asaas.getSubscription(asaasSubscriptionId)
   } catch (err) {
     if (isDefinitiveProviderError(err)) return
     throw err
   }
+  if (remote?.deleted) return
   const ref = remote?.externalReference
   if (!ref || !UUID.test(ref)) return
   const bound = await f.db`

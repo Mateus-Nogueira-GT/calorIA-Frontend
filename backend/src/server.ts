@@ -41,6 +41,20 @@ import { AppError } from './shared/errors.js'
 /** `sub` de tokens que passaram no jwtVerify, por requisição (chave do rate limit). */
 const verifiedSubs = new WeakMap<FastifyRequest, string>()
 
+/** `kid` do header de um JWT, sem verificar nada (só para decidir se vale buscar a chave). */
+function tokenKid(authorization: string): string | null {
+  try {
+    const head = authorization.replace(/^Bearer\s+/i, '').split('.')[0] ?? ''
+    const { kid } = JSON.parse(Buffer.from(head, 'base64url').toString('utf8')) as { kid?: unknown }
+    return typeof kid === 'string' && kid ? kid : null
+  } catch {
+    return null
+  }
+}
+
+/** Intervalo mínimo entre buscas de JWKS disparadas pelo hook para `kid` desconhecido. */
+const UNKNOWN_KID_LOOKUP_INTERVAL_MS = 10_000
+
 const invalidToken = () =>
   new AppError(401, 'UNAUTHORIZED', 'Token inválido ou ausente. Faça login novamente.')
 
@@ -105,6 +119,9 @@ export async function buildApp() {
   // do `iss` do token (que o atacante controla), e o verify confere iss e aud.
   const issuer = supabaseIssuer(env.SUPABASE_URL)
   const getJwks = buildGetJwks({ max: 10, ttl: 60 * 60 * 1000, issuersWhitelist: [issuer] })
+  /** `kid` que já resolveram chave no JWKS do Supabase (limitado a 50). */
+  const knownKids = new Set<string>()
+  let lastUnknownKidLookup = 0
   await app.register(fastifyJwt, {
     decode: { complete: true },
     secret: async (_request: FastifyRequest, tokenOrHeader: TokenOrHeader): Promise<string> => {
@@ -116,7 +133,9 @@ export async function buildApp() {
       // wrapper do @fastify/jwt e virava 500/503 nas rotas sem try/catch.
       if (!isAllowedIssuer(payload.iss, env.SUPABASE_URL)) throw invalidToken()
       try {
-        return await getJwks.getPublicKey({ kid: header.kid, domain: issuer, alg: header.alg })
+        const key = await getJwks.getPublicKey({ kid: header.kid, domain: issuer, alg: header.alg })
+        if (knownKids.size < 50) knownKids.add(header.kid)
+        return key
       } catch (err) {
         const code = (err as { code?: string }).code
         if (code === 'JWK_NOT_FOUND' || code === 'DOMAIN_NOT_ALLOWED') throw invalidToken()
@@ -136,9 +155,21 @@ export async function buildApp() {
   // verificação não responde nada: a rota decide, e o limite fica no IP.
   // /auth/* fica sempre no IP (login, cadastro, refresh, reenvio de e-mail).
   // Fica aberto: o store do limite é em memória, por instância.
+  // Um `kid` desconhecido obriga o get-jwks a buscar a JWKS. Como este hook roda
+  // antes do limite, tokens com `kid` aleatório virariam uma busca no Supabase por
+  // requisição: só deixa o hook buscar `kid` desconhecido uma vez a cada 10 s
+  // (as rotas autenticadas continuam verificando, já atrás do limite por IP).
   app.addHook('onRequest', async (request) => {
     if (request.routeOptions.url?.startsWith('/auth/')) return
-    if (!/^Bearer\s+\S/i.test(request.headers.authorization ?? '')) return
+    const authorization = request.headers.authorization ?? ''
+    if (!/^Bearer\s+\S/i.test(authorization)) return
+    const kid = tokenKid(authorization)
+    if (!kid) return
+    if (!knownKids.has(kid)) {
+      const now = Date.now()
+      if (now - lastUnknownKidLookup < UNKNOWN_KID_LOOKUP_INTERVAL_MS) return
+      lastUnknownKidLookup = now
+    }
     try {
       const payload = await request.jwtVerify<{ sub?: unknown }>()
       if (typeof payload.sub === 'string' && payload.sub) verifiedSubs.set(request, payload.sub)

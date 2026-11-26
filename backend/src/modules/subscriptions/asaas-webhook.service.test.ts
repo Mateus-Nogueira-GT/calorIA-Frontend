@@ -57,6 +57,7 @@ describe('webhook do Asaas / assinatura órfã (R4)', () => {
   it('assinatura desconhecida: busca no Asaas e liga à linha pending sem id do externalReference', async () => {
     const asked: string[] = []
     const { fastify, calls } = fakeFastify([
+      ['SELECT 1 AS candidate FROM subscriptions', [{ candidate: 1 }]],
       ['INSERT INTO payment_webhook_events', [{ event_id: 'evt_o' }]],
     ])
     await handleAsaasEvent(
@@ -104,6 +105,7 @@ describe('webhook do Asaas / assinatura órfã (R4)', () => {
       undefined,
     ]) {
       const { fastify, calls } = fakeFastify([
+        ['SELECT 1 AS candidate FROM subscriptions', [{ candidate: 1 }]],
         ['INSERT INTO payment_webhook_events', [{ event_id: 'evt_o' }]],
       ])
       expect(await handleAsaasEvent(fastify, ev, asaas)).toBe('ignored')
@@ -113,6 +115,7 @@ describe('webhook do Asaas / assinatura órfã (R4)', () => {
 
   it('busca ambígua falhando: lança (o Asaas reenvia) sem registrar o evento', async () => {
     const { fastify, calls } = fakeFastify([
+      ['SELECT 1 AS candidate FROM subscriptions', [{ candidate: 1 }]],
       ['INSERT INTO payment_webhook_events', [{ event_id: 'evt_o' }]],
     ])
     await expect(
@@ -125,5 +128,36 @@ describe('webhook do Asaas / assinatura órfã (R4)', () => {
       ),
     ).rejects.toMatchObject({ statusCode: 502 })
     expect(calls.some((c) => c.sql.includes('INSERT INTO payment_webhook_events'))).toBe(false)
+  })
+
+  it('sem nenhuma linha pending sem id: não consulta o Asaas (evento de outro sistema)', async () => {
+    const asked: string[] = []
+    const { fastify, calls } = fakeFastify([
+      ['INSERT INTO payment_webhook_events', [{ event_id: 'evt_o' }]],
+    ])
+    const out = await handleAsaasEvent(
+      fastify,
+      ev,
+      asaasWith(async (id) => {
+        asked.push(id)
+        throw asaasError(true)
+      }),
+    )
+    expect(asked).toEqual([])
+    expect(out).toBe('ignored')
+    expect(calls.some((c) => c.sql.includes('SET asaas_subscription_id'))).toBe(false)
+  })
+
+  it('assinatura deletada no Asaas: não liga à linha local', async () => {
+    const { fastify, calls } = fakeFastify([
+      ['SELECT 1 AS candidate FROM subscriptions', [{ candidate: 1 }]],
+      ['INSERT INTO payment_webhook_events', [{ event_id: 'evt_o' }]],
+    ])
+    await handleAsaasEvent(
+      fastify,
+      ev,
+      asaasWith(async (id) => ({ id, externalReference: LOCAL, deleted: true })),
+    )
+    expect(calls.some((c) => c.sql.includes('SET asaas_subscription_id'))).toBe(false)
   })
 })

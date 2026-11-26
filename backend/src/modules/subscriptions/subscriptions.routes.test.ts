@@ -150,6 +150,8 @@ describe('webhook do Asaas', () => {
     })
     try {
       const { f, calls } = await app([
+        // Há uma linha local pending sem id (candidata a órfã).
+        ['SELECT 1 AS candidate FROM subscriptions', [{ candidate: 1 }]],
         ['INSERT INTO payment_webhook_events', [{ event_id: 'evt_1' }]],
       ])
       const r = await f.inject({
