@@ -206,7 +206,7 @@ export type ActionProposal =
       replaces: number | null
       bigChange: boolean
     }
-  | { kind: 'complete_plan_meal'; mealId: string; title: string; calories: number }
+  | { kind: 'complete_plan_meal'; mealId: string; title: string; calories: number; date: string }
 
 export type ActionResult = { proposal: ActionProposal | null; message: string }
 
@@ -336,7 +336,12 @@ const completeArgs = z.object({
   message_to_user: openingArg,
 })
 
-export function proposeCompletePlanMeal(rawArgs: unknown, today: TodayPlan | null): ActionResult {
+/** `date` é o dia do plano (C7): tocado no dia seguinte, o cartão marca o dia proposto. */
+export function proposeCompletePlanMeal(
+  rawArgs: unknown,
+  today: TodayPlan | null,
+  date: string,
+): ActionResult {
   const parsed = completeArgs.safeParse(rawArgs)
   const ref = parsed.success
     ? parsed.data.plan_meal_ref.replace(/^plano\s*/i, '').toLowerCase()
@@ -358,6 +363,7 @@ export function proposeCompletePlanMeal(rawArgs: unknown, today: TodayPlan | nul
       mealId: meal.id,
       title: meal.title,
       calories: Math.round(meal.calories),
+      date,
     },
   }
 }

@@ -81,7 +81,11 @@ async function runAction(card: ActionProposal, owner: SessionOwner): Promise<voi
       });
     return;
   }
-  await dietService.toggleMeal(card.mealId, { completed: true });
+  // C7: o cartão tocado no dia seguinte marca o dia proposto.
+  await dietService.toggleMeal(card.mealId, {
+    completed: true,
+    ...(card.date ? { date: card.date } : {}),
+  });
   if (!isCurrentOwner(owner)) return;
   void useDietStore
     .getState()

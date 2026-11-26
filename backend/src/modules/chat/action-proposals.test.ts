@@ -8,6 +8,7 @@ import {
   proposeLogMeal,
   proposeLogWeight,
 } from './action-proposals.js'
+import { chatResponseSchema } from './chat.schemas.js'
 import { CAPABILITIES_INSTRUCTION, sendChatMessage } from './chat.service.js'
 
 const USER = '11111111-1111-1111-1111-111111111111'
@@ -152,22 +153,27 @@ describe('proposeCompletePlanMeal (A3)', () => {
     ],
   } as unknown as TodayPlan
 
-  it('ref válida → proposta', () => {
-    const r = proposeCompletePlanMeal({ plan_meal_ref: 'plano abcdef' }, plan)
+  it('ref válida → proposta com a data do plano (C7)', () => {
+    const r = proposeCompletePlanMeal({ plan_meal_ref: 'plano abcdef' }, plan, '2026-11-23')
     expect(r.proposal).toEqual({
       kind: 'complete_plan_meal',
       mealId: 'abcdef12-0000-0000-0000-000000000001',
       title: 'Almoço',
       calories: 650,
+      date: '2026-11-23',
     })
+    // O schema da resposta não pode descartar a data.
+    expect(chatResponseSchema.shape.action_proposal.parse(r.proposal)).toEqual(r.proposal)
   })
 
   it('já concluída → sem proposta; ref inválida → indica a tela Hoje', () => {
-    expect(proposeCompletePlanMeal({ plan_meal_ref: '9f8e7d' }, plan)).toEqual({
+    expect(proposeCompletePlanMeal({ plan_meal_ref: '9f8e7d' }, plan, '2026-11-23')).toEqual({
       proposal: null,
       message: '"Café da manhã" já está marcada como feita hoje.',
     })
-    expect(proposeCompletePlanMeal({ plan_meal_ref: 'zzzzzz' }, plan).message).toMatch(/tela Hoje/)
+    expect(
+      proposeCompletePlanMeal({ plan_meal_ref: 'zzzzzz' }, plan, '2026-11-23').message,
+    ).toMatch(/tela Hoje/)
   })
 })
 
@@ -219,7 +225,11 @@ describe('C3: campo cosmético fora do limite não derruba o cartão', () => {
       ],
     } as unknown as TodayPlan
     for (const message_to_user of [longMessage, null]) {
-      const r = proposeCompletePlanMeal({ plan_meal_ref: 'abcdef', message_to_user }, plan)
+      const r = proposeCompletePlanMeal(
+        { plan_meal_ref: 'abcdef', message_to_user },
+        plan,
+        '2026-11-23',
+      )
       expect(r.proposal).toMatchObject({ kind: 'complete_plan_meal', title: 'Almoço' })
       expect(r.message).toMatch(/^Para marcar "Almoço"/)
     }
@@ -229,7 +239,7 @@ describe('C3: campo cosmético fora do limite não derruba o cartão', () => {
     expect(proposeLogMeal({ ...meal, calories: 'muito' }, '2026-11-05').proposal).toBeNull()
     expect(proposeLogMeal({ ...meal, meal_type: 'ceia' }, '2026-11-05').proposal).toBeNull()
     expect(proposeLogMeal({ ...meal, name: '   ' }, '2026-11-05').proposal).toBeNull()
-    expect(proposeCompletePlanMeal({ plan_meal_ref: 42 }, null).proposal).toBeNull()
+    expect(proposeCompletePlanMeal({ plan_meal_ref: 42 }, null, '2026-11-23').proposal).toBeNull()
   })
 })
 

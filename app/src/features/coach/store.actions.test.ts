@@ -129,6 +129,22 @@ it('Marcar como feita pede completed: true e recarrega o plano; dois toques = um
   expect(mockLoadCurrent).toHaveBeenCalled();
 });
 
+it('Marcar como feita usa o dia da proposta, não o dia do toque (C7)', async () => {
+  dietService.toggleMeal.mockResolvedValue(undefined);
+  await receive({
+    kind: 'complete_plan_meal',
+    mealId: 'pm1',
+    title: 'Almoço',
+    calories: 650,
+    date: '2026-11-23',
+  });
+  await useCoachStore.getState().applyAction('c1-1');
+  expect(dietService.toggleMeal).toHaveBeenCalledWith('pm1', {
+    completed: true,
+    date: '2026-11-23',
+  });
+});
+
 it('falha ao gravar → erro, e dá para tentar de novo', async () => {
   foodLogService.addMeal.mockRejectedValueOnce(new Error('rede'));
   await receive(eggs);

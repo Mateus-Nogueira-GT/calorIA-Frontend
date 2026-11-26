@@ -108,6 +108,8 @@ export const chatResponseSchema = z.object({
         mealId: z.string().uuid(),
         title: z.string(),
         calories: z.number(),
+        /** C7: dia do plano proposto. */
+        date: z.string(),
       }),
     ])
     .nullable()

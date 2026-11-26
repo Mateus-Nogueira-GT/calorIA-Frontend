@@ -2,7 +2,7 @@ import React from 'react';
 import { ActivityIndicator, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Text } from '@shared/components';
 import { colors, typography, spacing, radius } from '@theme';
-import { todayString } from '@shared/utils/date';
+import { formatChipLabel } from '@shared/utils/date';
 import type { ActionCard } from '../store';
 
 interface Props {
@@ -32,7 +32,11 @@ const SAVED_LABEL: Record<ActionCard['kind'], string> = {
   complete_plan_meal: 'Refeição marcada',
 };
 
-const dayLabel = (date: string) => (date === todayString() ? 'hoje' : 'ontem');
+/** C7: "ontem" só quando é ontem; antes disso, a data (ex.: "23 Nov"). */
+const dayLabel = (date: string) => {
+  const label = formatChipLabel(date);
+  return label === 'Hoje' || label === 'Ontem' ? label.toLowerCase() : label;
+};
 
 function Body({ action }: { action: ActionCard }): React.JSX.Element {
   if (action.kind === 'log_meal') {
@@ -71,7 +75,9 @@ function Body({ action }: { action: ActionCard }): React.JSX.Element {
   return (
     <>
       <Text style={styles.title}>{action.title}</Text>
-      <Text style={styles.meta}>{Math.round(action.calories)} kcal · plano de hoje</Text>
+      <Text style={styles.meta}>
+        {Math.round(action.calories)} kcal · plano de {action.date ? dayLabel(action.date) : 'hoje'}
+      </Text>
     </>
   );
 }
