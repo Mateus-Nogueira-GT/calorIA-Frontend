@@ -24,12 +24,12 @@ Três workers trabalham em paralelo. Cada um tem um worktree próprio, criado a 
 
 ## W1
 
-1. [ ] Ler o ramo de login social e mapear todos os caminhos de cadastro que esperam sessão. Registrar o resultado no relatório.
-2. [ ] R1, backend: flag, `createUser`/resend, resposta em união e rota de reenvio. Testes com a flag desligada e ligada.
-3. [ ] R1, app: estado "Confirme seu e-mail" em cada caminho mapeado. Testes.
-4. [ ] R2: ler como o app obtém o token, depois implementar os modos `log`/`enforce` e o signOut das outras sessões. Testes.
-5. [ ] R3: hook de JWT antes do rate limit e as exceções `/auth/*`. Testes.
-6. [ ] Rodar typecheck e as suítes dos dois pacotes.
+1. [x] Ler o ramo de login social e mapear todos os caminhos de cadastro que esperam sessão. Registrar o resultado no relatório.
+2. [x] R1, backend: flag, `createUser`/resend, resposta em união e rota de reenvio. Testes com a flag desligada e ligada.
+3. [x] R1, app: estado "Confirme seu e-mail" em cada caminho mapeado. Testes.
+4. [x] R2: ler como o app obtém o token, depois implementar os modos `log`/`enforce` e o signOut das outras sessões. Testes.
+5. [x] R3: hook de JWT antes do rate limit e as exceções `/auth/*`. Testes.
+6. [x] Rodar typecheck e as suítes dos dois pacotes.
 
 ## W2
 
