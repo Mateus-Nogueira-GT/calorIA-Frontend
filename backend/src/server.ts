@@ -38,6 +38,9 @@ import { isAllowedIssuer, supabaseIssuer } from './shared/auth-issuer.js'
 import { env } from './shared/env.js'
 import { AppError } from './shared/errors.js'
 
+/** `sub` de tokens que passaram no jwtVerify, por requisição (chave do rate limit). */
+const verifiedSubs = new WeakMap<FastifyRequest, string>()
+
 const invalidToken = () =>
   new AppError(401, 'UNAUTHORIZED', 'Token inválido ou ausente. Faça login novamente.')
 
@@ -82,9 +85,11 @@ export async function buildApp() {
   await app.register(rateLimit, {
     max: 100,
     timeWindow: '1 minute',
-    // Usuário autenticado é limitado por conta; anônimo pelo IP real
-    // (request.user só existe se algum hook já verificou o JWT — fallback ip).
-    keyGenerator: (request) => (request.user as { sub?: string } | undefined)?.sub ?? request.ip,
+    // Usuário autenticado é limitado por conta; anônimo, token inválido e
+    // /auth/* pelo IP real. O `sub` vem do hook onRequest abaixo, que só grava
+    // o de token VERIFICADO (A7: antes lia request.user, que no onRequest
+    // ainda não existe, e tudo caía no IP).
+    keyGenerator: (request) => verifiedSubs.get(request) ?? request.ip,
     // O plugin LANÇA o que este builder devolve: sem statusCode, o handler
     // global tratava o excesso como erro desconhecido e respondia 500 (A2).
     errorResponseBuilder: (_request, context) => ({
@@ -124,6 +129,25 @@ export async function buildApp() {
       allowedAud: 'authenticated',
       requiredClaims: ['iss', 'aud'],
     },
+  })
+
+  // A7: verifica o bearer em silêncio ANTES do rate limit (hooks da instância
+  // rodam antes dos hooks de rota que o @fastify/rate-limit instala). Falha de
+  // verificação não responde nada: a rota decide, e o limite fica no IP.
+  // /auth/* fica sempre no IP (login, cadastro, refresh, reenvio de e-mail).
+  // Fica aberto: o store do limite é em memória, por instância.
+  app.addHook('onRequest', async (request) => {
+    if (request.routeOptions.url?.startsWith('/auth/')) return
+    if (!/^Bearer\s+\S/i.test(request.headers.authorization ?? '')) return
+    try {
+      const payload = await request.jwtVerify<{ sub?: unknown }>()
+      if (typeof payload.sub === 'string' && payload.sub) verifiedSubs.set(request, payload.sub)
+    } catch {
+      // Token inválido, JWKS fora do ar etc.: segue por IP.
+    } finally {
+      // Não antecipa a autenticação: as rotas continuam chamando jwtVerify.
+      request.user = null as never
+    }
   })
 
   // ─── Plugins da aplicação ───────────────────────────────────────────────────
