@@ -294,6 +294,18 @@ describe('porções do scanner até a escrita no diário', () => {
       expect.anything(),
     );
   });
+  it('C1: panela de 6 kg corrigida para 600 g salva as kcal de 600 g', async () => {
+    useScannerStore.setState({
+      items: [{ ...item('pot'), weightGrams: 6000, calories: 2230, protein: 90, carbs: 400 }],
+    });
+    useScannerStore.getState().updateItem('pot', { weightGrams: 600 });
+    expect(useScannerStore.getState().items[0].calories).toBeCloseTo(223);
+    await useScannerStore.getState().confirm();
+    expect(foodLogService.addMeal).toHaveBeenCalledWith(
+      expect.objectContaining({ weightGrams: 600, calories: 223, protein: 9, carbs: 40 }),
+      expect.anything(),
+    );
+  });
   it('peso inválido bloqueia confirmação e sua correção usa a última base válida', async () => {
     useScannerStore.setState({ items: [{ ...item('rice'), weightGrams: 200 }] });
     useScannerStore.getState().updateItem('rice', { weightGrams: 0 });
@@ -331,6 +343,55 @@ describe('porções do scanner até a escrita no diário', () => {
       'Confira os valores',
       expect.stringContaining('Arroz'),
     );
+  });
+});
+
+describe('confirm em andamento (C5)', () => {
+  beforeEach(() => {
+    useScannerStore.getState().reset();
+    jest.clearAllMocks();
+  });
+  const slowSave = () => {
+    const pending: Array<() => void> = [];
+    foodLogService.addMeal.mockImplementation(
+      () => new Promise((resolve) => pending.push(() => resolve({ id: 'm' }))),
+    );
+    return () => pending.splice(0).forEach((done) => done());
+  };
+
+  it('duas chamadas no mesmo tick salvam cada item uma vez e devolvem a mesma promise', async () => {
+    const finish = slowSave();
+    useScannerStore.setState({ items: [item('1'), { ...item('2'), name: 'Feijão' }] });
+    const first = useScannerStore.getState().confirm();
+    const second = useScannerStore.getState().confirm();
+    expect(second).toBe(first);
+    finish();
+    await Promise.all([first, second]);
+    expect(foodLogService.addMeal).toHaveBeenCalledTimes(2);
+    expect(useScannerStore.getState().items).toEqual([]);
+  });
+
+  it('terminado o salvamento, um novo confirm salva de novo', async () => {
+    foodLogService.addMeal.mockRejectedValueOnce(new Error('offline'));
+    useScannerStore.setState({ items: [item('1')] });
+    await expect(useScannerStore.getState().confirm()).rejects.toThrow('SCAN_CONFIRM_PARTIAL');
+    foodLogService.addMeal.mockResolvedValueOnce({ id: 'm' });
+    await useScannerStore.getState().confirm();
+    expect(foodLogService.addMeal).toHaveBeenCalledTimes(2);
+  });
+
+  it('nova análise durante o salvamento não reaproveita o confirm antigo', async () => {
+    const finish = slowSave();
+    useScannerStore.setState({ items: [item('1')] });
+    const old = useScannerStore.getState().confirm();
+    useScannerStore.getState().reset();
+    useScannerStore.setState({ items: [item('2')] });
+    const fresh = useScannerStore.getState().confirm();
+    expect(fresh).not.toBe(old);
+    finish();
+    await expect(old).rejects.toThrow('SCAN_CONFIRM_STALE');
+    await fresh;
+    expect(foodLogService.addMeal).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -409,5 +470,27 @@ describe('dúvida de alimento na revisão (05/11, S2/S3)', () => {
       scan: { confidence: 0.45, alternatives: ['Salmão grelhado', 'Truta'] },
     });
     expect(payloads[1]).not.toHaveProperty('scan');
+  });
+
+  it('C6: depois de escolher uma alternativa, a dúvida não vai para o diário', async () => {
+    foodLogService.addMeal.mockResolvedValue({ id: 'm1' });
+    useScannerStore.getState().chooseAlternative('p1', 0);
+    await useScannerStore.getState().confirm();
+    const payload = foodLogService.addMeal.mock.calls[0][0];
+    expect(payload).toMatchObject({ name: 'Salmão grelhado', calories: 376 });
+    expect(payload).not.toHaveProperty('scan');
+  });
+
+  it('C6: editar um valor resolve a dúvida; mudar só o nome ou o peso não', async () => {
+    foodLogService.addMeal.mockResolvedValue({ id: 'm1' });
+    useScannerStore.getState().updateItem('p1', { name: 'Carne suína' });
+    useScannerStore.getState().updateItem('p1', { weightGrams: 90 });
+    await useScannerStore.getState().confirm();
+    expect(foodLogService.addMeal.mock.calls[0][0]).toHaveProperty('scan');
+
+    await useScannerStore.getState().analyze('data:image/jpeg;base64,AAA');
+    useScannerStore.getState().updateItem('p1', { protein: 40 });
+    await useScannerStore.getState().confirm();
+    expect(foodLogService.addMeal.mock.calls[1][0]).not.toHaveProperty('scan');
   });
 });

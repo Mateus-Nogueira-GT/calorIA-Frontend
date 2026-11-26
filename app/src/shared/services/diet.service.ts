@@ -89,10 +89,10 @@ export const dietService = {
    * dia "vira" às 21h BRT (mesmo motivo do getToday acima).
    */
   // `completed` (05/11, cartão do coach): pede o estado em vez de alternar.
-  toggleMeal: (mealId: string, opts?: { completed?: boolean }) =>
+  toggleMeal: (mealId: string, opts?: { completed?: boolean; date?: string }) =>
     api
       .patch<{ is_completed: boolean }>(`/diets/meals/${mealId}/toggle`, {
-        date: todayString(),
+        date: opts?.date ?? todayString(),
         tzOffsetMinutes: tzOffsetMinutes(),
         ...(opts?.completed != null ? { completed: opts.completed } : {}),
       })

@@ -1,5 +1,6 @@
 import { useCoachStore } from './store';
 import { useFoodLogStore } from '@features/food-log/store';
+import { useAuthStore } from '@features/auth/store';
 
 // 05/11: o coach propõe a ação e só grava quando o usuário toca no cartão.
 
@@ -32,7 +33,7 @@ const { foodLogService } = jest.requireMock('@shared/services/food-log.service')
   foodLogService: { addMeal: jest.Mock };
 };
 const { weightService } = jest.requireMock('@shared/services/weight.service') as {
-  weightService: { addEntry: jest.Mock };
+  weightService: { addEntry: jest.Mock; getHistory: jest.Mock };
 };
 const { dietService } = jest.requireMock('@shared/services/diet.service') as {
   dietService: { toggleMeal: jest.Mock };
@@ -83,17 +84,20 @@ it('Adicionar ao Diário grava com data e tipo, e o registro entra no Diário', 
   foodLogService.addMeal.mockResolvedValue({ ...eggs, id: 'm1', loggedAt: 'x' });
   await receive(eggs);
   await useCoachStore.getState().applyAction('c1-1');
-  expect(foodLogService.addMeal).toHaveBeenCalledWith({
-    name: '2 ovos cozidos',
-    calories: 155,
-    protein: 13,
-    carbs: 1,
-    fat: 11,
-    fiber: 0,
-    weightGrams: 100,
-    mealType: 'breakfast',
-    date: '2026-11-05',
-  });
+  expect(foodLogService.addMeal).toHaveBeenCalledWith(
+    {
+      name: '2 ovos cozidos',
+      calories: 155,
+      protein: 13,
+      carbs: 1,
+      fat: 11,
+      fiber: 0,
+      weightGrams: 100,
+      mealType: 'breakfast',
+      date: '2026-11-05',
+    },
+    expect.objectContaining({ generation: expect.any(Number) }),
+  );
   expect(useFoodLogStore.getState().mealsByDate['2026-11-05']?.[0]?.id).toBe('m1');
   expect(card()?.status).toBe('saved');
 });
@@ -125,6 +129,22 @@ it('Marcar como feita pede completed: true e recarrega o plano; dois toques = um
   expect(mockLoadCurrent).toHaveBeenCalled();
 });
 
+it('Marcar como feita usa o dia da proposta, não o dia do toque (C7)', async () => {
+  dietService.toggleMeal.mockResolvedValue(undefined);
+  await receive({
+    kind: 'complete_plan_meal',
+    mealId: 'pm1',
+    title: 'Almoço',
+    calories: 650,
+    date: '2026-11-23',
+  });
+  await useCoachStore.getState().applyAction('c1-1');
+  expect(dietService.toggleMeal).toHaveBeenCalledWith('pm1', {
+    completed: true,
+    date: '2026-11-23',
+  });
+});
+
 it('falha ao gravar → erro, e dá para tentar de novo', async () => {
   foodLogService.addMeal.mockRejectedValueOnce(new Error('rede'));
   await receive(eggs);
@@ -139,4 +159,83 @@ it('Agora não fecha o cartão', async () => {
   await receive(eggs);
   useCoachStore.getState().dismissAction('c1-1');
   expect(card()?.status).toBe('dismissed');
+});
+
+describe('C2: troca de sessão com o cartão salvando', () => {
+  const switchSession = () =>
+    useAuthStore.setState({ sessionGeneration: useAuthStore.getState().sessionGeneration + 1 });
+
+  function pending(mock: jest.Mock) {
+    const control: { resolve: (v?: unknown) => void; reject: (e: unknown) => void } = {
+      resolve: () => {},
+      reject: () => {},
+    };
+    mock.mockReturnValue(
+      new Promise((res, rej) => {
+        control.resolve = res;
+        control.reject = rej;
+      }),
+    );
+    return control;
+  }
+
+  it('Adicionar ao Diário vincula o pedido ao dono atual', async () => {
+    foodLogService.addMeal.mockResolvedValue({ ...eggs, id: 'm1', loggedAt: 'x' });
+    await receive(eggs);
+    await useCoachStore.getState().applyAction('c1-1');
+    expect(foodLogService.addMeal.mock.calls[0][1]).toEqual({
+      userId: useAuthStore.getState().user?.id,
+      generation: useAuthStore.getState().sessionGeneration,
+    });
+  });
+
+  it('resposta depois da troca não entra no Diário da conta seguinte nem muda o cartão', async () => {
+    await receive(eggs);
+    const call = pending(foodLogService.addMeal);
+    const apply = useCoachStore.getState().applyAction('c1-1');
+    switchSession();
+    useFoodLogStore.setState({ mealsByDate: {} });
+    call.resolve({ ...eggs, id: 'mA', loggedAt: 'x' });
+    await apply;
+    expect(useFoodLogStore.getState().mealsByDate).toEqual({});
+    expect(card()?.status).toBe('saving');
+  });
+
+  it('falha depois da troca (pedido abortado) não marca erro no cartão', async () => {
+    await receive(eggs);
+    const call = pending(foodLogService.addMeal);
+    const apply = useCoachStore.getState().applyAction('c1-1');
+    switchSession();
+    call.reject(new Error('canceled'));
+    await apply;
+    expect(card()?.status).toBe('saving');
+  });
+
+  it('peso salvo depois da troca não recarrega a Evolução', async () => {
+    await receive({
+      kind: 'log_weight',
+      weightKg: 78,
+      date: '2026-11-05',
+      replaces: null,
+      bigChange: false,
+    });
+    const call = pending(weightService.addEntry);
+    const apply = useCoachStore.getState().applyAction('c1-1');
+    switchSession();
+    call.resolve({ id: 'w1', date: '2026-11-05', weightKg: 78 });
+    await apply;
+    expect(weightService.getHistory).not.toHaveBeenCalled();
+    expect(card()?.status).toBe('saving');
+  });
+
+  it('refeição do plano marcada depois da troca não recarrega o plano', async () => {
+    await receive({ kind: 'complete_plan_meal', mealId: 'pm1', title: 'Almoço', calories: 650 });
+    const call = pending(dietService.toggleMeal);
+    const apply = useCoachStore.getState().applyAction('c1-1');
+    switchSession();
+    call.resolve();
+    await apply;
+    expect(mockLoadCurrent).not.toHaveBeenCalled();
+    expect(card()?.status).toBe('saving');
+  });
 });

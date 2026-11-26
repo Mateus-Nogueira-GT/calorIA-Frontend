@@ -2,7 +2,7 @@ import React from 'react';
 import { fireEvent, render } from '@testing-library/react-native';
 import { ActionProposalCard } from './ActionProposalCard';
 import type { ActionCard } from '../store';
-import { todayString } from '@shared/utils/date';
+import { dateToString, todayString } from '@shared/utils/date';
 
 const today = todayString();
 const meal: ActionCard = {
@@ -83,4 +83,40 @@ it('dispensado não renderiza', () => {
     />,
   );
   expect(s.toJSON()).toBeNull();
+});
+
+describe('rótulo do dia (C7)', () => {
+  const daysAgo = (n: number) => {
+    const d = new Date();
+    d.setDate(d.getDate() - n);
+    return dateToString(d);
+  };
+  const plan = (date?: string): ActionCard => ({
+    kind: 'complete_plan_meal',
+    mealId: 'pm1',
+    title: 'Almoço',
+    calories: 650,
+    date,
+    status: 'idle',
+  });
+  const renderCard = (action: ActionCard) =>
+    render(<ActionProposalCard action={action} onApply={jest.fn()} onDismiss={jest.fn()} />);
+
+  it('refeição do plano mostra o dia do cartão', () => {
+    expect(renderCard(plan(today)).getByText(/650 kcal · plano de hoje/)).toBeTruthy();
+    expect(renderCard(plan(daysAgo(1))).getByText(/650 kcal · plano de ontem/)).toBeTruthy();
+    // Cartão antigo, sem data: era sempre o de hoje.
+    expect(renderCard(plan()).getByText(/650 kcal · plano de hoje/)).toBeTruthy();
+  });
+
+  it('"ontem" só quando é ontem; antes disso, a data', () => {
+    const date = daysAgo(3);
+    const d = new Date(`${date}T00:00:00`);
+    const s = renderCard({ ...meal, date });
+    expect(s.queryByText(/ontem/)).toBeNull();
+    expect(s.getByText(new RegExp(`Café da manhã · ${d.getDate()} `))).toBeTruthy();
+    expect(
+      renderCard({ ...meal, date: daysAgo(1) }).getByText(/Café da manhã · ontem/),
+    ).toBeTruthy();
+  });
 });

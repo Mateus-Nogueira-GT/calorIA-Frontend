@@ -680,7 +680,7 @@ async function runAction(
       ? proposeLogMeal(rawArgs, context.date)
       : name === 'propose_log_weight'
         ? await proposeLogWeight(fastify, userId, rawArgs, context.date)
-        : proposeCompletePlanMeal(rawArgs, context.today)
+        : proposeCompletePlanMeal(rawArgs, context.today, context.date)
   fastify.log.info(
     { userId, kind: result.proposal?.kind ?? null },
     `Ação proposta pelo coach: ${name}`,

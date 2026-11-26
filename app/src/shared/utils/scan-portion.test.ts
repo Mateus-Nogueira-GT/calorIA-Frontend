@@ -39,6 +39,18 @@ it.each([0, 0.001, -1, NaN, Infinity, 5001, 100000])('rejeita peso inválido %s'
   expect(scaleScanPortion(item, value)).toEqual({});
 });
 
+it('C1: origem acima de 5 kg (panela) escala ao corrigir para uma porção', () => {
+  const pot: ScanItem = { ...item, weightGrams: 6000, calories: 2230, protein: 90, fiber: 10 };
+  const patch = scaleScanPortion(pot, 600);
+  expect(patch.weightGrams).toBe(600);
+  expect(patch.calories).toBeCloseTo(223);
+  expect(patch.protein).toBeCloseTo(9);
+  expect(patch.fiber).toBeCloseTo(1);
+});
+it.each([0, -1, NaN, Infinity])('origem %s não serve de base para escalar', (origin) => {
+  expect(scaleScanPortion({ ...item, weightGrams: origin }, 100)).toEqual({ weightGrams: 100 });
+});
+
 it('5 kg é o teto de um alimento', () => {
   expect(isValidScanWeight(5000)).toBe(true);
 });

@@ -206,7 +206,7 @@ export type ActionProposal =
       replaces: number | null
       bigChange: boolean
     }
-  | { kind: 'complete_plan_meal'; mealId: string; title: string; calories: number }
+  | { kind: 'complete_plan_meal'; mealId: string; title: string; calories: number; date: string }
 
 export type ActionResult = { proposal: ActionProposal | null; message: string }
 
@@ -225,8 +225,20 @@ function withOpening(message: string | undefined, text: string): string {
 
 const day = (when: 'today' | 'yesterday') => (when === 'today' ? 'hoje' : 'ontem')
 
+/**
+ * C3 (pente fino 25/11): campo cosmético fora do limite não derruba o cartão.
+ * A frase do modelo inválida é descartada; o nome longo é cortado. A proposta
+ * só falha por número, tipo de refeição, data ou referência inválidos.
+ */
+const openingArg = z.string().max(400).optional().catch(undefined)
+const mealNameArg = z
+  .string()
+  .trim()
+  .min(1)
+  .transform((name) => name.slice(0, 120).trimEnd())
+
 const logMealArgs = z.object({
-  name: z.string().trim().min(1).max(120),
+  name: mealNameArg,
   weight_grams: z.number().finite().min(0.1).max(5000),
   calories: z.number().finite().min(0),
   protein: z.number().finite().min(0),
@@ -235,7 +247,7 @@ const logMealArgs = z.object({
   fiber: z.number().finite().min(0).nullable().optional(),
   meal_type: z.enum(['breakfast', 'lunch', 'snack', 'dinner']),
   date: z.enum(['today', 'yesterday']),
-  message_to_user: z.string().max(400).optional(),
+  message_to_user: openingArg,
 })
 
 const IMPOSSIBLE_MEAL =
@@ -278,7 +290,7 @@ export function proposeLogMeal(rawArgs: unknown, today: string): ActionResult {
 const logWeightArgs = z.object({
   weight_kg: z.number().finite().min(BODY_LIMITS.weightKg.min).max(BODY_LIMITS.weightKg.max),
   date: z.enum(['today', 'yesterday']),
-  message_to_user: z.string().max(400).optional(),
+  message_to_user: openingArg,
 })
 
 export async function proposeLogWeight(
@@ -321,10 +333,15 @@ export async function proposeLogWeight(
 
 const completeArgs = z.object({
   plan_meal_ref: z.string().trim().min(1).max(40),
-  message_to_user: z.string().max(400).optional(),
+  message_to_user: openingArg,
 })
 
-export function proposeCompletePlanMeal(rawArgs: unknown, today: TodayPlan | null): ActionResult {
+/** `date` é o dia do plano (C7): tocado no dia seguinte, o cartão marca o dia proposto. */
+export function proposeCompletePlanMeal(
+  rawArgs: unknown,
+  today: TodayPlan | null,
+  date: string,
+): ActionResult {
   const parsed = completeArgs.safeParse(rawArgs)
   const ref = parsed.success
     ? parsed.data.plan_meal_ref.replace(/^plano\s*/i, '').toLowerCase()
@@ -346,6 +363,7 @@ export function proposeCompletePlanMeal(rawArgs: unknown, today: TodayPlan | nul
       mealId: meal.id,
       title: meal.title,
       calories: Math.round(meal.calories),
+      date,
     },
   }
 }

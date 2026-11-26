@@ -47,7 +47,14 @@ export type ActionProposal =
       replaces: number | null;
       bigChange: boolean;
     }
-  | { kind: 'complete_plan_meal'; mealId: string; title: string; calories: number };
+  | {
+      kind: 'complete_plan_meal';
+      mealId: string;
+      title: string;
+      calories: number;
+      /** C7: dia do plano proposto. Ausente em cartões antigos (= hoje). */
+      date?: string;
+    };
 
 /** O que este app sabe mostrar (o servidor só oferece as ações declaradas). */
 export const CLIENT_FEATURES = ['meal_proposal', 'log_meal', 'log_weight', 'complete_plan_meal'];

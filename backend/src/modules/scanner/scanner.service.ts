@@ -101,6 +101,15 @@ function writeCache(fastify: FastifyInstance, hash: string, result: CacheResult)
 }
 
 /**
+ * C8 (pente fino 25/11): vai ao modelo o mesmo JSON schema estrito, mas sem o
+ * parser automático do SDK. Com ele, `completions.parse` rodava o schema
+ * estrito na resposta e uma alternativa a mais derrubava a análise inteira
+ * antes do schema de leitura. Quem lê é `visionAnalysisReadSchema`.
+ */
+const { type, json_schema } = zodResponseFormat(visionAnalysisSchema, 'food_analysis')
+const VISION_RESPONSE_FORMAT = { type, json_schema }
+
+/**
  * Analisa a foto de um prato via OpenAI Vision e retorna a estimativa nutricional.
  * Recebe a imagem como data URL base64 (data:image/...;base64,...).
  * userId null = convidado sem conta: cai no teto global de convidados.
@@ -157,7 +166,7 @@ async function analyzePhotoCore(
           ],
         },
       ],
-      response_format: zodResponseFormat(visionAnalysisSchema, 'food_analysis'),
+      response_format: VISION_RESPONSE_FORMAT,
       // GPT-5 (reasoning + visão): sem temperature custom e com teto folgado pra
       // os reasoning tokens não estourarem antes do JSON da análise.
       max_tokens: 4000,
