@@ -121,4 +121,105 @@ const localDayOf = (at: Date | string) =>
       expect(await completedAt(date)).toBeNull()
     })
   })
+
+  describe('R6: sequência com conclusões concorrentes', () => {
+    /** Espera até `n` conexões deste banco estarem bloqueadas esperando lock. */
+    const waitForLockWaiters = async (n: number) => {
+      for (let i = 0; i < 300; i++) {
+        const [{ waiting }] = await db<{ waiting: number }[]>`
+          SELECT COUNT(*)::INT AS waiting FROM pg_stat_activity
+          WHERE datname = current_database() AND wait_event_type = 'Lock'`
+        if (waiting >= n) return
+        await new Promise((r) => setTimeout(r, 10))
+      }
+      throw new Error(`as ${n} conclusões nunca ficaram esperando o lock da sequência`)
+    }
+    /** Outra conexão segura a linha da sequência até `release()`. */
+    const holdStreakRow = async () => {
+      const holder = socialTestDb()
+      let release!: () => void
+      let ready!: () => void
+      const held = new Promise<void>((r) => {
+        release = r
+      })
+      const started = new Promise<void>((r) => {
+        ready = r
+      })
+      const done = holder
+        .begin(async (sql) => {
+          await sql`SELECT 1 FROM streaks WHERE user_id = ${user} FOR UPDATE`
+          ready()
+          await held
+        })
+        .finally(() => holder.end())
+      await started
+      return { release, done }
+    }
+    const streak = async () =>
+      (
+        await db<{ current_streak: number; best_streak: number; last: string }[]>`
+          SELECT current_streak, best_streak, last_active_date::TEXT AS last
+          FROM streaks WHERE user_id = ${user}`
+      )[0]
+    const milestonePosts = async () =>
+      db<{ content: string }[]>`
+        SELECT content FROM feed_posts WHERE user_id = ${user} AND type = 'streak_milestone'`
+    /** Segunda refeição no mesmo dia do plano. */
+    const secondMealOf = async (date: string) => {
+      const [m] = await db<{ id: string }[]>`
+        INSERT INTO diet_meals(diet_day_id, meal_type, name, total_calories, sort_order)
+        SELECT diet_day_id, 'dinner', 'Jantar', 500, 1 FROM diet_meals WHERE id = ${mealOf(date)}
+        RETURNING id`
+      return m.id
+    }
+
+    it('duas conclusões simultâneas no mesmo dia com a sequência em 6: fica 7, com um post só', async () => {
+      const today = localDate()
+      const dinner = await secondMealOf(today)
+      await db`UPDATE streaks SET current_streak = 6, best_streak = 6, last_active_date = ${localDate(-1)}
+        WHERE user_id = ${user}`
+      const hold = await holdStreakRow()
+      const lunch = toggleMealCompleted(fastify, user, mealOf(today), today, TZ, true)
+      const dinnerDone = toggleMealCompleted(fastify, user, dinner, today, TZ, true)
+      await waitForLockWaiters(2)
+      hold.release()
+      await hold.done
+      try {
+        await expect(Promise.all([lunch, dinnerDone])).resolves.toEqual([
+          { is_completed: true },
+          { is_completed: true },
+        ])
+        expect(await streak()).toEqual({ current_streak: 7, best_streak: 7, last: today })
+        expect(await milestonePosts()).toHaveLength(1)
+      } finally {
+        await db`DELETE FROM diet_meals WHERE id = ${dinner}`
+      }
+    })
+
+    it('a função da 032 sozinha também não conta o mesmo dia duas vezes', async () => {
+      const today = localDate()
+      await db`UPDATE streaks SET current_streak = 6, best_streak = 6, last_active_date = ${localDate(-1)}
+        WHERE user_id = ${user}`
+      const hold = await holdStreakRow()
+      const calls = [1, 2].map(async () => db`SELECT update_user_streak(${user}, ${today}::date)`)
+      await waitForLockWaiters(2)
+      hold.release()
+      await hold.done
+      await Promise.all(calls)
+      expect(await streak()).toEqual({ current_streak: 7, best_streak: 7, last: today })
+    })
+
+    it('dias consecutivos continuam somando e o 7º dia publica o marco', async () => {
+      const yesterday = localDate(-1)
+      const today = localDate()
+      await db`UPDATE streaks SET current_streak = 5, best_streak = 5, last_active_date = ${localDate(-2)}
+        WHERE user_id = ${user}`
+      await toggleMealCompleted(fastify, user, mealOf(yesterday), yesterday, TZ, true)
+      expect(await streak()).toEqual({ current_streak: 6, best_streak: 6, last: yesterday })
+      expect(await milestonePosts()).toHaveLength(0)
+      await toggleMealCompleted(fastify, user, mealOf(today), today, TZ, true)
+      expect(await streak()).toEqual({ current_streak: 7, best_streak: 7, last: today })
+      expect(await milestonePosts()).toEqual([{ content: '7 dias seguidos seguindo a dieta! 🔥' }])
+    })
+  })
 })

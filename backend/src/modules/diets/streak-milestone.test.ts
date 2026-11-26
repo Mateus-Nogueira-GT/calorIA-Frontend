@@ -9,7 +9,7 @@ const MEAL = '22222222-2222-2222-2222-222222222222'
 function marking(before: number, after: number, postInsert: unknown[] | Error = []) {
   const routes: DbRoute[] = [
     ['UPDATE diet_meals', [{ is_completed: true, was_completed: false }]],
-    ['update_user_streak', [{ previous_streak: before }]],
+    ['FOR UPDATE', [{ previous_streak: before }]],
     ['SELECT current_streak FROM streaks', [{ current_streak: after }]],
     ['INSERT INTO feed_posts', postInsert],
   ]

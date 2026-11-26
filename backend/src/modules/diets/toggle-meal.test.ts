@@ -17,6 +17,8 @@ function fakeFastify(queue: unknown[][]): { fastify: FastifyInstance; calls: Cal
     calls.push({ sql: strings.join(' ? '), params })
     return Promise.resolve(queue.shift() ?? [])
   }
+  // biome-ignore lint/suspicious/noExplicitAny: mock mínimo do driver
+  ;(db as any).begin = (fn: (sql: unknown) => Promise<unknown>) => fn(db)
   return { fastify: { db } as unknown as FastifyInstance, calls }
 }
 

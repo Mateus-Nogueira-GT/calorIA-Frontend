@@ -22,7 +22,7 @@ Dois workers em paralelo. Cada um trabalha num worktree próprio, criado a parti
 
 1. [x] R1: tratar o evento de compra de acordo com a existência da tabela, e não da flag. Testes de integração (flag desligada credita, estorno com flag desligada, sem tabela) e unitários.
 2. [x] R4: `completed_at` no dia da proposta, com os limites de data. Antes, ler `completedOnDate` no app. Testes.
-3. [ ] R6: migration 032, decisão do marco travada e harness atualizado. Teste de integração com duas conexões concorrentes.
+3. [x] R6: migration 032, decisão do marco travada e harness atualizado. Teste de integração com duas conexões concorrentes.
 4. [ ] R7: normalizar o histórico em todos os leitores e reparar na gravação. Teste de integração conferindo o histórico inteiro.
 5. [ ] Rodar typecheck, a suíte inteira e todas as integrações tocadas.
 
