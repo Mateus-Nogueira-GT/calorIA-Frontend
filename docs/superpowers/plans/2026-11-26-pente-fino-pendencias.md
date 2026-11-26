@@ -45,7 +45,7 @@ Três workers trabalham em paralelo. Cada um tem um worktree próprio, criado a 
 2. [x] R7: migration 031, com fechamento dos jobs duplicados, mais o `23505` no service. Testes de integração.
 3. [x] R8: summary com as refeições do plano. Teste.
 4. [x] R9: `23505` no pedido de amizade vira 409. Teste.
-5. [ ] Rodar typecheck, as suítes e as integrações tocadas.
+5. [x] Rodar typecheck, as suítes e as integrações tocadas.
 
 ## Fechamento (orquestrador)
 
