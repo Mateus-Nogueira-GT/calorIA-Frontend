@@ -3,6 +3,7 @@ import {
   assembleSystemPrompt,
   buildSystemPrompt,
   formatDietStartedMarker,
+  isCanonicalHistory,
   mapOpenAIError,
   normalizeHistory,
   windowedHistory,
@@ -92,6 +93,14 @@ describe('normalizeHistory (jsonb robusto)', () => {
     expect(normalizeHistory(null)).toEqual([])
     expect(normalizeHistory(undefined)).toEqual([])
     expect(normalizeHistory({ not: 'array' })).toEqual([])
+  })
+
+  it('R7: expande elementos string com JSON de histórico e descarta o resto, na ordem', () => {
+    const raw = [JSON.stringify(msgs), 'solto', 3, null, { role: 'tool', content: 'x' }, msgs[0]]
+    expect(normalizeHistory(raw)).toEqual([...msgs, msgs[0]])
+    expect(isCanonicalHistory(raw)).toBe(false)
+    expect(isCanonicalHistory(msgs)).toBe(true)
+    expect(isCanonicalHistory(JSON.stringify(msgs))).toBe(false)
   })
 })
 

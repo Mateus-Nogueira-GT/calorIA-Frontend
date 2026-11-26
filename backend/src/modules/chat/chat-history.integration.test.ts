@@ -6,7 +6,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { env } from '../../shared/env.js'
 import { textCompletion } from '../../shared/testing/fake-fastify.js'
 import { appendDietCompletedMarker } from '../diets/jobs.service.js'
-import { HISTORY_MAX_MESSAGES, sendChatMessage } from './chat.service.js'
+import { HISTORY_MAX_MESSAGES, getChatHistory, sendChatMessage } from './chat.service.js'
 import { DIET_COMPLETED_MARKER } from './history-markers.js'
 
 // Só o que não é histórico nem crédito fica de fora do banco real.
@@ -41,13 +41,15 @@ if (url && !['localhost', '127.0.0.1', '[::1]'].includes(new URL(url).hostname))
   const conversation = randomUUID()
   const old = env.CREDITS_ENFORCEMENT_ENABLED
   let onModelCall: () => Promise<void> = async () => undefined
+  let modelMessages: { role: string; content: string }[] = []
   const f = {
     db,
     log: { error: () => {}, warn: () => {}, info: () => {} },
     openai: {
       chat: {
         completions: {
-          create: async () => {
+          create: async (params: { messages: { role: string; content: string }[] }) => {
+            modelMessages = params.messages
             await onModelCall()
             return textCompletion('Combinado!')
           },
@@ -150,11 +152,100 @@ if (url && !['localhost', '127.0.0.1', '[::1]'].includes(new URL(url).hostname))
     const legacy = JSON.stringify([JSON.stringify(before), JSON.stringify([{ role: 'assistant' }])])
     await db`INSERT INTO chat_history(id,user_id,messages,status) VALUES(${conversation},${user},${legacy}::text::jsonb,'completed')`
     await expect(send('oi')).resolves.toMatchObject({ message: { content: 'Combinado!' } })
-    const row = await stored()
-    expect(row.type).toBe('array')
-    expect((JSON.parse(row.messages) as unknown[]).slice(-2)).toMatchObject([
-      { content: 'oi' },
-      { content: 'Combinado!' },
-    ])
+    // R7 (lote 8): a gravação repara a linha inteira, não só anexa o turno.
+    expect(await contents()).toEqual(['quero uma dieta', 'Vou montar!', 'oi', 'Combinado!'])
+  })
+
+  describe('R7: histórico com mensagens serializadas dentro do array', () => {
+    const three = [
+      { role: 'user', content: 'quero uma dieta', at: '2026-11-01T10:00:00.000Z' },
+      { role: 'assistant', content: 'Vou montar!' },
+      { role: 'user', content: 'obrigado' },
+    ]
+    const marker = { role: 'system', content: DIET_COMPLETED_MARKER }
+    // Forma real das linhas antigas: o histórico em string jsonb concatenado
+    // com o marcador virou ["<json do histórico>", {marcador}].
+    const corrupt = [JSON.stringify(three), marker]
+    const seed = (messages: unknown[]) =>
+      db`INSERT INTO chat_history(id,user_id,messages,status)
+        VALUES(${conversation},${user},${JSON.stringify(messages)}::text::jsonb,'completed')`
+    const storedMessages = async () => {
+      const row = await stored()
+      expect(row.type).toBe('array')
+      return JSON.parse(row.messages) as Record<string, unknown>[]
+    }
+
+    it('GET devolve o histórico inteiro e válido', async () => {
+      await seed(corrupt)
+      const out = await getChatHistory(f, user, conversation)
+      expect(out.messages).toEqual([
+        { role: 'user', content: 'quero uma dieta', created_at: '2026-11-01T10:00:00.000Z' },
+        { role: 'assistant', content: 'Vou montar!' },
+        { role: 'user', content: 'obrigado' },
+      ])
+    })
+
+    it('expande strings aninhadas, descarta o que não é mensagem e preserva a ordem', async () => {
+      await seed([
+        JSON.stringify(JSON.stringify([three[0]])),
+        'texto solto',
+        42,
+        null,
+        { role: 'assistant' },
+        { role: 7, content: 'x' },
+        JSON.stringify({ role: 'assistant', content: 'uma só' }),
+        { role: 'user', content: 'ok' },
+      ])
+      const out = await getChatHistory(f, user, conversation)
+      expect(out.messages).toEqual([
+        { role: 'user', content: 'quero uma dieta', created_at: '2026-11-01T10:00:00.000Z' },
+        { role: 'assistant', content: 'uma só' },
+        { role: 'user', content: 'ok' },
+      ])
+    })
+
+    it('o modelo recebe o histórico normalizado e a gravação seguinte repara a linha', async () => {
+      await seed(corrupt)
+      await expect(send('oi')).resolves.toMatchObject({ message: { content: 'Combinado!' } })
+      expect(
+        modelMessages.every(
+          (m) => ['system', 'user', 'assistant'].includes(m.role) && typeof m.content === 'string',
+        ),
+      ).toBe(true)
+      const unstamped = modelMessages.map((m) =>
+        m.content.replace(/^\[\d{2}\/\d{2} \d{2}:\d{2}\] /, ''),
+      )
+      expect(unstamped.slice(-5)).toEqual([
+        'quero uma dieta',
+        'Vou montar!',
+        'obrigado',
+        DIET_COMPLETED_MARKER,
+        'oi',
+      ])
+      const saved = await storedMessages()
+      expect(saved.map(({ role, content }) => ({ role, content }))).toEqual([
+        ...three.map(({ role, content }) => ({ role, content })),
+        marker,
+        { role: 'user', content: 'oi' },
+        { role: 'assistant', content: 'Combinado!' },
+      ])
+      expect(saved[0].at).toBe('2026-11-01T10:00:00.000Z')
+    })
+
+    it('marcador anexado durante a resposta do modelo sobrevive à reparação', async () => {
+      await seed(corrupt)
+      onModelCall = () => appendDietCompletedMarker(db, conversation, randomUUID())
+      await send('valeu')
+      const saved = await storedMessages()
+      expect(saved.map((m) => m.content)).toEqual([
+        'quero uma dieta',
+        'Vou montar!',
+        'obrigado',
+        DIET_COMPLETED_MARKER,
+        DIET_COMPLETED_MARKER,
+        'valeu',
+        'Combinado!',
+      ])
+    })
   })
 })

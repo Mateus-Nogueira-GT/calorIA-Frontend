@@ -352,7 +352,8 @@ export const COLLECT_DIET_DATA_TOOL: OpenAI.Chat.ChatCompletionTool = {
 // ─── Tipos internos ─────────────────────────────────────────────────────────
 
 interface ChatHistoryMessage {
-  role: 'user' | 'assistant'
+  /** 'system' só existe em linhas antigas (marcadores); o app vê user/assistant. */
+  role: 'user' | 'assistant' | 'system'
   content: string
   /** Quando a mensagem aconteceu (ISO). Ausente no histórico anterior a 04/11. */
   at?: string
@@ -367,6 +368,8 @@ interface DeferredTurn {
   turn: ChatHistoryMessage[]
   status: string
   extra?: (sql: CreditTransaction) => Promise<void>
+  /** R7 (lote 8): a linha lida estava corrompida; a gravação a normaliza. */
+  repair?: boolean
 }
 type SaveTurn = (status: string, extra?: DeferredTurn['extra']) => Promise<void>
 
@@ -411,10 +414,10 @@ export async function sendChatMessage(
       ),
     async (tx) => {
       if (!deferred) return
-      const { turn, status, extra } = deferred
+      const { turn, status, extra, repair } = deferred
       // Histórico primeiro: diets.conversation_id referencia chat_history(id).
       const write = async (sql: CreditTransaction) => {
-        await persistHistory(fastify, userId, conversationId, turn, status, sql)
+        await persistHistory(fastify, userId, conversationId, turn, status, sql, repair)
         await extra?.(sql)
       }
       // Conta ilimitada liquida sem transação (fastify.db): job e turno juntos.
@@ -444,11 +447,11 @@ async function sendChatMessageCore(
       throw new AppError(404, 'NOT_FOUND', 'Conversa não encontrada.')
     }
   }
-  const { messages: history, updatedAt: lastActivity } = await loadHistory(
-    fastify,
-    userId,
-    conversationId,
-  )
+  const {
+    messages: history,
+    updatedAt: lastActivity,
+    dirty,
+  } = await loadHistory(fastify, userId, conversationId)
 
   const prior = history.length
   history.push(said('user', data.message))
@@ -456,8 +459,8 @@ async function sendChatMessageCore(
   // (o finalizeJob anexa o marcador de dieta concluída enquanto a IA responde).
   const save: SaveTurn = async (status, extra) => {
     const turn = history.slice(prior)
-    if (deferHistory) deferHistory({ turn, status, extra })
-    else await persistHistory(fastify, userId, conversationId, turn, status)
+    if (deferHistory) deferHistory({ turn, status, extra, repair: dirty })
+    else await persistHistory(fastify, userId, conversationId, turn, status, undefined, dirty)
   }
 
   // Personaliza o tom do coach conforme a preferência do usuário.
@@ -916,7 +919,7 @@ export async function getChatHistory(
   userId: string,
   conversationId: string,
 ): Promise<{
-  messages: { role: ChatHistoryMessage['role']; content: string; created_at?: string }[]
+  messages: { role: 'user' | 'assistant'; content: string; created_at?: string }[]
   status: string
 }> {
   const [row] = await fastify.db<{ messages: unknown; status: string }[]>`
@@ -928,8 +931,13 @@ export async function getChatHistory(
   if (!row) throw new AppError(404, 'CONVERSATION_NOT_FOUND', 'Conversa não encontrada')
   // Leitura para o usuário: os marcadores continuam no banco e no histórico do
   // modelo (loadHistory), mas apareciam como balões do coach entre colchetes.
+  // R7 (lote 8): só user/assistant chegam ao app (o schema da resposta não
+  // aceita outro papel; antes um elemento inválido virava 500).
   const messages = normalizeHistory(row.messages)
-    .filter((m) => typeof m.content !== 'string' || !isInternalChatMarker(m.content))
+    .filter(
+      (m): m is ChatHistoryMessage & { role: 'user' | 'assistant' } =>
+        m.role !== 'system' && !isInternalChatMarker(m.content),
+    )
     .slice(-HISTORY_PAGE)
     // 05/11 (M2): o app mostrava toda mensagem antiga com o horário de agora.
     .map((m) => ({ role: m.role, content: m.content, ...(m.at ? { created_at: m.at } : {}) }))
@@ -949,28 +957,65 @@ export function capHistory<T>(messages: T[]): T[] {
   return messages.length > HISTORY_MAX_MESSAGES ? messages.slice(-HISTORY_MAX_MESSAGES) : messages
 }
 
+const HISTORY_ROLES = new Set(['user', 'assistant', 'system'])
+/** Strings e arrays aninhados que ainda são expandidos (string de string de array…). */
+const MAX_HISTORY_NESTING = 6
+
+function isHistoryMessage(value: unknown): value is ChatHistoryMessage {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const m = value as Record<string, unknown>
+  return typeof m.role === 'string' && HISTORY_ROLES.has(m.role) && typeof m.content === 'string'
+}
+
+function collectHistory(value: unknown, out: ChatHistoryMessage[], depth: number): void {
+  if (typeof value === 'string') {
+    if (depth >= MAX_HISTORY_NESTING) return
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(value)
+    } catch {
+      return // texto solto não é mensagem
+    }
+    collectHistory(parsed, out, depth + 1)
+    return
+  }
+  if (Array.isArray(value)) {
+    if (depth >= MAX_HISTORY_NESTING) return
+    for (const item of value) collectHistory(item, out, depth + 1)
+    return
+  }
+  if (!isHistoryMessage(value)) return
+  out.push({
+    role: value.role,
+    content: value.content,
+    ...(typeof value.at === 'string' ? { at: value.at } : {}),
+  })
+}
+
 /**
- * Garante que o histórico seja sempre um array. Dependendo do driver/pooler, a
- * coluna JSONB `messages` pode voltar como string (JSON) em vez de array já
- * parseado — normalizamos os dois casos.
+ * Histórico sempre como array de mensagens válidas, na ordem. A coluna pode
+ * voltar como string (JSON) dependendo do driver/pooler, e linhas antigas têm
+ * o histórico serializado DENTRO do array (`["<json do histórico>", {marcador}]`,
+ * do `${texto}::jsonb` antigo concatenado com o marcador). R7 (lote 8): toda
+ * string que for JSON de array ou de mensagem é expandida no lugar; o que não
+ * for mensagem (role user/assistant/system e content string) é descartado.
  */
 export function normalizeHistory(raw: unknown): ChatHistoryMessage[] {
-  let value = raw
-  if (typeof value === 'string') {
-    try {
-      value = JSON.parse(value)
-    } catch {
-      return []
-    }
-  }
-  return Array.isArray(value) ? (value as ChatHistoryMessage[]) : []
+  const out: ChatHistoryMessage[] = []
+  collectHistory(raw, out, 0)
+  return out
+}
+
+/** A linha já está no formato canônico (array só de mensagens válidas)? */
+export function isCanonicalHistory(raw: unknown): boolean {
+  return Array.isArray(raw) && raw.every(isHistoryMessage)
 }
 
 async function loadHistory(
   fastify: FastifyInstance,
   userId: string,
   conversationId: string,
-): Promise<{ messages: ChatHistoryMessage[]; updatedAt: Date | null }> {
+): Promise<{ messages: ChatHistoryMessage[]; updatedAt: Date | null; dirty: boolean }> {
   try {
     const [row] = await fastify.db<{ messages: unknown; updated_at: Date | string | null }[]>`
       SELECT messages, updated_at FROM chat_history
@@ -980,6 +1025,7 @@ async function loadHistory(
     return {
       messages: normalizeHistory(row?.messages),
       updatedAt: updated && !Number.isNaN(updated.getTime()) ? updated : null,
+      dirty: Boolean(row) && !isCanonicalHistory(row?.messages),
     }
   } catch {
     if (env.CREDITS_ENFORCEMENT_ENABLED)
@@ -988,8 +1034,35 @@ async function loadHistory(
         'CREDITS_UNAVAILABLE',
         'Não foi possível recuperar a conversa. Tente novamente.',
       )
-    return { messages: [], updatedAt: null }
+    return { messages: [], updatedAt: null, dirty: false }
   }
+}
+
+/**
+ * R7 (lote 8): reparação preguiçosa. Relê a linha (pega o que foi anexado
+ * depois da leitura, como o marcador do finalizeJob) e, se ainda não estiver no
+ * formato canônico, regrava o array normalizado. O UPDATE só vale se a linha
+ * não mudou desde essa releitura: fora de transação (conta ilimitada) um
+ * append concorrente não é sobrescrito, e a linha fica para a próxima gravação.
+ * O append do turno vem em seguida.
+ */
+async function repairHistory(
+  sql: CreditTransaction,
+  userId: string,
+  conversationId: string,
+): Promise<void> {
+  const [row] = await sql<{ messages: unknown }[]>`
+    SELECT messages FROM chat_history
+    WHERE id = ${conversationId} AND user_id = ${userId}
+    FOR UPDATE
+  `
+  if (!row || isCanonicalHistory(row.messages)) return
+  const repaired = JSON.stringify(capHistory(normalizeHistory(row.messages)))
+  const seen = JSON.stringify(row.messages)
+  await sql`
+    UPDATE chat_history SET messages = ${repaired}::text::jsonb
+    WHERE id = ${conversationId} AND user_id = ${userId} AND messages = ${seen}::text::jsonb
+  `
 }
 
 /**
@@ -1009,10 +1082,11 @@ async function persistHistory(
   turn: ChatHistoryMessage[],
   status: string,
   transaction?: CreditTransaction,
+  repair = false,
 ): Promise<void> {
   const messagesStr = JSON.stringify(capHistory(turn))
-  try {
-    const sql = transaction ?? fastify.db
+  const append = async (sql: CreditTransaction): Promise<number> => {
+    if (repair) await repairHistory(sql, userId, conversationId)
     const rows = await sql`
       INSERT INTO chat_history (id, user_id, messages, status)
       VALUES (${conversationId}, ${userId}, ${messagesStr}::text::jsonb, ${status})
@@ -1034,7 +1108,11 @@ async function persistHistory(
         WHERE chat_history.user_id = EXCLUDED.user_id
       RETURNING id
     `
-    if (transaction && rows.length === 0) {
+    return rows.length
+  }
+  try {
+    const written = await append(transaction ?? fastify.db)
+    if (transaction && written === 0) {
       throw new AppError(404, 'NOT_FOUND', 'Conversa não encontrada.')
     }
   } catch (err) {
