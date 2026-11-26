@@ -112,6 +112,33 @@ describe('useNotificationsStore', () => {
       expect(useNotificationsStore.getState().unreadCount).toBe(0);
     });
 
+    it('load pendente durante o clear() não repovoa a lista', async () => {
+      let resolve!: (v: unknown) => void;
+      notificationsService.getNotifications.mockImplementationOnce(
+        () => new Promise((r) => (resolve = r)),
+      );
+      const p = useNotificationsStore.getState().load();
+      useNotificationsStore.getState().clear();
+      resolve({ items: [notif('n1')], unreadCount: 7 });
+      await p;
+      expect(useNotificationsStore.getState().items).toEqual([]);
+      expect(useNotificationsStore.getState().unreadCount).toBe(0);
+    });
+
+    it('markAllRead que falha depois do clear() não restaura o snapshot', async () => {
+      useNotificationsStore.setState({ items: [notif('n1')], unreadCount: 3 });
+      let reject!: (e: unknown) => void;
+      notificationsService.markRead.mockImplementationOnce(
+        () => new Promise((_r, j) => (reject = j)),
+      );
+      const p = useNotificationsStore.getState().markAllRead();
+      useNotificationsStore.getState().clear();
+      reject(new Error('401'));
+      await p;
+      expect(useNotificationsStore.getState().items).toEqual([]);
+      expect(useNotificationsStore.getState().unreadCount).toBe(0);
+    });
+
     it('markRead que responde depois da troca de sessão não mexe no contador', async () => {
       useNotificationsStore.setState({ items: [notif('n1')], unreadCount: 3 });
       let resolve!: (v: unknown) => void;

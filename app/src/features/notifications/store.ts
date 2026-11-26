@@ -20,19 +20,27 @@ const initialState = {
   isLoading: false,
 };
 
+// O clear() (logout) invalida o que está em andamento, mesmo antes de a sessão mudar.
+let clearVersion = 0;
+function captureOwner(): () => boolean {
+  const owner = captureSessionOwner();
+  const version = clearVersion;
+  return () => version === clearVersion && isCurrentOwner(owner);
+}
+
 export const useNotificationsStore = create<NotificationsState>((set, get) => ({
   ...initialState,
 
   // Resposta que chega depois de trocar a sessão é da conta anterior: descarta.
   load: async () => {
-    const owner = captureSessionOwner();
+    const isCurrent = captureOwner();
     set({ isLoading: true });
     try {
       const res = await notificationsService.getNotifications();
-      if (!isCurrentOwner(owner)) return;
+      if (!isCurrent()) return;
       set({ items: res.items, unreadCount: res.unreadCount, isLoading: false });
     } catch (e) {
-      if (!isCurrentOwner(owner)) return;
+      if (!isCurrent()) return;
       set({ isLoading: false });
       throw e;
     }
@@ -41,13 +49,13 @@ export const useNotificationsStore = create<NotificationsState>((set, get) => ({
   markAllRead: async () => {
     const snapshot = { items: get().items, unreadCount: get().unreadCount };
     if (snapshot.unreadCount === 0) return;
-    const owner = captureSessionOwner();
+    const isCurrent = captureOwner();
     set((s) => ({ items: s.items.map((n) => ({ ...n, read: true })), unreadCount: 0 }));
     try {
       const res = await notificationsService.markRead();
-      if (isCurrentOwner(owner)) set({ unreadCount: res.unreadCount });
+      if (isCurrent()) set({ unreadCount: res.unreadCount });
     } catch {
-      if (isCurrentOwner(owner)) set(snapshot);
+      if (isCurrent()) set(snapshot);
     }
   },
 
@@ -55,18 +63,21 @@ export const useNotificationsStore = create<NotificationsState>((set, get) => ({
     const target = get().items.find((n) => n.id === id);
     if (!target || target.read) return;
     const snapshot = { items: get().items, unreadCount: get().unreadCount };
-    const owner = captureSessionOwner();
+    const isCurrent = captureOwner();
     set((s) => ({
       items: s.items.map((n) => (n.id === id ? { ...n, read: true } : n)),
       unreadCount: Math.max(0, s.unreadCount - 1),
     }));
     try {
       const res = await notificationsService.markRead([id]);
-      if (isCurrentOwner(owner)) set({ unreadCount: res.unreadCount });
+      if (isCurrent()) set({ unreadCount: res.unreadCount });
     } catch {
-      if (isCurrentOwner(owner)) set(snapshot);
+      if (isCurrent()) set(snapshot);
     }
   },
 
-  clear: () => set({ ...initialState }),
+  clear: () => {
+    clearVersion++;
+    set({ ...initialState });
+  },
 }));
