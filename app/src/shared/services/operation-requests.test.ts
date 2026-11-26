@@ -57,6 +57,35 @@ describe('durable operation metadata', () => {
     expect((await beginRequest('chat', 'conv-1:sim', context)).key).not.toBe(failed.key);
     expect((await beginRequest('chat', 'conv-2:sim', context)).key).toBe(other.key);
   });
+  it('R2 (26/11): o reconhecimento de outra conta não aposenta a pendência da primeira', async () => {
+    const context = { date: '2026-11-26', tzOffsetMinutes: -180, scope: null };
+    mockUser = { user: { id: 'owner-R2-A' }, sessionGeneration: 1 };
+    const first = await beginRequest('chat', JSON.stringify([null, 'oi']), context);
+    mockUser = { user: { id: 'owner-R2-B' }, sessionGeneration: 2 };
+    const other = await beginRequest('chat', JSON.stringify([null, 'olá']), context);
+    await acknowledgeRequest(other, 'owner-R2-B');
+    mockUser = { user: { id: 'owner-R2-A' }, sessionGeneration: 3 };
+    const retry = await beginRequest('chat', JSON.stringify([null, 'oi']), context);
+    expect(retry.key).toBe(first.key);
+    expect((await pendingRequests('owner-R2-A')).map((r) => r.key)).toEqual([first.key]);
+  });
+  it('R3 (26/11): pendência gravada sem inputMode equivale a texto', async () => {
+    const payload = JSON.stringify(['conv-legacy', 'sim']);
+    const probe = await beginRequest('chat', payload);
+    await finishRequest(probe, mockUser.user.id);
+    const now = new Date().toISOString();
+    mockData.set(
+      `caloria:pending-operations:${mockUser.user.id}`,
+      JSON.stringify([
+        { key: 'request-key-legacy-001', type: 'chat', signature: probe.signature, created_at: now },
+      ]),
+    );
+    const context = { date: '2026-11-26', tzOffsetMinutes: -180, scope: 'conv-legacy' };
+    expect((await beginRequest('chat', payload, context)).key).toBe('request-key-legacy-001');
+    const spoken = await beginRequest('chat', payload, { ...context, inputMode: 'voice' });
+    expect(spoken.key).not.toBe('request-key-legacy-001');
+    expect(spoken.inputMode).toBe('voice');
+  });
   const storedSignature = async (payload: string) => {
     const probe = await beginRequest('chat', payload);
     await finishRequest(probe, mockUser.user.id);

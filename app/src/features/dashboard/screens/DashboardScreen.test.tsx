@@ -171,3 +171,30 @@ it('primeiro render sem dieta mostra zero com linha que comporta o glifo e a sau
   await act(async () => {});
   unmount();
 });
+
+describe('DashboardScreen — troca de conta com o diário pendente (R5, 26/11)', () => {
+  it('refeições carregadas para a conta anterior não entram no diário da próxima', async () => {
+    const { foodLogService } = jest.requireMock('@shared/services/food-log.service') as {
+      foodLogService: { getMeals: jest.Mock };
+    };
+    let resolve!: (v: unknown[]) => void;
+    foodLogService.getMeals.mockReturnValueOnce(
+      new Promise((r) => {
+        resolve = r;
+      }),
+    );
+    renderDashboard();
+    await act(async () => {});
+    act(() => {
+      useAuthStore.getState().clearToken();
+      useAuthStore.getState().setToken('token-b', { id: 'uB', name: 'B', email: 'b@exemplo.com' });
+    });
+    await act(async () => {
+      resolve([{ id: 'mA', name: 'Da conta A', calories: 1, protein: 0, carbs: 0, fat: 0 }]);
+    });
+    const state = useFoodLogStore.getState();
+    expect(state.mealsByDate).toEqual({});
+    expect(state.syncedDates).toEqual({});
+    expect(state.loadingByDate).toEqual({});
+  });
+});

@@ -230,5 +230,101 @@ describe('useFeedStore', () => {
       await loading;
       expect(useFeedStore.getState().posts).toEqual([]);
     });
+
+    const deferred = <T,>() => {
+      let resolve!: (v: T) => void;
+      let reject!: (e: unknown) => void;
+      const promise = new Promise<T>((a, b) => {
+        resolve = a;
+        reject = b;
+      });
+      return { promise, resolve, reject };
+    };
+    const comment = (id: string): Comment => ({
+      id,
+      postId: 'p1',
+      author,
+      content: 'oi',
+      createdAt: '2026-11-26T10:00:00Z',
+    });
+
+    it('R5: publicação da conta anterior não entra no feed da próxima', async () => {
+      const pending = deferred<Post>();
+      feedService.createPost.mockReturnValue(pending.promise);
+      const creating = useFeedStore.getState().createPost('post de A');
+      switchAccount();
+      pending.resolve(post('pA'));
+      await creating.catch(() => undefined);
+      expect(useFeedStore.getState()).toMatchObject({ posts: [], isCreating: false });
+    });
+
+    it('R5: falha da publicação da conta anterior não avisa a próxima', async () => {
+      const pending = deferred<Post>();
+      feedService.createPost.mockReturnValue(pending.promise);
+      const creating = useFeedStore.getState().createPost('post de A');
+      switchAccount();
+      pending.reject(new Error('cancelada'));
+      await creating.catch(() => undefined);
+      expect(showAlert).not.toHaveBeenCalled();
+    });
+
+    it('R5: curtida da conta anterior não altera o mesmo post no feed da próxima', async () => {
+      useFeedStore.setState({ posts: [post('p1', { likeCount: 4 })] });
+      const pending = deferred<{ likeCount: number; likedByMe: boolean }>();
+      feedService.like.mockReturnValue(pending.promise);
+      const liking = useFeedStore.getState().toggleLike('p1');
+      switchAccount();
+      useFeedStore.setState({ posts: [post('p1', { likeCount: 7 })] });
+      pending.resolve({ likeCount: 5, likedByMe: true });
+      await liking;
+      expect(useFeedStore.getState().posts[0]).toMatchObject({ likeCount: 7, likedByMe: false });
+    });
+
+    it('R5: rollback da curtida da conta anterior não restaura os dados dela', async () => {
+      useFeedStore.setState({ posts: [post('p1', { likeCount: 4, likedByMe: true })] });
+      const pending = deferred<{ likeCount: number; likedByMe: boolean }>();
+      feedService.unlike.mockReturnValue(pending.promise);
+      const liking = useFeedStore.getState().toggleLike('p1');
+      switchAccount();
+      useFeedStore.setState({ posts: [post('p1', { likeCount: 7 })] });
+      pending.reject(new Error('cancelada'));
+      await liking.catch(() => undefined);
+      expect(useFeedStore.getState().posts[0]).toMatchObject({ likeCount: 7, likedByMe: false });
+      expect(showAlert).not.toHaveBeenCalled();
+    });
+
+    it('R5: comentários da conta anterior não entram no store da próxima', async () => {
+      const pending = deferred<Comment[]>();
+      feedService.getComments.mockReturnValue(pending.promise);
+      const loading = useFeedStore.getState().loadComments('p1');
+      switchAccount();
+      pending.resolve([comment('cA')]);
+      await loading;
+      expect(useFeedStore.getState().commentsByPost).toEqual({});
+      expect(useFeedStore.getState().loadingCommentsByPost).toEqual({});
+    });
+
+    it('R5: comentário da conta anterior não grava nem reverte na próxima', async () => {
+      useFeedStore.setState({ posts: [post('p1', { commentCount: 1 })] });
+      const saved = deferred<Comment>();
+      feedService.addComment.mockReturnValue(saved.promise);
+      const adding = useFeedStore.getState().addComment('p1', 'de A');
+      switchAccount();
+      saved.resolve(comment('cA'));
+      await adding;
+      expect(useFeedStore.getState().commentsByPost).toEqual({});
+
+      useFeedStore.setState({ posts: [post('p1', { commentCount: 1 })] });
+      const failed = deferred<Comment>();
+      feedService.addComment.mockReturnValue(failed.promise);
+      const failing = useFeedStore.getState().addComment('p1', 'de B');
+      switchAccount();
+      useFeedStore.setState({ posts: [post('p1', { commentCount: 3 })] });
+      failed.reject(new Error('cancelada'));
+      await failing.catch(() => undefined);
+      expect(useFeedStore.getState().posts[0].commentCount).toBe(3);
+      expect(useFeedStore.getState().commentsByPost).toEqual({});
+      expect(showAlert).not.toHaveBeenCalled();
+    });
   });
 });

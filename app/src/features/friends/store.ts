@@ -5,6 +5,7 @@ import {
   FriendRequest,
   UserSearchResult,
 } from '@shared/services/friends.service';
+import { captureSessionOwner, isCurrentOwner } from '@shared/services/session-owner';
 
 interface FriendsState {
   friends: Friend[];
@@ -41,13 +42,17 @@ let searchSeq = 0;
 export const useFriendsStore = create<FriendsState>((set, get) => ({
   ...initialState,
 
+  // R5 (26/11): toda escrita depois de um await confere a sessão; a resposta
+  // (ou o rollback) da conta anterior não pode repopular o store da seguinte.
   load: async () => {
+    const owner = captureSessionOwner();
     set({ isLoading: true, error: null });
     try {
       const [friends, requests] = await Promise.all([
         friendsService.list(),
         friendsService.requests(),
       ]);
+      if (!isCurrentOwner(owner)) return;
       set({
         friends,
         incoming: requests.incoming,
@@ -56,6 +61,7 @@ export const useFriendsStore = create<FriendsState>((set, get) => ({
         isLoading: false,
       });
     } catch {
+      if (!isCurrentOwner(owner)) return;
       set({ isLoading: false, hasLoaded: true, error: 'Não foi possível carregar seus amigos.' });
     }
   },
@@ -71,13 +77,15 @@ export const useFriendsStore = create<FriendsState>((set, get) => ({
     // resposta de "ana" podia chegar depois da de "anab" e sobrescrever a lista
     // com resultados do termo antigo.
     const seq = ++searchSeq;
+    const owner = captureSessionOwner();
     set({ isSearching: true });
     try {
       const searchResults = await friendsService.search(trimmed);
-      if (seq !== searchSeq) return; // chegou fora de ordem: descarta
+      // Fora de ordem ou de outra conta: descarta.
+      if (seq !== searchSeq || !isCurrentOwner(owner)) return;
       set({ searchResults, isSearching: false });
     } catch {
-      if (seq !== searchSeq) return;
+      if (seq !== searchSeq || !isCurrentOwner(owner)) return;
       set({ isSearching: false });
     }
   },
@@ -88,8 +96,10 @@ export const useFriendsStore = create<FriendsState>((set, get) => ({
   },
 
   sendRequest: async (username) => {
+    const owner = captureSessionOwner();
     try {
       await friendsService.sendRequest(username);
+      if (!isCurrentOwner(owner)) return true;
       // Atualiza o estado do resultado na hora (evita duplo envio).
       set((s) => ({
         searchResults: s.searchResults.map((u) =>
@@ -105,23 +115,25 @@ export const useFriendsStore = create<FriendsState>((set, get) => ({
 
   respond: async (requestId, action) => {
     // Otimista: remove o pedido da lista; rollback recarregando em erro.
+    const owner = captureSessionOwner();
     const prevIncoming = get().incoming;
     set((s) => ({ incoming: s.incoming.filter((r) => r.id !== requestId) }));
     try {
       await friendsService.respondRequest(requestId, action);
-      void get().load();
+      if (isCurrentOwner(owner)) void get().load();
     } catch {
-      set({ incoming: prevIncoming });
+      if (isCurrentOwner(owner)) set({ incoming: prevIncoming });
     }
   },
 
   removeFriend: async (friendshipId) => {
+    const owner = captureSessionOwner();
     const prevFriends = get().friends;
     set((s) => ({ friends: s.friends.filter((f) => f.friendshipId !== friendshipId) }));
     try {
       await friendsService.remove(friendshipId);
     } catch {
-      set({ friends: prevFriends });
+      if (isCurrentOwner(owner)) set({ friends: prevFriends });
     }
   },
 

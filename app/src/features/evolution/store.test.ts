@@ -10,6 +10,9 @@ jest.mock('@shared/services/weight.service', () => ({
 }));
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { weightService } = require('@shared/services/weight.service');
+jest.mock('@shared/utils/show-alert', () => ({ showAlert: jest.fn() }));
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { showAlert } = require('@shared/utils/show-alert');
 
 describe('useWeightStore', () => {
   beforeEach(() => {
@@ -54,6 +57,60 @@ describe('useWeightStore', () => {
   it('clear zera o estado', () => {
     useWeightStore.setState({ entries: [entry('1', '2026-06-20', 80)] });
     useWeightStore.getState().clear();
+    expect(useWeightStore.getState().entries).toEqual([]);
+  });
+});
+
+describe('troca de conta com o peso pendente (R5, 26/11)', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { useAuthStore } = require('@features/auth/store');
+  const signIn = (id: string) => {
+    useAuthStore.getState().clearToken();
+    useAuthStore.getState().setToken(`token-${id}`, { id, name: id, email: `${id}@exemplo.com` });
+  };
+  const deferred = <T,>() => {
+    let resolve!: (v: T) => void;
+    let reject!: (e: unknown) => void;
+    const promise = new Promise<T>((a, b) => {
+      resolve = a;
+      reject = b;
+    });
+    return { promise, resolve, reject };
+  };
+  beforeEach(() => {
+    signIn('uA');
+    jest.clearAllMocks();
+  });
+
+  it('load descarta o histórico que chega depois de trocar de conta', async () => {
+    const pending = deferred<WeightEntry[]>();
+    weightService.getHistory.mockReturnValue(pending.promise);
+    const loading = useWeightStore.getState().load();
+    signIn('uB');
+    pending.resolve([entry('a1', '2026-11-20', 90)]);
+    await loading;
+    expect(useWeightStore.getState()).toMatchObject({ entries: [], isLoading: false });
+  });
+
+  it('addEntry da conta anterior não reverte para os dados dela nem avisa a próxima', async () => {
+    useWeightStore.setState({ entries: [entry('a1', '2026-11-20', 90)] });
+    const pending = deferred<WeightEntry>();
+    weightService.addEntry.mockReturnValue(pending.promise);
+    const saving = useWeightStore.getState().addEntry(89, '2026-11-21');
+    signIn('uB');
+    pending.reject(new Error('cancelada'));
+    await saving.catch(() => undefined);
+    expect(useWeightStore.getState()).toMatchObject({ entries: [], isSaving: false });
+    expect(showAlert).not.toHaveBeenCalled();
+  });
+
+  it('addEntry da conta anterior não grava o peso salvo na próxima', async () => {
+    const pending = deferred<WeightEntry>();
+    weightService.addEntry.mockReturnValue(pending.promise);
+    const saving = useWeightStore.getState().addEntry(89, '2026-11-21');
+    signIn('uB');
+    pending.resolve(entry('a2', '2026-11-21', 89));
+    await saving;
     expect(useWeightStore.getState().entries).toEqual([]);
   });
 });

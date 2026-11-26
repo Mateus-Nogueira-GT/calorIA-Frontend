@@ -1,3 +1,4 @@
+import axios from 'axios';
 import { create } from 'zustand';
 import { challengesService } from '@shared/services/challenges.service';
 import type {
@@ -62,13 +63,18 @@ export const useChallengesStore = create<ChallengesState>((set, get) => ({
     }
   },
 
+  // R5 (26/11): as demais ações também conferem a sessão depois do await —
+  // a resposta (ou o rollback) da conta anterior não escreve no store da seguinte.
   create: async (input) => {
+    const owner = captureSessionOwner();
     set({ isCreating: true });
     try {
       const created = await challengesService.create(input);
+      if (!isCurrentOwner(owner)) return created;
       set((s) => ({ challenges: [created, ...s.challenges], isCreating: false }));
       return created;
     } catch (e) {
+      if (!isCurrentOwner(owner)) throw e;
       set({ isCreating: false });
       showAlert('Não foi possível criar o desafio', 'Tente novamente.');
       throw e;
@@ -78,6 +84,7 @@ export const useChallengesStore = create<ChallengesState>((set, get) => ({
   join: async (challengeId) => {
     const target = get().challenges.find((c) => c.id === challengeId);
     if (!target || target.joinedByMe) return;
+    const owner = captureSessionOwner();
     const snapshot = { joinedByMe: target.joinedByMe, participantCount: target.participantCount };
     set((s) => ({
       joiningId: challengeId,
@@ -87,11 +94,13 @@ export const useChallengesStore = create<ChallengesState>((set, get) => ({
     }));
     try {
       const updated = await challengesService.join(challengeId);
+      if (!isCurrentOwner(owner)) return;
       set((s) => ({
         joiningId: null,
         challenges: s.challenges.map((c) => (c.id === challengeId ? updated : c)),
       }));
     } catch (e) {
+      if (!isCurrentOwner(owner)) return;
       set((s) => ({
         joiningId: null,
         challenges: s.challenges.map((c) => (c.id === challengeId ? { ...c, ...snapshot } : c)),
@@ -107,6 +116,7 @@ export const useChallengesStore = create<ChallengesState>((set, get) => ({
     // B3: sem essa trava, dois toques rápidos disparavam dois check-ins; o
     // segundo zerava a sequência no servidor.
     if (get().checkingInId) return false;
+    const owner = captureSessionOwner();
     set({ checkingInId: challengeId });
     // O botão vira "✅ Check-in feito" na hora: antes nada mudava na tela e
     // parecia que o toque não tinha funcionado.
@@ -118,10 +128,12 @@ export const useChallengesStore = create<ChallengesState>((set, get) => ({
       }));
     try {
       await challengesService.checkIn(challengeId);
+      if (!isCurrentOwner(owner)) return true;
       markDoneToday();
       void get().loadLeaderboard(challengeId).catch(() => {});
       return true;
     } catch (e) {
+      if (!isCurrentOwner(owner)) return false;
       const status = (e as { response?: { status?: number; data?: { error?: string } } })
         .response;
       if (status?.data?.error === 'ALREADY_CHECKED_IN') {
@@ -139,21 +151,26 @@ export const useChallengesStore = create<ChallengesState>((set, get) => ({
   },
 
   loadLeaderboard: async (challengeId) => {
+    const owner = captureSessionOwner();
     set({ loadingLeaderboardId: challengeId });
     try {
       const entries = await challengesService.getLeaderboard(challengeId);
+      if (!isCurrentOwner(owner)) return;
       set((s) => ({
         loadingLeaderboardId: null,
         leaderboardByChallenge: { ...s.leaderboardByChallenge, [challengeId]: entries },
       }));
     } catch (e) {
+      if (!isCurrentOwner(owner)) return;
       set({ loadingLeaderboardId: null });
       throw e;
     }
   },
 
   resolveInvite: async (code) => {
+    const owner = captureSessionOwner();
     const challenge = await challengesService.resolveInvite(code);
+    if (!isCurrentOwner(owner)) throw new axios.CanceledError();
     set((s) => ({
       challenges: s.challenges.some((c) => c.id === challenge.id)
         ? s.challenges.map((c) => (c.id === challenge.id ? challenge : c))
