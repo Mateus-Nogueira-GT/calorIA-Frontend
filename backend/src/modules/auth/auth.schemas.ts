@@ -65,7 +65,9 @@ export const successResponseSchema = z.object({
 
 export const authUserSchema = z.object({
   id: z.string().uuid(),
-  email: z.string().email(),
+  // A9: login social (Apple/Google) pode vir sem e-mail; o app tipa `email`
+  // como string, então o vazio é '' (nunca null).
+  email: z.union([z.string().email(), z.literal('')]),
   name: z.string().nullable(),
 })
 

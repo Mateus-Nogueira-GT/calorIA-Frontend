@@ -216,7 +216,7 @@ export async function refreshSession(
     expires_in: session.session.expires_in ?? 3600,
     user: {
       id: session.user!.id,
-      email: session.user!.email!,
+      email: session.user!.email ?? '',
       name: (session.user!.user_metadata?.name as string) ?? null,
     },
   }
