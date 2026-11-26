@@ -37,9 +37,25 @@ function signature(payload: string): string {
   return `${payload.length}:${a >>> 0}:${b >>> 0}`;
 }
 const storageKey = (userId: string) => `caloria:pending-operations:${userId}`;
-const active = new Map<string, PendingRequest>();
-const completed = new Set<string>();
-const superseded = new Set<string>();
+/**
+ * Estado em memória por dono (R2, 26/11): o reconhecimento de uma conta não
+ * pode aposentar nem encerrar a pendência de outra no mesmo runtime.
+ */
+interface OwnerMemory {
+  active: Map<string, PendingRequest>;
+  completed: Set<string>;
+  superseded: Set<string>;
+}
+const memories = new Map<string, OwnerMemory>();
+function memoryOf(userId: string | undefined): OwnerMemory {
+  const owner = userId ?? 'guest';
+  let memory = memories.get(owner);
+  if (!memory) {
+    memory = { active: new Map(), completed: new Set(), superseded: new Set() };
+    memories.set(owner, memory);
+  }
+  return memory;
+}
 const writes = new Map<string, Promise<unknown>>();
 
 /**
@@ -59,8 +75,9 @@ async function serialized<T>(owner: string, action: () => Promise<T>): Promise<T
   }
 }
 
-function reusable(item: PendingRequest, retry: boolean): boolean {
-  if (completed.has(item.key) || superseded.has(item.key) || item.superseded) return false;
+function reusable(memory: OwnerMemory, item: PendingRequest, retry: boolean): boolean {
+  if (memory.completed.has(item.key) || memory.superseded.has(item.key) || item.superseded)
+    return false;
   // A janela é só do chat (R1); foto ambígua mantém a chave para o replay.
   if (retry || item.type !== 'chat') return true;
   const age = Date.now() - Date.parse(item.created_at);
@@ -81,23 +98,24 @@ export async function beginRequest(
   const owner = captureSessionOwner();
   const userId = owner.userId;
   const sig = signature(payload);
-  const slot = `${userId}:${type}:${sig}`;
+  const memory = memoryOf(userId);
+  const slot = `${type}:${sig}`;
   return serialized(userId ?? 'guest', async () => {
     const list = userId ? await pendingRequests(userId) : [];
     if (!isCurrentOwner(owner)) throw new axios.CanceledError();
     // R1 (25/11): a pendência serve ao retry, mas não a um envio novo depois
     // de outra mensagem entregue ou fora da janela curta.
     const retry = options?.retry === true;
-    const inMemory = active.get(slot);
+    const inMemory = memory.active.get(slot);
     const previous =
-      inMemory && reusable(inMemory, retry)
+      inMemory && reusable(memory, inMemory, retry)
         ? inMemory
         : list
             .filter((item) => item.type === type && item.signature === sig)
             .reverse()
-            .find((item) => reusable(item, retry));
+            .find((item) => reusable(memory, item, retry));
     if (previous) {
-      active.set(slot, previous);
+      memory.active.set(slot, previous);
       return previous;
     }
     const next: PendingRequest = {
@@ -121,7 +139,7 @@ export async function beginRequest(
         );
       }
     }
-    active.set(slot, next);
+    memory.active.set(slot, next);
     if (!isCurrentOwner(owner)) throw new axios.CanceledError();
     return next;
   });
@@ -130,6 +148,7 @@ export async function beginRequest(
 export async function pendingRequests(userId: string): Promise<PendingRequest[]> {
   const raw = await kvStorage.getItem(storageKey(userId));
   if (!raw) return [];
+  const { completed } = memoryOf(userId);
   const data: unknown = JSON.parse(raw);
   if (!Array.isArray(data)) throw new Error('Registro de solicitação inválido');
   return data.filter((r): r is PendingRequest =>
@@ -156,6 +175,7 @@ export async function pendingRequests(userId: string): Promise<PendingRequest[]>
  * the server still replays its saved result instead of charging the key twice.
  */
 export async function finishRequest(request: PendingRequest, userId?: string): Promise<void> {
+  const { active, completed } = memoryOf(userId);
   completed.add(request.key);
   for (const [slot, item] of active) if (item.key === request.key) active.delete(slot);
   if (!userId) return;
@@ -176,12 +196,14 @@ export async function finishRequest(request: PendingRequest, userId?: string): P
  * Entrega reconhecida de uma mensagem de chat: além de aposentar a chave, as
  * pendências anteriores da mesma conversa deixam de ser reaproveitadas por um
  * envio novo com o mesmo texto (R1, 25/11). Elas continuam listadas para a
- * recuperação em Créditos.
+ * recuperação em Créditos. Só vale para as pendências do mesmo dono (R2, 26/11).
  */
 export async function acknowledgeRequest(request: PendingRequest, userId?: string): Promise<void> {
   // Aposenta a chave já (parte síncrona do finishRequest), antes de qualquer await.
   const finished = finishRequest(request, userId);
   if (request.type !== 'chat') return finished;
+  // Só as pendências do mesmo dono (R2, 26/11); escopo null = primeira mensagem dele.
+  const { active, superseded } = memoryOf(userId);
   const scope = request.scope ?? null;
   // Empate de horário conta como anterior: só tira a pendência do reuso.
   const earlier = (item: PendingRequest) =>

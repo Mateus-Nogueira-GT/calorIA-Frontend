@@ -57,6 +57,18 @@ describe('durable operation metadata', () => {
     expect((await beginRequest('chat', 'conv-1:sim', context)).key).not.toBe(failed.key);
     expect((await beginRequest('chat', 'conv-2:sim', context)).key).toBe(other.key);
   });
+  it('R2 (26/11): o reconhecimento de outra conta não aposenta a pendência da primeira', async () => {
+    const context = { date: '2026-11-26', tzOffsetMinutes: -180, scope: null };
+    mockUser = { user: { id: 'owner-R2-A' }, sessionGeneration: 1 };
+    const first = await beginRequest('chat', JSON.stringify([null, 'oi']), context);
+    mockUser = { user: { id: 'owner-R2-B' }, sessionGeneration: 2 };
+    const other = await beginRequest('chat', JSON.stringify([null, 'olá']), context);
+    await acknowledgeRequest(other, 'owner-R2-B');
+    mockUser = { user: { id: 'owner-R2-A' }, sessionGeneration: 3 };
+    const retry = await beginRequest('chat', JSON.stringify([null, 'oi']), context);
+    expect(retry.key).toBe(first.key);
+    expect((await pendingRequests('owner-R2-A')).map((r) => r.key)).toEqual([first.key]);
+  });
   const storedSignature = async (payload: string) => {
     const probe = await beginRequest('chat', payload);
     await finishRequest(probe, mockUser.user.id);
