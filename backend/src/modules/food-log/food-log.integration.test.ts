@@ -4,7 +4,7 @@ import type { FastifyInstance } from 'fastify'
 import postgres from 'postgres'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { addMealBodySchema } from './food-log.schemas.js'
-import { addMeal, listMeals, updateMeal } from './food-log.service.js'
+import { addMeal, getSummary, listMeals, updateMeal } from './food-log.service.js'
 import { __resetMealFiberColumnsCache } from './meal-fiber-columns.js'
 import { __resetMealIdempotencyColumnCache } from './meal-idempotency-column.js'
 
@@ -31,12 +31,16 @@ if (
       CREATE TABLE auth.users(id uuid PRIMARY KEY);
       CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql AS 'SELECT NULL::uuid';
       CREATE TABLE foods(id uuid PRIMARY KEY);
+      CREATE TABLE chat_history(id uuid PRIMARY KEY);
       CREATE FUNCTION public.set_updated_at() RETURNS trigger LANGUAGE plpgsql AS $$
         BEGIN NEW.updated_at = NOW(); RETURN NEW; END $$;`)
     for (const migration of [
       '003_meals.sql',
       '022_meal_fiber.sql',
       '030_food_log_idempotency.sql',
+      // S9: o resumo semanal soma as refeições do plano concluídas.
+      '006_diets.sql',
+      '020_diet_fiber.sql',
     ]) {
       await db.unsafe(
         await readFile(
@@ -154,6 +158,61 @@ if (
       await addMeal(fastify, user, { ...almoco, name: 'Sem chave' })
       await addMeal(fastify, user, { ...almoco, name: 'Sem chave' })
       expect(await count(user, 'Sem chave')).toBe(2)
+    })
+  })
+
+  describe('summary semanal com as refeições do plano (S9)', () => {
+    it('soma a refeição do plano concluída no dia com a refeição livre (500 + 100 = 600)', async () => {
+      const u = randomUUID()
+      await db`INSERT INTO auth.users(id) VALUES (${u})`
+      const [diet] = await db`
+        INSERT INTO diets(user_id, name, tdee_calories, target_calories, target_protein_g,
+                          target_carbs_g, target_fat_g, status)
+        VALUES (${u}, 'Plano', 2000, 1800, 120, 200, 60, 'active') RETURNING id`
+      const [day] = await db`
+        INSERT INTO diet_days(diet_id, day_number, day_name) VALUES (${diet.id}, 3, 'Quarta')
+        RETURNING id`
+      const planMeal = (name: string, kcal: number, completedAt: string | null) => db`
+        INSERT INTO diet_meals(diet_day_id, meal_type, name, total_calories, total_protein,
+                               total_carbs, total_fat, total_fiber, is_completed, completed_at)
+        VALUES (${day.id}, 'lunch', ${name}, ${kcal}, 30, 60, 15, 6, ${completedAt != null},
+                ${completedAt}::timestamptz)`
+      // Concluída ao meio-dia de Brasília do dia 25.
+      await planMeal('Almoço do plano', 500, '2026-11-25T15:00:00Z')
+      // Não concluída: não conta.
+      await planMeal('Jantar do plano', 700, null)
+      // 23h30 de Brasília do dia 24 = 02h30 UTC do dia 25: é do dia 24 no fuso do cliente.
+      await planMeal('Ceia do plano', 300, '2026-11-25T02:30:00Z')
+      await addMeal(
+        fastify,
+        u,
+        addMealBodySchema.parse({
+          name: 'Banana',
+          calories: 100,
+          protein: 1,
+          carbs: 23,
+          fat: 0,
+          fiber: 2,
+          mealType: 'snack',
+          date: '2026-11-25',
+        }),
+      )
+
+      const summary = await getSummary(fastify, u, '2026-11-20', '2026-11-26', {
+        tzOffsetMinutes: -180,
+      })
+
+      expect(summary).toEqual([
+        { date: '2026-11-24', calories: 300, protein: 30, carbs: 60, fat: 15, fiber: 6 },
+        { date: '2026-11-25', calories: 600, protein: 31, carbs: 83, fat: 15, fiber: 8 },
+      ])
+      // Contexto do coach ("só diário"): sem o plano.
+      expect(
+        await getSummary(fastify, u, '2026-11-20', '2026-11-26', {
+          tzOffsetMinutes: -180,
+          includePlanMeals: false,
+        }),
+      ).toEqual([{ date: '2026-11-25', calories: 100, protein: 1, carbs: 23, fat: 0, fiber: 2 }])
     })
   })
 })

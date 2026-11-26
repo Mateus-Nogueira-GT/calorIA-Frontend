@@ -163,6 +163,31 @@ describe('getSummary — registro impossível não entra na soma', () => {
   })
 })
 
+describe('getSummary — refeições do plano concluídas (S9)', () => {
+  it('soma diet_meals pela data local de completed_at, com o fuso do cliente', async () => {
+    const { fastify, calls } = fakeFastify([['FROM meals', []]])
+    await getSummary(fastify, USER, '2026-10-21', '2026-10-27', { tzOffsetMinutes: -180 })
+    const q = calls[0]
+    expect(q.sql).toContain('FROM diet_meals')
+    expect(q.sql).toContain('completed_at')
+    expect(q.params).toContain(-180)
+    expect(q.params.filter((p) => p === USER)).toHaveLength(2)
+  })
+
+  it('cliente antigo, sem fuso: agrupa por UTC (offset 0)', async () => {
+    const { fastify, calls } = fakeFastify([['FROM meals', []]])
+    await getSummary(fastify, USER, '2026-10-21', '2026-10-27')
+    expect(calls[0].params).toContain(0)
+    expect(calls[0].params).toContain(true)
+  })
+
+  it('includePlanMeals: false desliga o ramo do plano (contexto do coach, "só diário")', async () => {
+    const { fastify, calls } = fakeFastify([['FROM meals', []]])
+    await getSummary(fastify, USER, '2026-10-21', '2026-10-27', { includePlanMeals: false })
+    expect(calls[0].params).toContain(false)
+  })
+})
+
 describe('listMeals — peso do registro (coach antenado, 04/11)', () => {
   it('devolve weightGrams somado dos itens, null sem dado', async () => {
     const row = {

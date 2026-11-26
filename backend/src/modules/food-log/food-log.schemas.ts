@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { localDateSchema } from '../../shared/local-date.js'
+import { localDateSchema, tzOffsetMinutesSchema } from '../../shared/local-date.js'
 
 // ─── Responses ────────────────────────────────────────────────────────────────
 
@@ -108,6 +108,8 @@ export const mealParamsSchema = z.object({
 export const summaryQuerySchema = z.object({
   from: localDateSchema,
   to: localDateSchema,
+  /** S9: fuso do cliente para datar as refeições do plano concluídas (ausente = UTC). */
+  tzOffsetMinutes: tzOffsetMinutesSchema.optional(),
 })
 
 export const daySummarySchema = z.object({
@@ -116,6 +118,8 @@ export const daySummarySchema = z.object({
   protein: z.number(),
   carbs: z.number(),
   fat: z.number(),
+  /** S9: fibra conhecida do dia (g); registro sem dado conta 0. */
+  fiber: z.number(),
 })
 
 export const errorSchema = z.object({

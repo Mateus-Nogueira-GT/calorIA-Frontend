@@ -64,8 +64,8 @@ const foodLogRoutes: FastifyPluginAsyncZod = async (fastify) => {
     },
     async (request, reply) => {
       const { sub: userId } = request.user as JwtPayload
-      const { from, to } = request.query
-      return reply.send(await getSummary(fastify, userId, from, to))
+      const { from, to, tzOffsetMinutes } = request.query
+      return reply.send(await getSummary(fastify, userId, from, to, { tzOffsetMinutes }))
     },
   )
 

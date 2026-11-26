@@ -626,8 +626,8 @@ describe('dias anteriores no contexto (05/11, M6)', () => {
       ...emptyData,
       date: '2026-11-05',
       recentDays: [
-        { date: '2026-10-30', calories: 1850, protein: 95, carbs: 0, fat: 0 },
-        { date: '2026-11-04', calories: 2010, protein: 120, carbs: 0, fat: 0 },
+        { date: '2026-10-30', calories: 1850, protein: 95, carbs: 0, fat: 0, fiber: 0 },
+        { date: '2026-11-04', calories: 2010, protein: 120, carbs: 0, fat: 0, fiber: 0 },
       ],
     })
     expect(out).toContain(

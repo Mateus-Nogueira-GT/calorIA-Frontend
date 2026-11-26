@@ -1,6 +1,6 @@
 import { describe, it, expect, jest } from '@jest/globals';
 
-jest.mock('./api', () => ({ __esModule: true, default: { patch: jest.fn(), post: jest.fn() } }));
+jest.mock('./api', () => ({ __esModule: true, default: { patch: jest.fn(), post: jest.fn(), get: jest.fn() } }));
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const api = require('./api').default;
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -33,5 +33,15 @@ describe('foodLogService.addMeal — Idempotency-Key (C4)', () => {
     api.post.mockResolvedValue({ data: { id: 'm1' } });
     await foodLogService.addMeal(data);
     expect(api.post).toHaveBeenCalledWith('/food-log', data, undefined);
+  });
+});
+
+describe('foodLogService.getSummary — S9', () => {
+  it('manda o fuso local: o servidor data as refeições do plano concluídas como o Dashboard', async () => {
+    api.get.mockResolvedValue({ data: [] });
+    await foodLogService.getSummary('2026-11-20', '2026-11-26');
+    expect(api.get).toHaveBeenCalledWith('/food-log/summary', {
+      params: { from: '2026-11-20', to: '2026-11-26', tzOffsetMinutes: -new Date().getTimezoneOffset() },
+    });
   });
 });

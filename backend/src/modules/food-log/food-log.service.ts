@@ -296,34 +296,65 @@ const SUMMARY_MAX_DAYS = 92
  * G4: totais por dia num intervalo (1 query com GROUP BY) — o gráfico semanal
  * do perfil fazia 7 requests, um por dia. Dias sem registro não voltam
  * (o cliente preenche com zero).
+ *
+ * S9 (26/11): soma também as refeições do PLANO concluídas, com a mesma regra
+ * do Dashboard (getDayTotals no app): a refeição conta no dia LOCAL de
+ * `completed_at` (completedOnDate / toggleMeal). Sem `tzOffsetMinutes`
+ * (cliente antigo) o dia é o UTC. Fibra: soma do que tem dado (sem dado = 0,
+ * como no app); `to_jsonb` funciona com ou sem as migrations 020/022.
+ * `includePlanMeals: false` mantém só o diário livre (o contexto do coach,
+ * que diz ao modelo que os dias anteriores são "só diário").
  */
 export async function getSummary(
   fastify: FastifyInstance,
   userId: string,
   from: string,
   to: string,
+  options: { tzOffsetMinutes?: number; includePlanMeals?: boolean } = {},
 ): Promise<DaySummary[]> {
+  const tzOffsetMinutes = options.tzOffsetMinutes ?? 0
+  const includePlanMeals = options.includePlanMeals ?? true
   if (from > to) throw new AppError(400, 'INVALID_RANGE', 'Data inicial maior que a final')
   const spanDays = (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000
   if (spanDays > SUMMARY_MAX_DAYS)
     throw new AppError(400, 'RANGE_TOO_LARGE', `Intervalo máximo de ${SUMMARY_MAX_DAYS} dias`)
 
   const rows = await fastify.db<
-    { date: string; calories: number; protein: number; carbs: number; fat: number }[]
+    { date: string; calories: number; protein: number; carbs: number; fat: number; fiber: number }[]
   >`
+    WITH eaten AS (
+      SELECT meal_date, total_calories AS calories, total_protein AS protein,
+             total_carbs AS carbs, total_fat AS fat,
+             (to_jsonb(m)->>'total_fiber')::NUMERIC AS fiber
+      FROM meals m
+      WHERE user_id = ${userId} AND meal_date BETWEEN ${from} AND ${to}
+        -- Registros impossíveis (anteriores aos tetos) não entram na soma.
+        AND total_calories <= ${MEAL_LIMITS.calories}
+        AND total_protein <= ${MEAL_LIMITS.protein}
+        AND total_carbs <= ${MEAL_LIMITS.carbs}
+        AND total_fat <= ${MEAL_LIMITS.fat}
+      UNION ALL
+      SELECT plan.date, dm.total_calories, dm.total_protein, dm.total_carbs, dm.total_fat,
+             (to_jsonb(dm)->>'total_fiber')::NUMERIC
+      FROM diet_meals dm
+      JOIN diet_days dd ON dd.id = dm.diet_day_id
+      JOIN diets d ON d.id = dd.diet_id
+      CROSS JOIN LATERAL (
+        SELECT (dm.completed_at AT TIME ZONE 'UTC'
+                + make_interval(mins => ${tzOffsetMinutes}))::DATE AS date
+      ) plan
+      WHERE ${includePlanMeals}::BOOLEAN
+        AND d.user_id = ${userId} AND dm.completed_at IS NOT NULL
+        AND plan.date BETWEEN ${from}::DATE AND ${to}::DATE
+    )
     SELECT
       meal_date::TEXT AS date,
-      COALESCE(SUM(total_calories), 0)::INT AS calories,
-      COALESCE(SUM(total_protein), 0)::INT AS protein,
-      COALESCE(SUM(total_carbs), 0)::INT AS carbs,
-      COALESCE(SUM(total_fat), 0)::INT AS fat
-    FROM meals
-    WHERE user_id = ${userId} AND meal_date BETWEEN ${from} AND ${to}
-      -- Registros impossíveis (anteriores aos tetos) não entram na soma.
-      AND total_calories <= ${MEAL_LIMITS.calories}
-      AND total_protein <= ${MEAL_LIMITS.protein}
-      AND total_carbs <= ${MEAL_LIMITS.carbs}
-      AND total_fat <= ${MEAL_LIMITS.fat}
+      COALESCE(SUM(calories), 0)::INT AS calories,
+      COALESCE(SUM(protein), 0)::INT AS protein,
+      COALESCE(SUM(carbs), 0)::INT AS carbs,
+      COALESCE(SUM(fat), 0)::INT AS fat,
+      ROUND(COALESCE(SUM(fiber), 0), 1)::FLOAT8 AS fiber
+    FROM eaten
     GROUP BY meal_date
     ORDER BY meal_date
   `

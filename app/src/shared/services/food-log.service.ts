@@ -1,6 +1,6 @@
 import api from './api';
 import { bindRequestToOwner, type SessionOwner } from './session-owner';
-import { todayString } from '@shared/utils/date';
+import { todayString, tzOffsetMinutes } from '@shared/utils/date';
 
 export type AppMealType = 'breakfast' | 'lunch' | 'snack' | 'dinner' | 'other';
 
@@ -43,14 +43,24 @@ export interface DaySummary {
   protein: number;
   carbs: number;
   fat: number;
+  /** S9: fibra do dia (g). Ausente em backend antigo. */
+  fiber?: number;
 }
 
 export const foodLogService = {
   getMeals: (date: string) =>
     api.get<Meal[]>('/food-log', { params: { date } }).then((r) => r.data),
-  /** Totais por dia no intervalo (1 request) — dias sem registro não voltam. */
+  /**
+   * Totais por dia no intervalo (1 request) — dias sem registro não voltam.
+   * S9: inclui as refeições do plano concluídas; o fuso local faz o servidor
+   * datá-las como o Dashboard (dia local de completedAt).
+   */
   getSummary: (from: string, to: string) =>
-    api.get<DaySummary[]>('/food-log/summary', { params: { from, to } }).then((r) => r.data),
+    api
+      .get<DaySummary[]>('/food-log/summary', {
+        params: { from, to, tzOffsetMinutes: tzOffsetMinutes() },
+      })
+      .then((r) => r.data),
   // Sempre envia a data LOCAL — sem ela o servidor grava CURRENT_DATE (UTC),
   // que às 21h BRT já é "amanhã" e a refeição sumia da lista do dia.
   // C4 (26/11): `idempotencyKey` (Idempotency-Key) faz o servidor devolver a

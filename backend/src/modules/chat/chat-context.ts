@@ -316,7 +316,10 @@ export async function fetchUserContext(
   // 05/11 (M6): "como foi minha semana?" ficava sem nenhum dado.
   let recentDays: DaySummary[] | null = null
   try {
-    recentDays = await getSummary(fastify, userId, shiftDate(date, -6), shiftDate(date, -1))
+    // Só o diário livre: a linha do contexto avisa o modelo que é "só diário".
+    recentDays = await getSummary(fastify, userId, shiftDate(date, -6), shiftDate(date, -1), {
+      includePlanMeals: false,
+    })
   } catch {
     recentDays = null
   }
